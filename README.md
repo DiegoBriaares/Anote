@@ -1,6 +1,6 @@
 ANOTE - mANage and AnnOTatE
 
-A full-stack calendar application with event management, roles-based notes, and an admin panel.
+λnote. A full-stack calendar application with event management, roles-based notes, and an admin panel.
 
 ## 🚀 Quick Start
 
