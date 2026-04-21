@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCalendarStore, type CalendarEvent, type Role } from '../../store/calendarStore';
 import { X, Save, FileText, RotateCcw, Link, Paperclip, Eye, Pencil } from 'lucide-react';
 import { formatFullDate } from '../../utils/dateUtils';
+import { toApiUrl } from '../../utils/api';
 import ReactMarkdown from 'react-markdown';
 
 interface NoteEnvironmentProps {
@@ -79,10 +80,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
     };
 
     const resolveUrl = (url: string) => {
-        if (url.startsWith('/')) {
-            return `http://localhost:3001${url}`;
-        }
-        return url;
+        return toApiUrl(url);
     };
 
     const handleDownload = () => {

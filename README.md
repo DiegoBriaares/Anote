@@ -56,6 +56,20 @@ cd server && node index.js & cd .. && npm run dev
 
 ---
 
+## 🧰 Production User Ops
+
+- Use the dev repo as the control point for production user changes.
+- Promote admin: `npm run --silent prod:user:make-admin -- --username=USACO`
+- Remove admin: `npm run --silent prod:user:remove-admin -- --username=USACO`
+- Change username: `npm run --silent prod:user:change-username -- --username=oldname --new-username=newname`
+- Explicit target dir: append `--dir=/path/to/prod`
+- Save that dir as the new default: append `--dir-default`
+- Show current resolved default: `node scripts/prod_user_ops.cjs show-default-dir`
+- Inspect role history: `npm run --silent prod:user:history -- --username=USACO`
+- Full notes: `scripts/PROD_USER_OPS.md`
+
+---
+
 ## 🔗 URLs
 
 | Service | URL | Description |
@@ -87,8 +101,8 @@ cd server && node index.js
 When starting fresh, create an admin user:
 
 1. Register a new user via the frontend at http://localhost:5173
-2. Access the admin panel at http://localhost:3001
-3. The first user can be promoted to admin by editing the database
+2. From the dev repo, promote that user with `npm run --silent prod:user:make-admin -- --username=<username>`
+3. Restart the production server if needed so the latest backend code is active
 
 Or use the seeded admin account (if available):
 - **Username:** `admin`

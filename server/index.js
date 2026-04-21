@@ -11,6 +11,7 @@ const { ensureEventNotesSchema } = require('./ensureEventNotesSchema');
 
 const app = express();
 const port = process.env.PORT || 3001;
+const host = process.env.HOST || '0.0.0.0';
 const SECRET_KEY = process.env.SECRET_KEY || 'da_vinci_secret_key'; // In prod, use env var
 const adminUiDir = path.resolve(__dirname, '../../admin-db');
 const staticAdminDir = path.resolve(__dirname, 'static_admin');
@@ -82,6 +83,19 @@ function initDb(onReady) {
       preferences TEXT,
       is_admin INTEGER DEFAULT 0
     )`);
+
+        db.run(`CREATE TABLE IF NOT EXISTS user_role_events (
+      event_index INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      role_rank INTEGER NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('grant', 'revoke')),
+      changed_at INTEGER NOT NULL,
+      source TEXT,
+      note TEXT
+    )`);
+        db.run('CREATE INDEX IF NOT EXISTS idx_user_role_events_user_event ON user_role_events(user_id, event_index)');
 
         // Seed default admin user (admin/admin123)
         // Password hash for 'admin123' generated with bcrypt (10 rounds)
@@ -477,10 +491,30 @@ const authenticateToken = (req, res, next) => {
 
     if (!token) return res.sendStatus(401); // Unauthorized
 
-    jwt.verify(token, SECRET_KEY, (err, user) => {
+    jwt.verify(token, SECRET_KEY, (err, tokenUser) => {
         if (err) return res.sendStatus(403); // Forbidden
-        req.user = user;
-        next();
+
+        db.get(
+            'SELECT id, username, is_admin FROM users WHERE id = ?',
+            [tokenUser.id],
+            (dbErr, freshUser) => {
+                if (dbErr) {
+                    console.error('Error refreshing authenticated user:', dbErr.message);
+                    return res.status(500).json({ error: 'Failed to refresh user session' });
+                }
+
+                if (!freshUser) {
+                    return res.sendStatus(401);
+                }
+
+                req.user = {
+                    id: freshUser.id,
+                    username: freshUser.username,
+                    isAdmin: !!freshUser.is_admin
+                };
+                next();
+            }
+        );
     });
 };
 
@@ -1755,8 +1789,8 @@ if (require.main === module) {
         // We will keep the listener here.
 
 
-        app.listen(port, () => {
-            console.log(`Server running on http://localhost:${port}`);
+        app.listen(port, host, () => {
+            console.log(`Server running on port ${port} (listening on ${host})`);
         });
     });
 }

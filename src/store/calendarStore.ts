@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { formatDate } from '../utils/dateUtils';
+import { API_URL, normalizeApiAssetUrl } from '../utils/api';
 import { normalizePriority } from '../utils/priorityUtils';
+import { storage } from '../utils/storage';
 import { eachDayOfInterval } from 'date-fns';
 
 // Polyfill for crypto.randomUUID if not available (e.g. older Safari)
@@ -198,12 +200,11 @@ interface CalendarState {
     fetchTableData: (table: 'roles' | 'event_notes') => Promise<any[]>;
 }
 
-const API_URL = 'http://localhost:3001';
-
 export const useCalendarStore = create<CalendarState>((set, get) => {
     const logoutAndReset = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        storage.removeItem('token');
+        storage.removeItem('user');
+        storage.removeItem('profile');
         set({
             user: null,
             token: null,
@@ -232,8 +233,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
 
     return {
         // Auth Initial State
-        user: JSON.parse(localStorage.getItem('user') || 'null'),
-        token: localStorage.getItem('token'),
+        user: JSON.parse(storage.getItem('user') || 'null'),
+        token: storage.getItem('token'),
         isLoading: false,
         error: null,
 
@@ -244,13 +245,13 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         selectionActive: false,
         viewDate: new Date(),
         viewMode: 'self',
-        viewingUserId: JSON.parse(localStorage.getItem('user') || 'null')?.id || null,
-        viewingUsername: JSON.parse(localStorage.getItem('user') || 'null')?.username || null,
+        viewingUserId: JSON.parse(storage.getItem('user') || 'null')?.id || null,
+        viewingUsername: JSON.parse(storage.getItem('user') || 'null')?.username || null,
         viewingPreferences: null,
         profile: null,
         localPreferences: (() => {
             try {
-                return JSON.parse(localStorage.getItem('preferences') || 'null');
+                return JSON.parse(storage.getItem('preferences') || 'null');
             } catch {
                 return null;
             }
@@ -282,15 +283,19 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 const data = await res.json();
 
                 if (res.ok) {
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('user', JSON.stringify(data.user));
+                    const nextUser = {
+                        ...data.user,
+                        avatar_url: normalizeApiAssetUrl(data.user.avatar_url) || undefined
+                    };
+                    storage.setItem('token', data.token);
+                    storage.setItem('user', JSON.stringify(nextUser));
                     set({
-                        user: data.user,
+                        user: nextUser,
                         token: data.token,
                         isLoading: false,
                         viewMode: 'self',
-                        viewingUserId: data.user.id,
-                        viewingUsername: data.user.username,
+                        viewingUserId: nextUser.id,
+                        viewingUsername: nextUser.username,
                         viewingPreferences: null
                     });
                     await Promise.all([get().fetchEvents(), get().fetchFriends(), get().fetchUsers(), get().fetchProfile()]);
@@ -313,15 +318,19 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 const data = await res.json();
 
                 if (res.ok) {
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('user', JSON.stringify(data.user));
+                    const nextUser = {
+                        ...data.user,
+                        avatar_url: normalizeApiAssetUrl(data.user.avatar_url) || undefined
+                    };
+                    storage.setItem('token', data.token);
+                    storage.setItem('user', JSON.stringify(nextUser));
                     set({
-                        user: data.user,
+                        user: nextUser,
                         token: data.token,
                         isLoading: false,
                         viewMode: 'self',
-                        viewingUserId: data.user.id,
-                        viewingUsername: data.user.username,
+                        viewingUserId: nextUser.id,
+                        viewingUsername: nextUser.username,
                         viewingPreferences: null
                     });
                     await Promise.all([get().fetchEvents(), get().fetchFriends(), get().fetchUsers(), get().fetchProfile()]);
@@ -340,7 +349,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         setLocalPreferences: (prefs) => {
             set((state) => {
                 const merged = { ...(state.localPreferences || {}), ...prefs };
-                localStorage.setItem('preferences', JSON.stringify(merged));
+                storage.setItem('preferences', JSON.stringify(merged));
                 return { localPreferences: merged };
             });
         },
@@ -995,30 +1004,35 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 }
                 const data = await res.json();
                 if (data.message === 'success') {
+                    const nextProfile = {
+                        ...data.data,
+                        avatar_url: normalizeApiAssetUrl(data.data.avatar_url) || undefined
+                    };
                     set((state) => {
                         const nextUser = {
-                            id: data.data.id,
-                            username: data.data.username,
-                            avatar_url: data.data.avatar_url,
-                            isAdmin: data.data.isAdmin
+                            id: nextProfile.id,
+                            username: nextProfile.username,
+                            avatar_url: nextProfile.avatar_url,
+                            isAdmin: nextProfile.isAdmin
                         };
                         const nextState: Partial<CalendarState> = {
-                            profile: data.data,
+                            profile: nextProfile,
                             user: nextUser
                         };
                         if (state.viewMode === 'self') {
-                            nextState.viewingUserId = data.data.id;
-                            nextState.viewingUsername = data.data.username;
-                            nextState.viewingPreferences = data.data.preferences || null;
+                            nextState.viewingUserId = nextProfile.id;
+                            nextState.viewingUsername = nextProfile.username;
+                            nextState.viewingPreferences = nextProfile.preferences || null;
                         }
                         return nextState;
                     });
-                    localStorage.setItem('user', JSON.stringify({
-                        id: data.data.id,
-                        username: data.data.username,
-                        avatar_url: data.data.avatar_url,
-                        isAdmin: data.data.isAdmin
+                    storage.setItem('user', JSON.stringify({
+                        id: nextProfile.id,
+                        username: nextProfile.username,
+                        avatar_url: nextProfile.avatar_url,
+                        isAdmin: nextProfile.isAdmin
                     }));
+                    storage.setItem('profile', JSON.stringify(nextProfile));
                 }
             } catch (e) {
                 console.error('Failed to fetch profile', e);
