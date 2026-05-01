@@ -1,3 +1,3 @@
 const { runCli } = require('./prod_user_ops.cjs');
 
-runCli(['make-admin', ...process.argv.slice(2)]);
+runCli(['history', ...process.argv.slice(2)]);

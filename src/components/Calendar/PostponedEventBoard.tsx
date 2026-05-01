@@ -8,11 +8,12 @@ interface PostponedEventBoardProps {
 }
 
 export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postponedView, onViewChange }) => {
-    const { postponedEvents, viewMode, addPostponedEvent, deletePostponedEvent, editPostponedEvent } = useCalendarStore();
+    const { postponedEvents, viewMode, addPostponedEvent, deletePostponedEvent, editPostponedEvent, actionError, clearActionError } = useCalendarStore();
     const [draft, setDraft] = useState({ title: '', time: '', link: '', note: '', priority: '' });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
     const [sortOrder, setSortOrder] = useState<'time' | 'priority'>('time');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const activeView = postponedView ?? 'all';
     const stateByViewRef = useRef<Record<'week' | 'all', {
         draft: typeof draft;
@@ -119,6 +120,12 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                 )}
             </div>
 
+            {actionError && (
+                <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
+                    {actionError}
+                </div>
+            )}
+
             {dayEvents.length === 0 ? (
                 <div className="text-xs text-stone-500 font-mono">No entries in this view. Add one below.</div>
             ) : (
@@ -132,7 +139,9 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                                     {viewMode !== 'friend' && (
                                         <>
                                             <button
+                                                type="button"
                                                 onClick={() => {
+                                                    clearActionError();
                                                     setEditingId(event.id);
                                                     setEditingEvent(event);
                                                     setDraft({
@@ -148,6 +157,7 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                                                 <Edit3 className="w-3 h-3" /> Edit
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => deletePostponedEvent(event.id)}
                                                 className="text-red-500 hover:text-red-600 flex items-center gap-1 text-[11px]"
                                             >
@@ -179,35 +189,50 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                         <input
                             type="text"
                             value={draft.title}
-                            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                            onChange={(e) => {
+                                clearActionError();
+                                setDraft({ ...draft, title: e.target.value });
+                            }}
                             placeholder="Title"
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="time"
                             value={draft.time}
-                            onChange={(e) => setDraft({ ...draft, time: e.target.value })}
+                            onChange={(e) => {
+                                clearActionError();
+                                setDraft({ ...draft, time: e.target.value });
+                            }}
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="number"
                             step="1"
                             value={draft.priority}
-                            onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
+                            onChange={(e) => {
+                                clearActionError();
+                                setDraft({ ...draft, priority: e.target.value });
+                            }}
                             placeholder="Priority"
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="url"
                             value={draft.link}
-                            onChange={(e) => setDraft({ ...draft, link: e.target.value })}
+                            onChange={(e) => {
+                                clearActionError();
+                                setDraft({ ...draft, link: e.target.value });
+                            }}
                             placeholder="Link"
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="text"
                             value={draft.note}
-                            onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+                            onChange={(e) => {
+                                clearActionError();
+                                setDraft({ ...draft, note: e.target.value });
+                            }}
                             placeholder="Note"
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
@@ -215,42 +240,59 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                     <div className="flex gap-2 justify-end mt-3">
                         {editingId && (
                             <button
+                                type="button"
                                 onClick={() => {
+                                    clearActionError();
                                     setEditingId(null);
                                     setEditingEvent(null);
                                     setDraft({ title: '', time: '', link: '', note: '', priority: '' });
                                 }}
+                                disabled={isSubmitting}
                                 className="px-3 py-2 text-xs font-mono text-stone-500 hover:text-stone-800 border border-orange-200 hover:border-orange-300"
                             >
                                 Cancel
                             </button>
                         )}
                         <button
+                            type="button"
                             onClick={async () => {
-                                if (!draft.title) return;
-                                if (editingId) {
-                                    await editPostponedEvent({
-                                        id: editingId,
-                                        title: draft.title,
-                                        date: editingEvent?.date || '',
-                                        startTime: draft.time,
-                                        priority: parsePriority(draft.priority),
-                                        link: draft.link,
-                                        note: draft.note,
-                                        originDates: editingEvent?.originDates || null,
-                                        wasPostponed: null,
-                                        postponedView: editingEvent?.postponedView ?? activeView
-                                    } as CalendarEvent);
-                                } else {
-                                    await addPostponedEvent({ ...draft, priority: parsePriority(draft.priority), postponedView: activeView });
+                                if (!draft.title || isSubmitting) return;
+                                clearActionError();
+                                setIsSubmitting(true);
+                                try {
+                                    let didSave = false;
+                                    if (editingId) {
+                                        didSave = await editPostponedEvent({
+                                            id: editingId,
+                                            title: draft.title,
+                                            date: editingEvent?.date || '',
+                                            startTime: draft.time,
+                                            priority: parsePriority(draft.priority),
+                                            link: draft.link,
+                                            note: draft.note,
+                                            completed: editingEvent?.completed ?? false,
+                                            originDates: editingEvent?.originDates || null,
+                                            wasPostponed: null,
+                                            postponedView: editingEvent?.postponedView ?? activeView
+                                        } as CalendarEvent);
+                                    } else {
+                                        await addPostponedEvent({ ...draft, priority: parsePriority(draft.priority), postponedView: activeView });
+                                        didSave = true;
+                                    }
+
+                                    if (!didSave) return;
+
+                                    setEditingId(null);
+                                    setEditingEvent(null);
+                                    setDraft({ title: '', time: '', link: '', note: '', priority: '' });
+                                } finally {
+                                    setIsSubmitting(false);
                                 }
-                                setEditingId(null);
-                                setEditingEvent(null);
-                                setDraft({ title: '', time: '', link: '', note: '', priority: '' });
                             }}
+                            disabled={isSubmitting}
                             className="px-4 py-2 bg-orange-400 text-white text-xs font-mono font-bold hover:bg-orange-500 transition-colors flex items-center gap-2 rounded-lg"
                         >
-                            <Plus className="w-4 h-4" /> {editingId ? 'Save Changes' : 'Add Entry'}
+                            <Plus className="w-4 h-4" /> {isSubmitting ? 'Saving...' : editingId ? 'Save Changes' : 'Add Entry'}
                         </button>
                     </div>
                 </div>

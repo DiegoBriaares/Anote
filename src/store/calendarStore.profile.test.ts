@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { API_URL } from '../utils/api';
 import { useCalendarStore } from './calendarStore';
-
-const API_URL = 'http://localhost:3001';
 
 describe('calendarStore profile updates', () => {
     afterEach(() => {
@@ -31,6 +30,11 @@ describe('calendarStore profile updates', () => {
                         isAdmin: false
                     }
                 })
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: async () => ({ message: 'success', data: [] })
             });
         vi.stubGlobal('fetch', fetchMock as any);
 
@@ -42,7 +46,7 @@ describe('calendarStore profile updates', () => {
         await useCalendarStore.getState().updateProfile({ avatar_url: `${API_URL}/uploads/avatar.png` });
 
         const state = useCalendarStore.getState();
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock).toHaveBeenCalledTimes(3);
         expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/me`);
         expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
         expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/me`);

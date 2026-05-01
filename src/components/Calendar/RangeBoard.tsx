@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { formatDate } from '../../utils/dateUtils';
 import { eachDayOfInterval } from 'date-fns';
-import { CalendarRange } from 'lucide-react';
+import { CalendarRange, CheckCircle2 } from 'lucide-react';
+import clsx from 'clsx';
 
 interface RangeBoardProps {
     activeDate: Date | null;
@@ -211,6 +212,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                     priority: event.priority ?? null,
                     link: event.link ?? null,
                     note: event.note ?? null,
+                    completed: event.completed ? true : false,
                     originDates: chain.length > 0 ? chain : null,
                     wasPostponed: event.wasPostponed ? true : null
                 };
@@ -241,6 +243,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                 priority: event.priority ?? null,
                 link: event.link ?? null,
                 note: event.note ?? null,
+                completed: event.completed ? true : false,
                 originDates: chain.length > 0 ? chain : null,
                 postponedView
             };
@@ -336,7 +339,11 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                         sourceEvents.map((event) => (
                             <label
                                 key={event.id}
-                                className="flex items-center gap-3 border border-orange-100 rounded-lg px-3 py-2 hover:border-orange-300 bg-white transition-colors"
+                                className={clsx(
+                                    'board-card flex items-center gap-3 px-3 py-2 rounded-xl transition-colors',
+                                    event.completed && 'board-card-completed',
+                                    !event.completed && 'hover:border-orange-300'
+                                )}
                             >
                                 <input
                                     type="checkbox"
@@ -346,11 +353,29 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                                     className="h-4 w-4 accent-orange-500 disabled:opacity-60"
                                 />
                                 <div className="flex-1 min-w-0">
-                                    <div className="text-sm text-stone-700 font-medium truncate">{event.title}</div>
-                                    <div className="text-[11px] text-stone-500 font-mono truncate">
+                                    <div
+                                        className={clsx(
+                                            'text-sm font-medium truncate',
+                                            event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-700',
+                                            event.completed && 'opacity-90'
+                                        )}
+                                    >
+                                        {event.title}
+                                    </div>
+                                    <div
+                                        className={clsx(
+                                            'text-[11px] font-mono truncate',
+                                            event.completed ? 'text-emerald-700/80 dark:text-emerald-300/80' : 'text-stone-500'
+                                        )}
+                                    >
                                         {(event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--')} · {event.priority !== null && event.priority !== undefined ? `P${event.priority}` : '--'}
                                     </div>
                                 </div>
+                                {event.completed && (
+                                    <span className="pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                        <CheckCircle2 className="w-3 h-3" /> Completed
+                                    </span>
+                                )}
                             </label>
                         ))
                     )}

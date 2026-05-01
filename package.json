@@ -1,5 +1,5 @@
 {
-  "name": "administration-management-plan-system",
+  "name": "anote",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,13 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "release": "node scripts/release.cjs"
+    "release": "node scripts/release.cjs",
+    "prod:patch": "bash scripts/patch_to_prod.sh",
+    "prod:deploy": "bash scripts/deploy_to_prod.sh",
+    "prod:user:make-admin": "node scripts/prod_user_ops.cjs make-admin",
+    "prod:user:remove-admin": "node scripts/prod_user_ops.cjs remove-admin",
+    "prod:user:change-username": "node scripts/prod_user_ops.cjs change-username",
+    "prod:user:history": "node scripts/prod_user_ops.cjs history"
   },
   "dependencies": {
     "clsx": "^2.1.1",

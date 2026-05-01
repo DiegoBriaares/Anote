@@ -91,9 +91,9 @@ function App() {
     ? { backgroundImage: `url("${bgUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : {};
 
-  const appTitle = appConfig?.app_title || 'AUREUM CALENDAR';
-  const appSubtitle = appConfig?.app_subtitle || 'Curate your own canvas, borrow a friend\'s atmosphere, and keep every session synchronized.';
-  const consoleTitle = appConfig?.console_title || 'Chronos Console';
+  const appTitle = appConfig?.app_title || 'Anote';
+  const appSubtitle = appConfig?.app_subtitle || 'Mark progress, move plans, and keep your calendar notes in one place.';
+  const consoleTitle = appConfig?.console_title || 'Anote Console';
 
   const glowNorthwest = theme === 'dark'
     ? 'bg-gradient-to-br from-sky-500/20 to-indigo-500/10'

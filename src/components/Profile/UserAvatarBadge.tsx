@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
+import { normalizeApiAssetUrl } from '../../utils/api';
 
 interface UserAvatarBadgeProps {
     size?: number;
@@ -7,7 +8,7 @@ interface UserAvatarBadgeProps {
 
 export const UserAvatarBadge: React.FC<UserAvatarBadgeProps> = ({ size = 36 }) => {
     const { user, profile, fetchProfile } = useCalendarStore();
-    const avatarUrl = profile?.avatar_url || user?.avatar_url || '/default-avatar.svg';
+    const avatarUrl = normalizeApiAssetUrl(profile?.avatar_url || user?.avatar_url) || '/default-avatar.svg';
 
     useEffect(() => {
         if (user && !profile?.avatar_url) {

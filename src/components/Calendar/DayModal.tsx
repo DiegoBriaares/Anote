@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { useCalendarStore, type Role, type Subrole } from '../../store/calendarStore';
 import { formatFullDate } from '../../utils/dateUtils';
-import { X, Clock, StickyNote, Link as LinkIcon, Settings } from 'lucide-react';
+import { X, Clock, StickyNote, Link as LinkIcon, Settings, CheckCircle2 } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
 import { RolesModal } from './RolesModal';
 import { SubrolesModal } from './SubrolesModal';
 import { NoteEnvironment } from './NoteEnvironment';
+import clsx from 'clsx';
 
 interface DayModalProps {
     date: Date;
@@ -84,6 +85,8 @@ export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onCon
         setShowNoteEnv(true);
     };
 
+    const activeRole = selectedSubrole ?? selectedRole;
+
     return (
         <>
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -135,15 +138,32 @@ export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onCon
                         {dayEvents.map((ev) => (
                             <div
                                 key={ev.id}
-                                className={`board-card flex flex-col gap-2 ${viewMode !== 'friend' ? 'cursor-pointer hover:border-orange-300 hover:shadow-md transition-all' : ''}`}
+                                className={clsx(
+                                    'board-card flex flex-col gap-2',
+                                    ev.completed && 'board-card-completed',
+                                    viewMode !== 'friend' && 'cursor-pointer hover:border-orange-300 hover:shadow-md transition-all'
+                                )}
                                 onClick={() => handleEventClick(ev)}
                             >
                                 <div className="flex items-center justify-between flex-wrap gap-2">
-                                    <div className="text-sm font-medium text-stone-800 dark:text-slate-100">{ev.title}</div>
+                                    <div
+                                        className={clsx(
+                                            'text-sm font-medium',
+                                            ev.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800 dark:text-slate-100',
+                                            ev.completed && 'opacity-90'
+                                        )}
+                                    >
+                                        {ev.title}
+                                    </div>
                                     <div className="flex items-center gap-2 text-[11px] text-stone-500">
-                                        <span className="pill-soft flex items-center gap-1">
+                                        <span className={clsx('pill-soft flex items-center gap-1', ev.completed && 'text-emerald-700/80 dark:text-emerald-300/80')}>
                                             <Clock className="w-3 h-3 text-orange-600" /> {getMetaLabel(ev)}
                                         </span>
+                                        {ev.completed && (
+                                            <span className="pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                                <CheckCircle2 className="w-3 h-3" /> Completed
+                                            </span>
+                                        )}
                                         {viewMode === 'friend' && (
                                             <span className="pill-soft text-[10px] uppercase">Read-only</span>
                                         )}
@@ -184,12 +204,12 @@ export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onCon
                 onSelectSubrole={handleSubroleSelect}
             />
 
-            {selectedEvent && (selectedSubrole || selectedRole) && (
+            {selectedEvent && activeRole && (
                 <NoteEnvironment
                     isOpen={showNoteEnv}
                     onClose={() => setShowNoteEnv(false)}
                     event={selectedEvent}
-                    role={selectedSubrole || selectedRole}
+                    role={activeRole}
                 />
             )}
         </>
