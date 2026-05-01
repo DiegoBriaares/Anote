@@ -1,4 +1,4 @@
-const DEFAULT_API_PORT = import.meta.env.VITE_API_PORT?.trim() || '3001';
+const DEFAULT_API_PORT = import.meta.env.VITE_API_PORT?.trim() || (import.meta.env.DEV ? '3002' : '3001');
 const configuredApiUrl = (import.meta.env.VITE_API_URL?.trim() || '').replace(/\/+$/, '');
 const HAS_SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:/i;
 

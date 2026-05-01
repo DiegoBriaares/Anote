@@ -27,8 +27,8 @@ cd server && npm install && cd ..
 
 ```bash
 # Terminal 1 - Start the backend server
-cd server && node index.js
-# Server runs at http://localhost:3001
+cd server && PORT=3002 node index.js
+# Development server runs at http://localhost:3002
 
 # Terminal 2 - Start the frontend
 npm run dev
@@ -39,7 +39,7 @@ npm run dev
 
 ```bash
 # Start server in background, then frontend
-cd server && node index.js & cd .. && npm run dev
+cd server && PORT=3002 node index.js & cd .. && npm run dev
 ```
 
 ---
@@ -75,7 +75,8 @@ cd server && node index.js & cd .. && npm run dev
 | Service | URL | Description |
 |---------|-----|-------------|
 | Frontend | http://localhost:5173 | Main calendar app |
-| Admin Panel | http://localhost:3001 | Database administration |
+| Development API/Admin | http://localhost:3002 | Development database and administration |
+| Production API/Admin | http://localhost:3001 | Production database and administration |
 
 ---
 
