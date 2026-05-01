@@ -8,7 +8,7 @@
 
 ## Build, Test, and Development Commands
 - `npm install` (root) installs client deps. Run `cd server && npm install` once for the API.
-- `npm run dev` starts the Vite dev server (default http://localhost:5173). Pair with the API at http://localhost:3001.
+- `npm run dev` starts the Vite dev server (default http://localhost:5173). Pair with the development API at http://localhost:3002.
 - `npm run build` runs `tsc -b` then `vite build` to emit a production bundle.
 - `npm run preview` serves the built client locally for verification.
 - `npm run lint` runs ESLint across the workspace; fix warnings before merging.
@@ -29,4 +29,4 @@
 
 ## Security & Configuration Tips
 - Do not commit secrets or local databases; move `SECRET_KEY` and DB paths into environment variables before productionizing.
-- Keep client/server URLs centralized (`API_URL` in `src/store/calendarStore.ts` and port definitions in `server/index.js`) and update both sides together.
+- Keep client/server URLs centralized (`API_URL` in `src/utils/api.ts` and port definitions in `server/index.js`) and update both sides together.

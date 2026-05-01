@@ -16,6 +16,12 @@ const SECRET_KEY = process.env.SECRET_KEY || 'da_vinci_secret_key'; // In prod, 
 const adminUiDir = path.resolve(__dirname, '../../admin-db');
 const staticAdminDir = path.resolve(__dirname, 'static_admin');
 
+const normalizeCompletedValue = (value) => (
+    value === true || value === 1 || value === '1' || value === 'true'
+        ? 1
+        : 0
+);
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -58,6 +64,7 @@ function initDb(onReady) {
       priority INTEGER,
       note TEXT,
       link TEXT,
+      completed INTEGER DEFAULT 0,
       updated_at INTEGER DEFAULT 0,
       resources TEXT,
       unlock_date TEXT
@@ -71,6 +78,7 @@ function initDb(onReady) {
       priority INTEGER,
       note TEXT,
       link TEXT,
+      completed INTEGER DEFAULT 0,
       updated_at INTEGER DEFAULT 0,
       resources TEXT
     )`);
@@ -177,8 +185,10 @@ function migrateEventsSchemaIfNeeded(onReady) {
         const hasPriority = rows.some((row) => row.name === 'priority');
         const hasNote = rows.some((row) => row.name === 'note');
         const hasLink = rows.some((row) => row.name === 'link');
+        const hasCompleted = rows.some((row) => row.name === 'completed');
         const hasUpdatedAt = rows.some((row) => row.name === 'updated_at');
         const hasResources = rows.some((row) => row.name === 'resources');
+        const hasUnlockDate = rows.some((row) => row.name === 'unlock_date');
 
         const ensureIndex = () => {
             // ... existing index code ...
@@ -203,6 +213,7 @@ function migrateEventsSchemaIfNeeded(onReady) {
                 if (!hasPriority) addCol('priority', 'INTEGER');
                 if (!hasNote) addCol('note', 'TEXT');
                 if (!hasLink) addCol('link', 'TEXT');
+                if (!hasCompleted) addCol('completed', 'INTEGER DEFAULT 0');
                 if (!hasUpdatedAt) {
                     db.run('ALTER TABLE events ADD COLUMN updated_at INTEGER DEFAULT 0', (e) => {
                         if (e) console.error('Error adding updated_at:', e.message);
@@ -214,7 +225,7 @@ function migrateEventsSchemaIfNeeded(onReady) {
                         else console.log('Migration complete: events table now has resources column');
                     });
                 }
-                if (!rows.some((row) => row.name === 'unlock_date')) {
+                if (!hasUnlockDate) {
                     db.run('ALTER TABLE events ADD COLUMN unlock_date TEXT', (e) => {
                         if (e) console.error('Error adding unlock_date:', e.message);
                         else console.log('Migration complete: events table now has unlock_date column');
@@ -238,10 +249,13 @@ function migrateEventsSchemaIfNeeded(onReady) {
         priority INTEGER,
         note TEXT,
         link TEXT,
+        completed INTEGER DEFAULT 0,
         updated_at INTEGER DEFAULT 0,
-        resources TEXT
+        resources TEXT,
+        unlock_date TEXT
       )`);
-            db.run('INSERT INTO events_new (id, title, date, start_time, priority, note, link, updated_at) SELECT id, title, date, start_time, NULL, note, link, updated_at FROM events');
+            db.run(`INSERT INTO events_new (id, title, date, start_time, priority, note, link, completed, updated_at, resources, unlock_date)
+                    SELECT id, title, date, start_time, NULL, note, link, 0, updated_at, NULL, NULL FROM events`);
             db.run('DROP TABLE events');
             db.run('ALTER TABLE events_new RENAME TO events');
             db.run('COMMIT', (commitErr) => {
@@ -264,7 +278,7 @@ function migratePostponedEventsSchemaIfNeeded(onReady) {
             return;
         }
         if (!rows || rows.length === 0) {
-            db.run(`CREATE TABLE IF NOT EXISTS postponed_events (
+        db.run(`CREATE TABLE IF NOT EXISTS postponed_events (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         date TEXT,
@@ -273,6 +287,7 @@ function migratePostponedEventsSchemaIfNeeded(onReady) {
         priority INTEGER,
         note TEXT,
         link TEXT,
+        completed INTEGER DEFAULT 0,
         updated_at INTEGER DEFAULT 0,
         resources TEXT
       )`, (createErr) => {
@@ -292,6 +307,7 @@ function migratePostponedEventsSchemaIfNeeded(onReady) {
         const hasPriority = rows.some((row) => row.name === 'priority');
         const hasNote = rows.some((row) => row.name === 'note');
         const hasLink = rows.some((row) => row.name === 'link');
+        const hasCompleted = rows.some((row) => row.name === 'completed');
         const hasUpdatedAt = rows.some((row) => row.name === 'updated_at');
         const hasResources = rows.some((row) => row.name === 'resources');
 
@@ -308,11 +324,12 @@ function migratePostponedEventsSchemaIfNeeded(onReady) {
         priority INTEGER,
         note TEXT,
         link TEXT,
+        completed INTEGER DEFAULT 0,
         updated_at INTEGER DEFAULT 0,
         resources TEXT
       )`);
-                db.run(`INSERT INTO postponed_events_new (id, title, date, user_id, start_time, priority, note, link, updated_at, resources)
-                        SELECT id, title, date, user_id, start_time, priority, note, link, updated_at, resources FROM postponed_events`);
+                db.run(`INSERT INTO postponed_events_new (id, title, date, user_id, start_time, priority, note, link, completed, updated_at, resources)
+                        SELECT id, title, date, user_id, start_time, priority, note, link, 0, updated_at, resources FROM postponed_events`);
                 db.run('DROP TABLE postponed_events');
                 db.run('ALTER TABLE postponed_events_new RENAME TO postponed_events');
             }
@@ -325,6 +342,7 @@ function migratePostponedEventsSchemaIfNeeded(onReady) {
             if (!hasPriority) addCol('priority', 'INTEGER');
             if (!hasNote) addCol('note', 'TEXT');
             if (!hasLink) addCol('link', 'TEXT');
+            if (!hasCompleted) addCol('completed', 'INTEGER DEFAULT 0');
             if (!hasUpdatedAt) {
                 db.run('ALTER TABLE postponed_events ADD COLUMN updated_at INTEGER DEFAULT 0', (e) => {
                     if (e) console.error('Error adding postponed_events.updated_at:', e.message);
@@ -411,10 +429,15 @@ function ensureAdminColumn(onReady) {
 
 function ensureDefaultConfig(onReady) {
     const defaults = {
-        'app_title': 'AUREUM CALENDAR',
-        'app_subtitle': 'Curate your own canvas, borrow a friend\'s atmosphere, and keep every session synchronized.',
-        'console_title': 'Chronos Console',
+        'app_title': 'Anote',
+        'app_subtitle': 'Mark progress, move plans, and keep your calendar notes in one place.',
+        'console_title': 'Anote Console',
         'config_version': '1'
+    };
+    const legacyDefaults = {
+        app_title: ['AUREUM CALENDAR', 'Plan Administration Management System', 'Administration Management Plan System', 'AMPS'],
+        app_subtitle: ['Curate your own canvas, borrow a friend\'s atmosphere, and keep every session synchronized.'],
+        console_title: ['Chronos Console']
     };
 
     db.serialize(() => {
@@ -424,7 +447,24 @@ function ensureDefaultConfig(onReady) {
         });
         stmt.finalize((err) => {
             if (err) console.error('Error seeding config:', err);
-            onReady?.();
+            const migrations = Object.entries(legacyDefaults);
+            if (migrations.length === 0) {
+                onReady?.();
+                return;
+            }
+            let remaining = migrations.length;
+            migrations.forEach(([key, oldValues]) => {
+                const placeholders = oldValues.map(() => '?').join(', ');
+                db.run(
+                    `UPDATE app_config SET value = ? WHERE key = ? AND value IN (${placeholders})`,
+                    [defaults[key], key, ...oldValues],
+                    (updateErr) => {
+                        if (updateErr) console.error(`Error migrating default config ${key}:`, updateErr.message);
+                        remaining -= 1;
+                        if (remaining === 0) onReady?.();
+                    }
+                );
+            });
         });
     });
 }
@@ -531,7 +571,7 @@ const requireAdmin = (req, res, next) => {
 app.use('/events', authenticateToken);
 
 app.get('/events', (req, res) => {
-    const sql = 'SELECT id, title, date, start_time as startTime, priority, note, link, updated_at as version, resources, unlock_date as unlockDate FROM events WHERE user_id = ? ORDER BY date';
+    const sql = 'SELECT id, title, date, start_time as startTime, priority, note, link, completed, updated_at as version, resources, unlock_date as unlockDate FROM events WHERE user_id = ? ORDER BY date';
     db.all(sql, [req.user.id], (err, rows) => {
         if (err) {
             res.status(400).json({ error: err.message });
@@ -553,7 +593,7 @@ app.post('/events', (req, res) => {
         return;
     }
 
-    const stmt = db.prepare('INSERT INTO events (id, title, date, user_id, start_time, priority, note, link, updated_at, resources, unlock_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const stmt = db.prepare('INSERT INTO events (id, title, date, user_id, start_time, priority, note, link, completed, updated_at, resources, unlock_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
     db.serialize(() => {
         db.run('BEGIN TRANSACTION');
@@ -570,6 +610,7 @@ app.post('/events', (req, res) => {
                 : (Number.isFinite(Number(event.priority)) ? Math.trunc(Number(event.priority)) : null);
             const cleanNote = event.note && typeof event.note === 'string' && event.note.trim() !== '' ? event.note.trim() : null;
             const cleanLink = event.link && typeof event.link === 'string' && event.link.trim() !== '' ? event.link.trim() : null;
+            const cleanCompleted = normalizeCompletedValue(event.completed);
             const cleanUnlock = event.unlockDate ? event.unlockDate : null;
             // Ensure resources is valid JSON string or null
             let cleanResources = null;
@@ -580,7 +621,7 @@ app.post('/events', (req, res) => {
             } catch (e) { }
 
             const now = Date.now();
-            stmt.run(eventId, event.title, event.date, req.user.id, cleanTime, cleanPriority, cleanNote, cleanLink, now, cleanResources, cleanUnlock, (err) => {
+            stmt.run(eventId, event.title, event.date, req.user.id, cleanTime, cleanPriority, cleanNote, cleanLink, cleanCompleted, now, cleanResources, cleanUnlock, (err) => {
                 if (err) {
                     console.error('Error inserting event:', err.message);
                 }
@@ -613,7 +654,7 @@ app.delete('/events', (req, res) => {
 // Update single event
 app.put('/events/:id', (req, res) => {
     const { id } = req.params;
-    const { title, date, startTime, priority, note, link, version, resources, unlockDate } = req.body;
+    const { title, date, startTime, priority, note, link, completed, version, resources, unlockDate } = req.body;
     if (!title || !date) return res.status(400).json({ error: 'Missing title or date' });
 
     const cleanTime = startTime && typeof startTime === 'string' && startTime.trim() !== '' ? startTime.trim() : null;
@@ -622,6 +663,7 @@ app.put('/events/:id', (req, res) => {
         : (Number.isFinite(Number(priority)) ? Math.trunc(Number(priority)) : null);
     const cleanNote = note && typeof note === 'string' && note.trim() !== '' ? note.trim() : null;
     const cleanLink = link && typeof link === 'string' && link.trim() !== '' ? link.trim() : null;
+    const cleanCompleted = normalizeCompletedValue(completed);
     const cleanUnlock = unlockDate ? unlockDate : null;
     let cleanResources = null;
     try {
@@ -654,8 +696,8 @@ app.put('/events/:id', (req, res) => {
 
     function performUpdate() {
         db.run(
-            `UPDATE events SET title = ?, date = ?, start_time = ?, priority = ?, note = ?, link = ?, updated_at = ?, resources = ?, unlock_date = ? WHERE id = ? AND user_id = ?`,
-            [title, date, cleanTime, cleanPriority, cleanNote, cleanLink, newVersion, cleanResources, cleanUnlock, id, req.user.id],
+            `UPDATE events SET title = ?, date = ?, start_time = ?, priority = ?, note = ?, link = ?, completed = ?, updated_at = ?, resources = ?, unlock_date = ? WHERE id = ? AND user_id = ?`,
+            [title, date, cleanTime, cleanPriority, cleanNote, cleanLink, cleanCompleted, newVersion, cleanResources, cleanUnlock, id, req.user.id],
             function (err) {
                 if (err) {
                     console.error('Error updating event:', err.message);
@@ -666,6 +708,32 @@ app.put('/events/:id', (req, res) => {
             }
         );
     }
+});
+
+app.patch('/events/:id/completed', (req, res) => {
+    const { id } = req.params;
+    const cleanCompleted = normalizeCompletedValue(req.body?.completed);
+    const newVersion = Date.now();
+
+    db.run(
+        'UPDATE events SET completed = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+        [cleanCompleted, newVersion, id, req.user.id],
+        function (err) {
+            if (err) {
+                console.error('Error updating event completion:', err.message);
+                return res.status(500).json({ error: 'Failed to update event completion' });
+            }
+            if (this.changes === 0) return res.status(404).json({ error: 'Event not found or permission denied' });
+            res.json({
+                message: 'success',
+                data: {
+                    id,
+                    completed: cleanCompleted,
+                    version: newVersion
+                }
+            });
+        }
+    );
 });
 
 // Delete single event
@@ -685,7 +753,7 @@ app.delete('/events/:id', (req, res) => {
 app.use('/postponed-events', authenticateToken);
 
 app.get('/postponed-events', (req, res) => {
-    const sql = 'SELECT id, title, date, start_time as startTime, priority, note, link, updated_at as version, resources FROM postponed_events WHERE user_id = ? ORDER BY updated_at DESC';
+    const sql = 'SELECT id, title, date, start_time as startTime, priority, note, link, completed, updated_at as version, resources FROM postponed_events WHERE user_id = ? ORDER BY updated_at DESC';
     db.all(sql, [req.user.id], (err, rows) => {
         if (err) {
             res.status(400).json({ error: err.message });
@@ -705,7 +773,7 @@ app.post('/postponed-events', (req, res) => {
         return;
     }
 
-    const stmt = db.prepare('INSERT INTO postponed_events (id, title, date, user_id, start_time, priority, note, link, updated_at, resources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const stmt = db.prepare('INSERT INTO postponed_events (id, title, date, user_id, start_time, priority, note, link, completed, updated_at, resources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
     db.serialize(() => {
         db.run('BEGIN TRANSACTION');
@@ -723,6 +791,7 @@ app.post('/postponed-events', (req, res) => {
                 : (Number.isFinite(Number(event.priority)) ? Math.trunc(Number(event.priority)) : null);
             const cleanNote = event.note && typeof event.note === 'string' && event.note.trim() !== '' ? event.note.trim() : null;
             const cleanLink = event.link && typeof event.link === 'string' && event.link.trim() !== '' ? event.link.trim() : null;
+            const cleanCompleted = normalizeCompletedValue(event.completed);
             let cleanResources = null;
             try {
                 if (event.resources) {
@@ -730,7 +799,7 @@ app.post('/postponed-events', (req, res) => {
                 }
             } catch (e) { }
             const now = Date.now();
-            stmt.run(eventId, event.title, cleanDate, req.user.id, cleanTime, cleanPriority, cleanNote, cleanLink, now, cleanResources, (err) => {
+            stmt.run(eventId, event.title, cleanDate, req.user.id, cleanTime, cleanPriority, cleanNote, cleanLink, cleanCompleted, now, cleanResources, (err) => {
                 if (err) {
                     console.error('Error inserting postponed event:', err.message);
                 }
@@ -761,7 +830,7 @@ app.delete('/postponed-events', (req, res) => {
 
 app.put('/postponed-events/:id', (req, res) => {
     const { id } = req.params;
-    const { title, date, startTime, priority, note, link, version, resources } = req.body;
+    const { title, date, startTime, priority, note, link, completed, version, resources } = req.body;
     if (!title) return res.status(400).json({ error: 'Missing title' });
 
     const cleanTime = startTime && typeof startTime === 'string' && startTime.trim() !== '' ? startTime.trim() : null;
@@ -771,6 +840,7 @@ app.put('/postponed-events/:id', (req, res) => {
         : (Number.isFinite(Number(priority)) ? Math.trunc(Number(priority)) : null);
     const cleanNote = note && typeof note === 'string' && note.trim() !== '' ? note.trim() : null;
     const cleanLink = link && typeof link === 'string' && link.trim() !== '' ? link.trim() : null;
+    const cleanCompleted = normalizeCompletedValue(completed);
     let cleanResources = null;
     try {
         if (resources) {
@@ -795,8 +865,8 @@ app.put('/postponed-events/:id', (req, res) => {
 
     function performUpdate() {
         db.run(
-            `UPDATE postponed_events SET title = ?, date = ?, start_time = ?, priority = ?, note = ?, link = ?, updated_at = ?, resources = ? WHERE id = ? AND user_id = ?`,
-            [title, cleanDate, cleanTime, cleanPriority, cleanNote, cleanLink, newVersion, cleanResources, id, req.user.id],
+            `UPDATE postponed_events SET title = ?, date = ?, start_time = ?, priority = ?, note = ?, link = ?, completed = ?, updated_at = ?, resources = ? WHERE id = ? AND user_id = ?`,
+            [title, cleanDate, cleanTime, cleanPriority, cleanNote, cleanLink, cleanCompleted, newVersion, cleanResources, id, req.user.id],
             function (err) {
                 if (err) {
                     console.error('Error updating postponed event:', err.message);
@@ -1032,7 +1102,7 @@ app.get('/friends/:friendId/events', authenticateToken, (req, res) => {
             if (err) return res.status(500).json({ error: 'Friendship check failed' });
             if (!ok) return res.status(403).json({ error: 'Not friends' });
 
-            db.all('SELECT id, title, date, start_time as startTime, priority, note, link FROM events WHERE user_id = ? ORDER BY date', [friendId], (evErr, rows) => {
+            db.all('SELECT id, title, date, start_time as startTime, priority, note, link, completed FROM events WHERE user_id = ? ORDER BY date', [friendId], (evErr, rows) => {
                 if (evErr) return res.status(500).json({ error: 'Failed to load friend events' });
                 let preferences = {};
                 try {
@@ -1289,8 +1359,8 @@ app.delete('/admin/users/bulk', authenticateToken, requireAdmin, (req, res) => {
 app.get('/admin/events', authenticateToken, requireAdmin, (req, res) => {
     const { userId } = req.query;
     const params = [];
-    let sql = `SELECT e.id, e.title, e.date, e.start_time as startTime, e.priority, e.note, e.link, e.user_id as userId, u.username 
-               FROM events e 
+    let sql = `SELECT e.id, e.title, e.date, e.start_time as startTime, e.priority, e.note, e.link, e.completed, e.user_id as userId, u.username
+               FROM events e
                JOIN users u ON u.id = e.user_id`;
     if (userId) {
         sql += ' WHERE e.user_id = ?';
@@ -1308,7 +1378,7 @@ app.get('/admin/events', authenticateToken, requireAdmin, (req, res) => {
 });
 
 app.post('/admin/events', authenticateToken, requireAdmin, (req, res) => {
-    const { userId, title, date, startTime, priority, note, link } = req.body;
+    const { userId, title, date, startTime, priority, note, link, completed } = req.body;
     if (!userId || !title || !date) return res.status(400).json({ error: 'userId, title, and date are required' });
 
     db.get('SELECT id FROM users WHERE id = ?', [userId], (userErr, user) => {
@@ -1319,12 +1389,13 @@ app.post('/admin/events', authenticateToken, requireAdmin, (req, res) => {
         const cleanTime = startTime && typeof startTime === 'string' && startTime.trim() !== '' ? startTime.trim() : null;
         const cleanNote = note && typeof note === 'string' && note.trim() !== '' ? note.trim() : null;
         const cleanLink = link && typeof link === 'string' && link.trim() !== '' ? link.trim() : null;
+        const cleanCompleted = normalizeCompletedValue(completed);
 
         db.run(
-            'INSERT INTO events (id, title, date, user_id, start_time, priority, note, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO events (id, title, date, user_id, start_time, priority, note, link, completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [eventId, title, date, userId, cleanTime, (priority === null || priority === undefined || (typeof priority === 'string' && priority.trim() === ''))
                 ? null
-                : (Number.isFinite(Number(priority)) ? Math.trunc(Number(priority)) : null), cleanNote, cleanLink],
+                : (Number.isFinite(Number(priority)) ? Math.trunc(Number(priority)) : null), cleanNote, cleanLink, cleanCompleted],
             (err) => {
                 if (err) {
                     console.error('Error creating event:', err.message);
@@ -1364,18 +1435,19 @@ app.delete('/admin/events/bulk', authenticateToken, requireAdmin, (req, res) => 
 
 app.put('/admin/events/:id', authenticateToken, requireAdmin, (req, res) => {
     const { id } = req.params;
-    const { title, date, startTime, priority, note, link } = req.body;
+    const { title, date, startTime, priority, note, link, completed } = req.body;
     if (!title || !date) return res.status(400).json({ error: 'title and date are required' });
 
     const cleanTime = startTime && typeof startTime === 'string' && startTime.trim() !== '' ? startTime.trim() : null;
     const cleanNote = note && typeof note === 'string' && note.trim() !== '' ? note.trim() : null;
     const cleanLink = link && typeof link === 'string' && link.trim() !== '' ? link.trim() : null;
+    const cleanCompleted = normalizeCompletedValue(completed);
 
     db.run(
-        `UPDATE events SET title = ?, date = ?, start_time = ?, priority = ?, note = ?, link = ? WHERE id = ?`,
+        `UPDATE events SET title = ?, date = ?, start_time = ?, priority = ?, note = ?, link = ?, completed = ? WHERE id = ?`,
         [title, date, cleanTime, (priority === null || priority === undefined || (typeof priority === 'string' && priority.trim() === ''))
             ? null
-            : (Number.isFinite(Number(priority)) ? Math.trunc(Number(priority)) : null), cleanNote, cleanLink, id],
+            : (Number.isFinite(Number(priority)) ? Math.trunc(Number(priority)) : null), cleanNote, cleanLink, cleanCompleted, id],
         function (err) {
             if (err) {
                 console.error('Error updating event:', err.message);

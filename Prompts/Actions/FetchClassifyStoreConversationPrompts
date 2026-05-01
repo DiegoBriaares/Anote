@@ -4,7 +4,7 @@ Please make a list of the prompts I have gave you in this conversartion. Determi
   file the prompts would be seppared by a blank line and then a line with --- and the another blank line, sorted by
   order of appeareance (first prompt wrote appears first).Now let me clarify srchitecutre; For each bug/enhacmenet
   create a folder with a good descriptive practical name, which you will put either in /Users/digogonz/Desktop/
-  Desarrollo/administration-management-plan-system/Prompts/Enhancements or in /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Bugs
+  Desarrollo/plan-administration-management-system/Prompts/Enhancements or in /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Bugs
   accordingly, and inside that folder a descriptive name for enhancement/bug, inside that folder put the files with a
   descriptive name of the issue the group of prompts addreses.
 

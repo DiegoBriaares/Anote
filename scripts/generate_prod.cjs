@@ -112,9 +112,9 @@ try {
 
     // Seed Config
     const defaults = {
-        'app_title': 'AUREUM CALENDAR',
-        'app_subtitle': 'Curate your own canvas, borrow a friend\'s atmosphere, and keep every session synchronized.',
-        'console_title': 'Chronos Console'
+        'app_title': 'Anote',
+        'app_subtitle': 'Mark progress, move plans, and keep your calendar notes in one place.',
+        'console_title': 'Anote Console'
     };
     const stmt = db.prepare('INSERT OR IGNORE INTO app_config (key, value) VALUES (?, ?)');
     Object.entries(defaults).forEach(([key, value]) => {

@@ -4,14 +4,14 @@
 
 ```bash
 # Terminal 1 - Backend (API)
-cd server && node index.js
+cd server && PORT=3002 node index.js
 
 # Terminal 2 - Frontend (UI)
 npm run dev
 ```
 
 - Frontend: http://localhost:5173
-- Backend: http://localhost:3001
+- Backend: http://localhost:3002
 
 ---
 
@@ -81,11 +81,11 @@ pkill -f "node.*index.js"; pkill -f "vite"
 
 ```bash
 # Start everything
-cd server && node index.js & cd .. && npm run dev
+cd server && PORT=3002 node index.js & cd .. && npm run dev
 
 # Kill everything
 pkill -f "node.*index.js"; pkill -f "vite"
 
 # Check ports
-lsof -i:3001 -i:5173
+lsof -i:3002 -i:5173
 ```

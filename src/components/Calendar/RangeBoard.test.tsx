@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RangeBoard } from './RangeBoard';
@@ -10,7 +10,7 @@ vi.mock('../../store/calendarStore', () => ({
     useCalendarStore: vi.fn()
 }));
 
-const mockedUseCalendarStore = useCalendarStore as unknown as vi.Mock;
+const mockedUseCalendarStore = useCalendarStore as unknown as Mock;
 
 const buildRangeState = (overrides: Record<string, unknown> = {}) => {
     const start = new Date(2026, 0, 1);
@@ -28,6 +28,7 @@ const buildRangeState = (overrides: Record<string, unknown> = {}) => {
                     priority: 2,
                     note: null,
                     link: null,
+                    completed: true,
                     originDates: null,
                     wasPostponed: true
                 }
@@ -69,10 +70,11 @@ describe('RangeBoard', () => {
         await user.click(screen.getByRole('button', { name: 'Move to Postponed' }));
 
         expect(addPostponedEventsBulk).toHaveBeenCalled();
+        expect(addPostponedEventsBulk.mock.calls[0][0][0].completed).toBe(true);
         expect(deleteEvent).not.toHaveBeenCalled();
     });
 
-    it('preserves wasPostponed when copying across dates', async () => {
+    it('preserves completion and postponement history when copying across dates', async () => {
         const addEventsBulk = vi.fn().mockResolvedValue(true);
         mockedUseCalendarStore.mockReturnValue(
             buildRangeState({
@@ -90,6 +92,16 @@ describe('RangeBoard', () => {
 
         expect(addEventsBulk).toHaveBeenCalledTimes(1);
         const payload = addEventsBulk.mock.calls[0][0];
+        expect(payload[0].completed).toBe(true);
         expect(payload[0].wasPostponed).toBe(true);
+    });
+
+    it('renders completed management rows with the completed styling', () => {
+        mockedUseCalendarStore.mockReturnValue(buildRangeState());
+
+        render(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
+
+        expect(screen.getByText('Draft itinerary').closest('.board-card-completed')).not.toBeNull();
+        expect(screen.getByText('Completed')).toBeTruthy();
     });
 });

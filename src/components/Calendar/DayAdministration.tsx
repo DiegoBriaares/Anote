@@ -2,7 +2,6 @@ import React from 'react';
 import { EventBoard } from './EventBoard';
 import { RangeBoard } from './RangeBoard';
 import { DayEventsInformation } from './DayEventsInformation';
-import { formatDate } from '../../utils/dateUtils';
 
 interface DayAdministrationProps {
     activeDate: Date | null;
@@ -10,7 +9,6 @@ interface DayAdministrationProps {
 
 export const DayAdministration: React.FC<DayAdministrationProps> = ({ activeDate }) => {
     if (!activeDate) return null;
-    const dateKey = formatDate(activeDate);
 
     return (
         <div className="mt-8">
