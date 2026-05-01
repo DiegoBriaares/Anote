@@ -118,6 +118,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                 priority: event.priority ?? null,
                 link: event.link ?? null,
                 note: event.note ?? null,
+                completed: event.completed ? true : false,
                 originDates: chain.length > 0 ? chain : null,
                 wasPostponed: true
             };
@@ -142,6 +143,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
             priority: event.priority ?? null,
             link: event.link ?? null,
             note: event.note ?? null,
+            completed: event.completed ? true : false,
             originDates: event.originDates && event.originDates.length > 0 ? event.originDates : null,
             postponedView: targetPostponedView
         }));

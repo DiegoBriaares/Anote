@@ -22,6 +22,9 @@ export interface CalendarEvent {
     priority?: number | null;
     note?: string | null;
     link?: string | null;
+    completed?: boolean | null;
+    version?: number | null;
+    unlockDate?: string | null;
     originDates?: string[] | null;
     wasPostponed?: boolean | null;
     postponedView?: 'week' | 'all' | null;
@@ -55,11 +58,48 @@ export interface AdminEvent {
     priority?: number | null;
     note?: string | null;
     link?: string | null;
+    completed?: boolean | null;
     userId?: string;
     username?: string;
 }
 
-const parseEventResources = (resources: any) => {
+const normalizeCompleted = (value: unknown) => (
+    value === true || value === 1 || value === '1' || value === 'true'
+);
+
+const readVersion = (value: unknown) => (
+    Number.isFinite(Number(value)) ? Number(value) : null
+);
+
+const hasCompletedValue = (raw: Record<string, unknown>) => (
+    Object.prototype.hasOwnProperty.call(raw, 'completed')
+);
+
+const readResponseErrorMessage = async (response: Response, fallbackMessage: string) => {
+    try {
+        const data = await response.json();
+        if (typeof data?.error === 'string' && data.error.trim() !== '') {
+            return data.error.trim();
+        }
+        if (typeof data?.message === 'string' && data.message.trim() !== '' && data.message !== 'success') {
+            return data.message.trim();
+        }
+    } catch {
+        // Ignore parse errors and fall back to the provided message.
+    }
+
+    if (typeof response.statusText === 'string' && response.statusText.trim() !== '') {
+        return `${fallbackMessage} (${response.statusText.trim()})`;
+    }
+
+    return fallbackMessage;
+};
+
+const parseEventResources = (resources: any): {
+    originDates: string[] | null;
+    wasPostponed: boolean | null;
+    postponedView: 'week' | 'all' | null;
+} => {
     if (!resources) return { originDates: null, wasPostponed: null, postponedView: null };
     try {
         const parsed = typeof resources === 'string' ? JSON.parse(resources) : resources;
@@ -79,6 +119,64 @@ const parseEventResources = (resources: any) => {
         return { originDates: null, wasPostponed: null, postponedView: null };
     }
 };
+
+const sortEventsByTimeThenTitle = (events: CalendarEvent[]) => (
+    [...events].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '') || a.title.localeCompare(b.title))
+);
+
+const upsertEventIntoDateMap = (
+    source: Record<string, CalendarEvent[]>,
+    event: CalendarEvent
+) => {
+    const merged = { ...source };
+    let previousEvent: CalendarEvent | null = null;
+
+    Object.keys(merged).forEach((dateKey) => {
+        const existing = merged[dateKey].find((entry) => entry.id === event.id);
+        if (existing) {
+            previousEvent = existing;
+        }
+        const nextEntries = merged[dateKey].filter((entry) => entry.id !== event.id);
+        if (nextEntries.length === 0) {
+            delete merged[dateKey];
+            return;
+        }
+        merged[dateKey] = nextEntries;
+    });
+
+    const nextEvent = { ...(previousEvent || {}), ...event } as CalendarEvent;
+    if (!merged[nextEvent.date]) {
+        merged[nextEvent.date] = [];
+    }
+    merged[nextEvent.date] = sortEventsByTimeThenTitle([...merged[nextEvent.date], nextEvent]);
+    return merged;
+};
+
+const hasEventInDateMap = (source: Record<string, CalendarEvent[]>, eventId: string) => (
+    Object.values(source).some((entries) => entries.some((entry) => entry.id === eventId))
+);
+
+const findEventInDateMap = (source: Record<string, CalendarEvent[]>, eventId: string) => {
+    for (const entries of Object.values(source)) {
+        const event = entries.find((entry) => entry.id === eventId);
+        if (event) return event;
+    }
+    return null;
+};
+
+const upsertExistingEventIntoDateMap = (
+    source: Record<string, CalendarEvent[]>,
+    event: CalendarEvent
+) => (
+    hasEventInDateMap(source, event.id) ? upsertEventIntoDateMap(source, event) : source
+);
+
+const shouldKeepLocalEvent = (localEvent: CalendarEvent | null, incomingVersion: number | null) => (
+    localEvent?.version !== null
+    && localEvent?.version !== undefined
+    && incomingVersion !== null
+    && localEvent.version > incomingVersion
+);
 
 export interface AdminUser {
     id: string;
@@ -107,9 +205,11 @@ interface CalendarState {
     token: string | null;
     isLoading: boolean;
     error: string | null;
+    actionError: string | null;
     login: (u: string, p: string) => Promise<void>;
     register: (u: string, p: string) => Promise<void>;
     logout: () => void;
+    clearActionError: () => void;
 
     // Calendar State
     events: Record<string, CalendarEvent[]>;
@@ -133,13 +233,14 @@ interface CalendarState {
     viewOwnCalendar: () => Promise<void>;
     addEvent: (date: Date, entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }) => Promise<void>;
     addEventsToRange: (entries: Array<{ title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }>) => Promise<void>;
-    addEventsBulk: (entries: Array<{ title: string; date: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; originDates?: string[] | null; wasPostponed?: boolean | null }>) => Promise<boolean>;
+    addEventsBulk: (entries: Array<{ title: string; date: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; wasPostponed?: boolean | null }>) => Promise<boolean>;
     deleteEvent: (id: string) => Promise<void>;
-    editEvent: (event: CalendarEvent) => Promise<void>;
-    addPostponedEvent: (entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null; postponedView?: 'week' | 'all' }) => Promise<void>;
-    addPostponedEventsBulk: (entries: Array<{ title: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; originDates?: string[] | null; postponedView?: 'week' | 'all' }>) => Promise<boolean>;
+    editEvent: (event: CalendarEvent) => Promise<boolean>;
+    setEventCompleted: (event: CalendarEvent, completed: boolean) => Promise<boolean>;
+    addPostponedEvent: (entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null; completed?: boolean | null; postponedView?: 'week' | 'all' }) => Promise<void>;
+    addPostponedEventsBulk: (entries: Array<{ title: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; postponedView?: 'week' | 'all' }>) => Promise<boolean>;
     deletePostponedEvent: (id: string) => Promise<void>;
-    editPostponedEvent: (event: CalendarEvent) => Promise<void>;
+    editPostponedEvent: (event: CalendarEvent) => Promise<boolean>;
     setViewDate: (date: Date) => void;
     clearSelection: () => void;
     setLocalPreferences: (prefs: Partial<UserPreferences> & { _updatedAt?: number }) => void;
@@ -208,6 +309,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         set({
             user: null,
             token: null,
+            actionError: null,
             events: {},
             postponedEvents: [],
             friends: [],
@@ -237,6 +339,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         token: storage.getItem('token'),
         isLoading: false,
         error: null,
+        actionError: null,
 
         // Calendar Initial State
         events: {},
@@ -270,6 +373,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         appConfig: null,
         adminEvents: [],
         adminUsers: [],
+        clearActionError: () => set({ actionError: null }),
 
         // Auth Actions
         login: async (username, password) => {
@@ -379,11 +483,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 const data = await response.json();
 
                 if (data.message === 'success') {
+                    const currentEvents = get().events;
                     const eventsMap: Record<string, CalendarEvent[]> = {};
                     data.data.forEach((raw: any) => {
                         const timeVal = raw.startTime ?? raw.start_time ?? null;
                         const { originDates, wasPostponed } = parseEventResources(raw.resources);
-                        const event: CalendarEvent = {
+                        const previousEvent = findEventInDateMap(currentEvents, raw.id);
+                        const incomingVersion = readVersion(raw.version);
+                        const completed = hasCompletedValue(raw)
+                            ? normalizeCompleted(raw.completed)
+                            : previousEvent?.completed ?? false;
+                        const incomingEvent: CalendarEvent = {
                             id: raw.id,
                             title: raw.title,
                             date: raw.date,
@@ -391,9 +501,15 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                             priority: normalizePriority(raw.priority),
                             note: raw.note || null,
                             link: raw.link || null,
+                            completed,
+                            version: incomingVersion,
+                            unlockDate: raw.unlockDate || raw.unlock_date || null,
                             originDates,
                             wasPostponed
                         };
+                        const event = shouldKeepLocalEvent(previousEvent, incomingVersion)
+                            ? previousEvent as CalendarEvent
+                            : incomingEvent;
                         if (!eventsMap[event.date]) {
                             eventsMap[event.date] = [];
                         }
@@ -436,11 +552,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 }
                 const data = await response.json();
                 if (data.message === 'success') {
+                    const currentEvents = get().postponedEvents;
                     const eventsList: CalendarEvent[] = [];
                     data.data.forEach((raw: any) => {
                         const timeVal = raw.startTime ?? raw.start_time ?? null;
                         const { originDates, wasPostponed, postponedView } = parseEventResources(raw.resources);
-                        const event: CalendarEvent = {
+                        const previousEvent = currentEvents.find((entry) => entry.id === raw.id) ?? null;
+                        const incomingVersion = readVersion(raw.version);
+                        const completed = hasCompletedValue(raw)
+                            ? normalizeCompleted(raw.completed)
+                            : previousEvent?.completed ?? false;
+                        const incomingEvent: CalendarEvent = {
                             id: raw.id,
                             title: raw.title,
                             date: raw.date || '',
@@ -448,10 +570,15 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                             priority: normalizePriority(raw.priority),
                             note: raw.note || null,
                             link: raw.link || null,
+                            completed,
+                            version: incomingVersion,
                             originDates,
                             wasPostponed,
                             postponedView: postponedView ?? 'all'
                         };
+                        const event = shouldKeepLocalEvent(previousEvent, incomingVersion)
+                            ? previousEvent as CalendarEvent
+                            : incomingEvent;
                         eventsList.push(event);
                     });
                     const sorted = eventsList.sort((a, b) => {
@@ -490,7 +617,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                             startTime: timeVal ? String(timeVal) : null,
                             priority: normalizePriority(raw.priority),
                             note: raw.note || null,
-                            link: raw.link || null
+                            link: raw.link || null,
+                            completed: normalizeCompleted(raw.completed),
+                            version: Number.isFinite(Number(raw.version)) ? Number(raw.version) : null
                         };
                         if (!eventsMap[event.date]) {
                             eventsMap[event.date] = [];
@@ -563,6 +692,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                                 priority: normalizePriority(entry.priority),
                                 note: entry.note?.trim() ? entry.note.trim() : null,
                                 link: entry.link?.trim() ? entry.link.trim() : null,
+                                completed: false,
                                 originDates: null
                             });
                         }
@@ -623,6 +753,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     priority: normalizePriority(entry.priority),
                     note: entry.note?.trim() ? entry.note.trim() : null,
                     link: entry.link?.trim() ? entry.link.trim() : null,
+                    completed: entry.completed ? true : false,
                     originDates: entry.originDates && entry.originDates.length > 0 ? entry.originDates : null,
                     wasPostponed: entry.wasPostponed ? true : null
                 }));
@@ -639,6 +770,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     body: JSON.stringify({
                         events: newEvents.map((event) => ({
                             ...event,
+                            completed: event.completed ? true : false,
                             resources: (event.originDates || event.wasPostponed)
                                 ? { originDates: event.originDates, wasPostponed: event.wasPostponed ? true : undefined }
                                 : null
@@ -687,6 +819,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 priority: normalizePriority(entry.priority),
                 note: entry.note?.trim() ? entry.note.trim() : null,
                 link: entry.link?.trim() ? entry.link.trim() : null,
+                completed: false,
                 originDates: null,
                 wasPostponed: null
             };
@@ -747,8 +880,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         },
 
         editEvent: async (event) => {
-            const { token, fetchEvents, viewMode } = get();
-            if (!token || viewMode === 'friend') return;
+            const { token, viewMode } = get();
+            if (!token || viewMode === 'friend') return false;
+            const previousEvents = get().events;
+            const previousCompareEvents = get().compareEvents;
+            set({ actionError: null });
             try {
                 const res = await fetch(`${API_URL}/events/${event.id}`, {
                     method: 'PUT',
@@ -763,6 +899,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         priority: normalizePriority(event.priority),
                         note: event.note || null,
                         link: event.link || null,
+                        completed: event.completed ? true : false,
+                        version: event.version ?? undefined,
+                        unlockDate: event.unlockDate ?? null,
                         resources: (event.originDates || event.wasPostponed)
                             ? { originDates: event.originDates, wasPostponed: event.wasPostponed ? true : undefined }
                             : null
@@ -770,19 +909,96 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
                 if (res.status === 401 || res.status === 403) {
                     logoutAndReset();
-                    return;
+                    return false;
                 }
-                set((state) => {
-                    const merged = { ...state.events };
-                    Object.keys(merged).forEach((dateKey) => {
-                        merged[dateKey] = merged[dateKey].map((ev) => ev.id === event.id ? { ...ev, ...event } : ev);
-                        merged[dateKey].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '') || a.title.localeCompare(b.title));
+                if (!res.ok) {
+                    const actionError = await readResponseErrorMessage(res, 'Failed to update event');
+                    set({
+                        actionError,
+                        events: previousEvents,
+                        compareEvents: previousCompareEvents
                     });
-                    return { events: merged };
-                });
-                await fetchEvents();
+                    return false;
+                }
+                let serverVersion = event.version ?? null;
+                try {
+                    const data = await res.json();
+                    if (Number.isFinite(Number(data?.version))) {
+                        serverVersion = Number(data.version);
+                    }
+                } catch {
+                    // Older API responses may not include JSON beyond the status code.
+                }
+                const persistedEvent = { ...event, version: serverVersion };
+                set({ actionError: null });
+                set((state) => ({
+                    events: upsertEventIntoDateMap(state.events, persistedEvent),
+                    compareEvents: state.viewMode === 'self'
+                        ? upsertExistingEventIntoDateMap(state.compareEvents, persistedEvent)
+                        : state.compareEvents
+                }));
+                return true;
             } catch (e) {
                 console.error('Failed to edit event', e);
+                set({
+                    actionError: `Unable to update event. Is the API running at ${API_URL}?`,
+                    events: previousEvents,
+                    compareEvents: previousCompareEvents
+                });
+                return false;
+            }
+        },
+
+        setEventCompleted: async (event, completed) => {
+            const { token, viewMode } = get();
+            if (!token || viewMode === 'friend') return false;
+            set({ actionError: null });
+
+            try {
+                const res = await fetch(`${API_URL}/events/${event.id}/completed`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ completed })
+                });
+                if (res.status === 401 || res.status === 403) {
+                    logoutAndReset();
+                    return false;
+                }
+                if (res.status === 404) {
+                    return get().editEvent({ ...event, completed });
+                }
+                if (!res.ok) {
+                    const actionError = await readResponseErrorMessage(res, 'Failed to update event completion');
+                    set({ actionError });
+                    return false;
+                }
+
+                const data = await res.json();
+                const serverCompleted = normalizeCompleted(data?.data?.completed ?? completed);
+                const serverVersion = Number.isFinite(Number(data?.data?.version))
+                    ? Number(data.data.version)
+                    : event.version ?? null;
+                const updatedEvent: CalendarEvent = {
+                    ...event,
+                    completed: serverCompleted,
+                    version: serverVersion
+                };
+
+                set((state) => ({
+                    actionError: null,
+                    events: upsertExistingEventIntoDateMap(state.events, updatedEvent),
+                    compareEvents: state.viewMode === 'self'
+                        ? upsertExistingEventIntoDateMap(state.compareEvents, updatedEvent)
+                        : state.compareEvents
+                }));
+                return true;
+            } catch (e) {
+                console.error('Failed to update event completion', e);
+                set({ actionError: `Unable to update event completion. Is the API running at ${API_URL}?` });
+                return false;
             }
         },
 
@@ -804,6 +1020,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     priority: normalizePriority(entry.priority),
                     note: entry.note?.trim() ? entry.note.trim() : null,
                     link: entry.link?.trim() ? entry.link.trim() : null,
+                    completed: entry.completed ? true : false,
                     originDates: entry.originDates && entry.originDates.length > 0 ? entry.originDates : null,
                     wasPostponed: null,
                     postponedView: entry.postponedView ?? 'week'
@@ -821,6 +1038,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     body: JSON.stringify({
                         events: newEvents.map((event) => ({
                             ...event,
+                            completed: event.completed ? true : false,
                             resources: {
                                 originDates: event.originDates || undefined,
                                 postponedView: event.postponedView || undefined
@@ -869,6 +1087,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 priority: normalizePriority(entry.priority),
                 note: entry.note?.trim() ? entry.note.trim() : null,
                 link: entry.link?.trim() ? entry.link.trim() : null,
+                completed: entry.completed ? true : false,
                 originDates: null,
                 wasPostponed: null,
                 postponedView: entry.postponedView ?? 'week'
@@ -929,8 +1148,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         },
 
         editPostponedEvent: async (event) => {
-            const { token, fetchPostponedEvents, viewMode } = get();
-            if (!token || viewMode === 'friend') return;
+            const { token, viewMode } = get();
+            if (!token || viewMode === 'friend') return false;
+            const previousPostponedEvents = get().postponedEvents;
+            set({ actionError: null });
             try {
                 const res = await fetch(`${API_URL}/postponed-events/${event.id}`, {
                     method: 'PUT',
@@ -945,6 +1166,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         priority: normalizePriority(event.priority),
                         note: event.note || null,
                         link: event.link || null,
+                        completed: event.completed ? true : false,
                         resources: {
                             originDates: event.originDates || undefined,
                             postponedView: event.postponedView || undefined
@@ -953,19 +1175,43 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
                 if (res.status === 401 || res.status === 403) {
                     logoutAndReset();
-                    return;
+                    return false;
                 }
+                if (!res.ok) {
+                    const actionError = await readResponseErrorMessage(res, 'Failed to update event');
+                    set({
+                        actionError,
+                        postponedEvents: previousPostponedEvents
+                    });
+                    return false;
+                }
+                let serverVersion = event.version ?? null;
+                try {
+                    const data = await res.json();
+                    if (Number.isFinite(Number(data?.version))) {
+                        serverVersion = Number(data.version);
+                    }
+                } catch {
+                    // Older API responses may not include JSON beyond the status code.
+                }
+                const persistedEvent = { ...event, version: serverVersion };
+                set({ actionError: null });
                 set((state) => ({
-                    postponedEvents: state.postponedEvents.map((ev) => ev.id === event.id ? { ...ev, ...event } : ev).sort((a, b) => {
+                    postponedEvents: state.postponedEvents.map((ev) => ev.id === persistedEvent.id ? { ...ev, ...persistedEvent } : ev).sort((a, b) => {
                         const tA = a.startTime || '';
                         const tB = b.startTime || '';
                         if (tA !== tB) return tA.localeCompare(tB);
                         return a.title.localeCompare(b.title);
                     })
                 }));
-                await fetchPostponedEvents();
+                return true;
             } catch (e) {
                 console.error('Failed to edit postponed event', e);
+                set({
+                    actionError: `Unable to update event. Is the API running at ${API_URL}?`,
+                    postponedEvents: previousPostponedEvents
+                });
+                return false;
             }
         },
 
@@ -1461,7 +1707,12 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 }
                 const data = await res.json();
                 if (data.message === 'success') {
-                    set({ adminEvents: data.data || [] });
+                    set({
+                        adminEvents: (data.data || []).map((raw: any) => ({
+                            ...raw,
+                            completed: normalizeCompleted(raw.completed)
+                        }))
+                    });
                 }
             } catch (e) {
                 console.error('Failed to fetch admin events', e);

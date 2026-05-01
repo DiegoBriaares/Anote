@@ -1,4 +1,4 @@
-# Administration Management Plan System (AMPS)
+# Anote
 
 A full-stack calendar application with event management, roles-based notes, and an admin panel.
 
@@ -12,7 +12,7 @@ A full-stack calendar application with event management, roles-based notes, and 
 
 ```bash
 # 1. Clone/copy the project
-cd /path/to/administration-management-plan-system
+cd /path/to/anote
 
 # 2. Install frontend dependencies
 npm install
@@ -113,7 +113,7 @@ Or use the seeded admin account (if available):
 ## 📁 Project Structure
 
 ```
-administration-management-plan-system/
+anote/
 ├── src/                    # Frontend React code
 │   ├── components/         # UI components
 │   ├── store/              # Zustand state management

@@ -137,9 +137,13 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                             idx % 3 === 0 && "event-chip-cyan",
                                             idx % 3 === 1 && "event-chip-purple",
                                             idx % 3 === 2 && "event-chip-emerald",
+                                            event.completed && "event-chip-completed",
                                         )}
                                     >
-                                        <span className="text-[9px] bg-white/80 px-2 rounded shadow-sm time-pill block">
+                                        <span className={clsx(
+                                            'text-[9px] bg-white/80 px-2 rounded shadow-sm time-pill block',
+                                            event.completed && 'time-pill-completed'
+                                        )}>
                                             {(event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--')} · {event.priority !== null && event.priority !== undefined ? `P${event.priority}` : '--'}
                                         </span>
                                     </div>
