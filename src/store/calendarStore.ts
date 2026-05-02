@@ -3,6 +3,7 @@ import { formatDate } from '../utils/dateUtils';
 import { API_URL, normalizeApiAssetUrl } from '../utils/api';
 import { normalizePriority } from '../utils/priorityUtils';
 import { storage } from '../utils/storage';
+import { DEFAULT_POSTPONED_EVENT_DOMAIN, FALLBACK_POSTPONED_EVENT_DOMAIN, readPostponedEventDomain, type PostponedEventDomain } from '../utils/postponedDomains';
 import { eachDayOfInterval } from 'date-fns';
 
 // Polyfill for crypto.randomUUID if not available (e.g. older Safari)
@@ -27,7 +28,7 @@ export interface CalendarEvent {
     unlockDate?: string | null;
     originDates?: string[] | null;
     wasPostponed?: boolean | null;
-    postponedView?: 'week' | 'all' | null;
+    postponedView?: PostponedEventDomain | null;
 }
 
 export interface Role {
@@ -98,18 +99,14 @@ const readResponseErrorMessage = async (response: Response, fallbackMessage: str
 const parseEventResources = (resources: any): {
     originDates: string[] | null;
     wasPostponed: boolean | null;
-    postponedView: 'week' | 'all' | null;
+    postponedView: PostponedEventDomain | null;
 } => {
     if (!resources) return { originDates: null, wasPostponed: null, postponedView: null };
     try {
         const parsed = typeof resources === 'string' ? JSON.parse(resources) : resources;
         const origins = parsed?.originDates;
         const wasPostponed = parsed?.wasPostponed === true;
-        const postponedView = parsed?.postponedView === 'week'
-            ? 'week'
-            : parsed?.postponedView === 'all'
-                ? 'all'
-                : null;
+        const postponedView = readPostponedEventDomain(parsed?.postponedView);
         if (!Array.isArray(origins)) {
             return { originDates: null, wasPostponed: wasPostponed ? true : null, postponedView };
         }
@@ -237,8 +234,8 @@ interface CalendarState {
     deleteEvent: (id: string) => Promise<void>;
     editEvent: (event: CalendarEvent) => Promise<boolean>;
     setEventCompleted: (event: CalendarEvent, completed: boolean) => Promise<boolean>;
-    addPostponedEvent: (entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null; completed?: boolean | null; postponedView?: 'week' | 'all' }) => Promise<void>;
-    addPostponedEventsBulk: (entries: Array<{ title: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; postponedView?: 'week' | 'all' }>) => Promise<boolean>;
+    addPostponedEvent: (entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null; completed?: boolean | null; postponedView?: PostponedEventDomain }) => Promise<void>;
+    addPostponedEventsBulk: (entries: Array<{ title: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; postponedView?: PostponedEventDomain }>) => Promise<boolean>;
     deletePostponedEvent: (id: string) => Promise<void>;
     editPostponedEvent: (event: CalendarEvent) => Promise<boolean>;
     setViewDate: (date: Date) => void;
@@ -574,7 +571,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                             version: incomingVersion,
                             originDates,
                             wasPostponed,
-                            postponedView: postponedView ?? 'all'
+                            postponedView: postponedView ?? FALLBACK_POSTPONED_EVENT_DOMAIN
                         };
                         const event = shouldKeepLocalEvent(previousEvent, incomingVersion)
                             ? previousEvent as CalendarEvent
@@ -1023,7 +1020,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     completed: entry.completed ? true : false,
                     originDates: entry.originDates && entry.originDates.length > 0 ? entry.originDates : null,
                     wasPostponed: null,
-                    postponedView: entry.postponedView ?? 'week'
+                    postponedView: entry.postponedView ?? DEFAULT_POSTPONED_EVENT_DOMAIN
                 }));
 
             if (newEvents.length === 0) return false;
@@ -1090,7 +1087,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 completed: entry.completed ? true : false,
                 originDates: null,
                 wasPostponed: null,
-                postponedView: entry.postponedView ?? 'week'
+                postponedView: entry.postponedView ?? DEFAULT_POSTPONED_EVENT_DOMAIN
             };
             try {
                 const res = await fetch(`${API_URL}/postponed-events`, {

@@ -120,4 +120,39 @@ describe('PostponedRangeBoard', () => {
         expect(addPostponedEventsBulk.mock.calls[0][0][0].completed).toBe(true);
         expect(addPostponedEventsBulk.mock.calls[0][0][0].postponedView).toBe('all');
     });
+
+    it('can copy postponed events into the Today domain', async () => {
+        const addPostponedEventsBulk = vi.fn().mockResolvedValue(true);
+        mockedUseCalendarStore.mockReturnValue(
+            buildPostponedState({
+                postponedEvents: [
+                    {
+                        id: 'postponed-1',
+                        title: 'Reschedule',
+                        date: '',
+                        startTime: '10:00',
+                        priority: 1,
+                        note: null,
+                        link: null,
+                        completed: true,
+                        originDates: null,
+                        wasPostponed: null,
+                        postponedView: 'week'
+                    }
+                ],
+                addPostponedEventsBulk
+            })
+        );
+
+        const user = userEvent.setup();
+        render(<PostponedRangeBoard postponedView="week" />);
+
+        await user.click(screen.getAllByRole('checkbox')[0]);
+        await user.selectOptions(screen.getByLabelText('Postponed View'), 'today');
+        await user.click(screen.getByRole('button', { name: 'Copy to Postponed' }));
+
+        expect(addPostponedEventsBulk).toHaveBeenCalledTimes(1);
+        expect(addPostponedEventsBulk.mock.calls[0][0][0].completed).toBe(true);
+        expect(addPostponedEventsBulk.mock.calls[0][0][0].postponedView).toBe('today');
+    });
 });
