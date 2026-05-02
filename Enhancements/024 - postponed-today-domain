@@ -1,0 +1,5 @@
+Add a third postponed-events domain named Today.
+
+The calendar event administration flow should allow users to copy or move selected calendar events into the Today postponed domain, alongside the existing This week and All events domains. The postponed-events page should expose Today in the same domain toggle used for the existing views, and the Today view should reuse the same board, information, selection, sorting, and transfer mechanisms as the other postponed domains.
+
+The implementation should centralize postponed domain definitions so future domains can be added consistently, preserve Today metadata when reading postponed events from the API, and include regression coverage for filtering and transfer behavior.
