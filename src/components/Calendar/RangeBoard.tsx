@@ -4,6 +4,7 @@ import { formatDate } from '../../utils/dateUtils';
 import { eachDayOfInterval } from 'date-fns';
 import { CalendarRange, CheckCircle2 } from 'lucide-react';
 import clsx from 'clsx';
+import { DEFAULT_POSTPONED_EVENT_DOMAIN, POSTPONED_EVENT_DOMAINS, type PostponedEventDomain } from '../../utils/postponedDomains';
 
 interface RangeBoardProps {
     activeDate: Date | null;
@@ -18,7 +19,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
     const [targetDates, setTargetDates] = useState<string[]>([]);
     const [targetDateInput, setTargetDateInput] = useState('');
     const [transferMode, setTransferMode] = useState<'copy' | 'move'>('copy');
-    const [postponedView, setPostponedView] = useState<'week' | 'all'>('week');
+    const [postponedView, setPostponedView] = useState<PostponedEventDomain>(DEFAULT_POSTPONED_EVENT_DOMAIN);
     const dateKey = activeDate ? formatDate(activeDate) : 'range-default';
     const stateByDateRef = useRef<Record<string, {
         sortOrder: 'time' | 'priority';
@@ -27,7 +28,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
         targetDates: string[];
         targetDateInput: string;
         transferMode: 'copy' | 'move';
-        postponedView: 'week' | 'all';
+        postponedView: PostponedEventDomain;
     }>>({});
 
     const days = useMemo(() => {
@@ -53,7 +54,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
         if (didResetSource) {
             setSelectedCopyIds([]);
         }
-        setPostponedView('week');
+        setPostponedView(DEFAULT_POSTPONED_EVENT_DOMAIN);
     }, [days, activeDate]);
 
     useEffect(() => {
@@ -397,12 +398,13 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                             <select
                                 id="postponed-view"
                                 value={postponedView}
-                                onChange={(e) => setPostponedView(e.target.value as 'week' | 'all')}
+                                onChange={(e) => setPostponedView(e.target.value as PostponedEventDomain)}
                                 disabled={isReadOnly}
                                 className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white disabled:opacity-60"
                             >
-                                <option value="week">This week events</option>
-                                <option value="all">All events</option>
+                                {POSTPONED_EVENT_DOMAINS.map((domain) => (
+                                    <option key={domain.value} value={domain.value}>{domain.selectLabel}</option>
+                                ))}
                             </select>
                         </div>
                     </div>

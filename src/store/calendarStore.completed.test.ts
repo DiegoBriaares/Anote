@@ -462,4 +462,35 @@ describe('calendarStore completed events', () => {
 
         expect(useCalendarStore.getState().postponedEvents[0]?.completed).toBe(true);
     });
+
+    it('maps the Today postponed domain from the postponed events API response', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            jsonResponse({
+                message: 'success',
+                data: [
+                    {
+                        id: 'postponed-today-1',
+                        title: 'Today deferred audit',
+                        date: '',
+                        startTime: '10:00',
+                        priority: 2,
+                        note: null,
+                        link: null,
+                        completed: 0,
+                        resources: JSON.stringify({ postponedView: 'today' })
+                    }
+                ]
+            })
+        );
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+        useCalendarStore.setState({
+            token: 'token-123',
+            viewMode: 'self'
+        } as never);
+
+        await useCalendarStore.getState().fetchPostponedEvents();
+
+        expect(useCalendarStore.getState().postponedEvents[0]?.postponedView).toBe('today');
+    });
 });

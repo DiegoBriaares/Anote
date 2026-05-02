@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { Clock, History } from 'lucide-react';
+import { FALLBACK_POSTPONED_EVENT_DOMAIN, normalizePostponedEventDomain, type PostponedEventDomain } from '../../utils/postponedDomains';
 
 interface PostponedEventsInformationProps {
-    postponedView?: 'week' | 'all';
+    postponedView?: PostponedEventDomain;
 }
 
 export const PostponedEventsInformation: React.FC<PostponedEventsInformationProps> = ({ postponedView }) => {
     const { postponedEvents } = useCalendarStore();
     const [expandedIds, setExpandedIds] = useState<string[]>([]);
-    const activeView = postponedView ?? 'all';
-    const expandedByViewRef = useRef<Record<'week' | 'all', string[]>>({
+    const activeView = postponedView ?? FALLBACK_POSTPONED_EVENT_DOMAIN;
+    const expandedByViewRef = useRef<Record<PostponedEventDomain, string[]>>({
+        today: [],
         week: [],
         all: []
     });
@@ -24,7 +26,7 @@ export const PostponedEventsInformation: React.FC<PostponedEventsInformationProp
     }, [activeView, expandedIds]);
 
     const dayEvents = useMemo(() => {
-        const list = (postponedEvents || []).filter((event) => (event.postponedView ?? 'all') === activeView);
+        const list = (postponedEvents || []).filter((event) => normalizePostponedEventDomain(event.postponedView) === activeView);
         return [...list].sort((a, b) => {
             const tA = a.startTime || '';
             const tB = b.startTime || '';

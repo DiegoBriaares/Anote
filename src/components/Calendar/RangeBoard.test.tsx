@@ -104,4 +104,23 @@ describe('RangeBoard', () => {
         expect(screen.getByText('Draft itinerary').closest('.board-card-completed')).not.toBeNull();
         expect(screen.getByText('Completed')).toBeTruthy();
     });
+
+    it('can postpone selected calendar events into the Today domain', async () => {
+        const addPostponedEventsBulk = vi.fn().mockResolvedValue(true);
+        mockedUseCalendarStore.mockReturnValue(
+            buildRangeState({
+                addPostponedEventsBulk
+            })
+        );
+
+        const user = userEvent.setup();
+        render(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
+
+        await user.click(screen.getAllByRole('checkbox')[0]);
+        await user.selectOptions(screen.getByLabelText('Postponed View'), 'today');
+        await user.click(screen.getByRole('button', { name: 'Copy to Postponed' }));
+
+        expect(addPostponedEventsBulk).toHaveBeenCalledTimes(1);
+        expect(addPostponedEventsBulk.mock.calls[0][0][0].postponedView).toBe('today');
+    });
 });

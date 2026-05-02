@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore, type CalendarEvent } from '../../store/calendarStore';
 import { Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
+import { FALLBACK_POSTPONED_EVENT_DOMAIN, POSTPONED_EVENT_DOMAINS, normalizePostponedEventDomain, type PostponedEventDomain } from '../../utils/postponedDomains';
 
 interface PostponedEventBoardProps {
-    postponedView?: 'week' | 'all';
-    onViewChange?: (view: 'week' | 'all') => void;
+    postponedView?: PostponedEventDomain;
+    onViewChange?: (view: PostponedEventDomain) => void;
 }
 
 export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postponedView, onViewChange }) => {
@@ -14,13 +15,14 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
     const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
     const [sortOrder, setSortOrder] = useState<'time' | 'priority'>('time');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const activeView = postponedView ?? 'all';
-    const stateByViewRef = useRef<Record<'week' | 'all', {
+    const activeView = postponedView ?? FALLBACK_POSTPONED_EVENT_DOMAIN;
+    const stateByViewRef = useRef<Record<PostponedEventDomain, {
         draft: typeof draft;
         editingId: string | null;
         editingEvent: CalendarEvent | null;
         sortOrder: 'time' | 'priority';
     }>>({
+        today: { draft: { title: '', time: '', link: '', note: '', priority: '' }, editingId: null, editingEvent: null, sortOrder: 'time' },
         week: { draft: { title: '', time: '', link: '', note: '', priority: '' }, editingId: null, editingEvent: null, sortOrder: 'time' },
         all: { draft: { title: '', time: '', link: '', note: '', priority: '' }, editingId: null, editingEvent: null, sortOrder: 'time' }
     });
@@ -45,7 +47,7 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
     }, [activeView, draft, editingId, editingEvent, sortOrder]);
 
     const dayEvents = useMemo(() => {
-        const list = (postponedEvents || []).filter((event) => (event.postponedView ?? 'all') === activeView);
+        const list = (postponedEvents || []).filter((event) => normalizePostponedEventDomain(event.postponedView) === activeView);
         const priorityValue = (value?: number | null) => {
             if (value === null || value === undefined) return Number.MAX_SAFE_INTEGER;
             return value;
@@ -89,20 +91,16 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                 </div>
                 <div className="flex items-center gap-3 text-[10px] font-mono text-stone-500 uppercase">
                     <div className="flex items-center gap-1 rounded-full border border-orange-200 bg-white p-1">
-                        <button
-                            type="button"
-                            onClick={() => onViewChange?.('week')}
-                            className={`px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-[0.2em] transition-colors ${activeView === 'week' ? 'bg-orange-200 text-orange-700' : 'text-stone-500 hover:text-stone-700'}`}
-                        >
-                            This week events
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onViewChange?.('all')}
-                            className={`px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-[0.2em] transition-colors ${activeView === 'all' ? 'bg-orange-200 text-orange-700' : 'text-stone-500 hover:text-stone-700'}`}
-                        >
-                            All events
-                        </button>
+                        {POSTPONED_EVENT_DOMAINS.map((domain) => (
+                            <button
+                                key={domain.value}
+                                type="button"
+                                onClick={() => onViewChange?.(domain.value)}
+                                className={`px-2 py-1 rounded-full text-[10px] font-mono uppercase tracking-[0.2em] transition-colors ${activeView === domain.value ? 'bg-orange-200 text-orange-700' : 'text-stone-500 hover:text-stone-700'}`}
+                            >
+                                {domain.label}
+                            </button>
+                        ))}
                     </div>
                     <label className="tracking-[0.2em]" htmlFor="postponed-event-order">Order</label>
                     <select

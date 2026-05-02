@@ -1,34 +1,46 @@
 import React, { useMemo, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { CalendarRange } from 'lucide-react';
+import {
+    FALLBACK_POSTPONED_EVENT_DOMAIN,
+    POSTPONED_EVENT_DOMAINS,
+    getDefaultTargetPostponedEventDomain,
+    normalizePostponedEventDomain,
+    type PostponedEventDomain
+} from '../../utils/postponedDomains';
 
 interface PostponedRangeBoardProps {
-    postponedView?: 'week' | 'all';
+    postponedView?: PostponedEventDomain;
 }
 
 export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postponedView }) => {
     const { postponedEvents, viewMode, addEventsBulk, addPostponedEventsBulk, deletePostponedEvent } = useCalendarStore();
-    const [sortOrderByView, setSortOrderByView] = React.useState<Record<'week' | 'all', 'time' | 'priority'>>({
+    const [sortOrderByView, setSortOrderByView] = React.useState<Record<PostponedEventDomain, 'time' | 'priority'>>({
+        today: 'time',
         week: 'time',
         all: 'time'
     });
-    const [selectedIdsByView, setSelectedIdsByView] = useState<Record<'week' | 'all', string[]>>({
+    const [selectedIdsByView, setSelectedIdsByView] = useState<Record<PostponedEventDomain, string[]>>({
+        today: [],
         week: [],
         all: []
     });
-    const [targetDateByView, setTargetDateByView] = useState<Record<'week' | 'all', string>>({
+    const [targetDateByView, setTargetDateByView] = useState<Record<PostponedEventDomain, string>>({
+        today: '',
         week: '',
         all: ''
     });
-    const [transferModeByView, setTransferModeByView] = useState<Record<'week' | 'all', 'copy' | 'move'>>({
+    const [transferModeByView, setTransferModeByView] = useState<Record<PostponedEventDomain, 'copy' | 'move'>>({
+        today: 'copy',
         week: 'copy',
         all: 'copy'
     });
-    const [targetPostponedViewByView, setTargetPostponedViewByView] = useState<Record<'week' | 'all', 'week' | 'all'>>({
+    const [targetPostponedViewByView, setTargetPostponedViewByView] = useState<Record<PostponedEventDomain, PostponedEventDomain>>({
+        today: getDefaultTargetPostponedEventDomain('today'),
         week: 'all',
         all: 'week'
     });
-    const activeView = postponedView ?? 'all';
+    const activeView = postponedView ?? FALLBACK_POSTPONED_EVENT_DOMAIN;
     const sortOrder = sortOrderByView[activeView];
     const selectedIds = selectedIdsByView[activeView];
     const targetDate = targetDateByView[activeView];
@@ -37,7 +49,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
 
     const isReadOnly = viewMode === 'friend';
     const sourceEvents = useMemo(() => {
-        const list = (postponedEvents || []).filter((event) => (event.postponedView ?? 'all') === activeView);
+        const list = (postponedEvents || []).filter((event) => normalizePostponedEventDomain(event.postponedView) === activeView);
         return [...list].sort((a, b) => {
             const priorityValue = (value?: number | null) => {
                 if (value === null || value === undefined) return Number.MAX_SAFE_INTEGER;
@@ -67,7 +79,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
     React.useEffect(() => {
         setTargetPostponedViewByView((prev) => ({
             ...prev,
-            [activeView]: prev[activeView] || (activeView === 'week' ? 'all' : 'week')
+            [activeView]: prev[activeView] || getDefaultTargetPostponedEventDomain(activeView)
         }));
     }, [activeView]);
 
@@ -248,16 +260,17 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                             <label htmlFor="postponed-target-view" className="tracking-[0.2em]">Postponed View</label>
                             <select
                                 id="postponed-target-view"
-                            value={targetPostponedView}
-                            onChange={(e) => setTargetPostponedViewByView((prev) => ({
-                                ...prev,
-                                [activeView]: e.target.value as 'week' | 'all'
-                            }))}
+                                value={targetPostponedView}
+                                onChange={(e) => setTargetPostponedViewByView((prev) => ({
+                                    ...prev,
+                                    [activeView]: e.target.value as PostponedEventDomain
+                                }))}
                                 disabled={isReadOnly}
                                 className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white disabled:opacity-60"
                             >
-                                <option value="week">This week events</option>
-                                <option value="all">All events</option>
+                                {POSTPONED_EVENT_DOMAINS.map((domain) => (
+                                    <option key={domain.value} value={domain.value}>{domain.selectLabel}</option>
+                                ))}
                             </select>
                         </div>
                     </div>

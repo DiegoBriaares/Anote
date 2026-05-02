@@ -4,10 +4,11 @@ import { useCalendarStore } from '../../store/calendarStore';
 import { PostponedEventBoard } from './PostponedEventBoard';
 import { PostponedEventsInformation } from './PostponedEventsInformation';
 import { PostponedRangeBoard } from './PostponedRangeBoard';
+import { DEFAULT_POSTPONED_EVENT_DOMAIN, type PostponedEventDomain } from '../../utils/postponedDomains';
 
 export const PostponedEventsView: React.FC = () => {
     const { fetchPostponedEvents, navigateToCalendar } = useCalendarStore();
-    const [postponedView, setPostponedView] = useState<'week' | 'all'>('week');
+    const [postponedView, setPostponedView] = useState<PostponedEventDomain>(DEFAULT_POSTPONED_EVENT_DOMAIN);
 
     useEffect(() => {
         fetchPostponedEvents();
