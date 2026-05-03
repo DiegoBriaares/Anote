@@ -1,0 +1,3 @@
+Adds a shared terminology system for Anote so developers and agents can refer to pages, components, and component parts with stable practical names.
+
+The enhancement introduces a root `Terminology/` directory organized by page and page-relative component, with terms for the App Shell, Authentication Page, Calendar Page, Day Events Administration Page, Postponed Events Administration Page, Profile Page, Friends Page, Roles Page, and Admin Page. It also refreshes the main README so it reflects the current architecture, product areas, development workflow, terminology entry point, verification commands, data notes, and production operations.

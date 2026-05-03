@@ -1,150 +1,166 @@
 # Anote
 
-λnote. A full-stack calendar application with event management, roles-based notes, and an admin panel.
+Anote is a full-stack calendar and event administration system. It combines calendar planning, day-level event administration, postponed event workflows, role-based notes, friend calendar viewing, profile preferences, and an admin console.
 
-## 🚀 Quick Start
+The shared product vocabulary lives in [`Terminology/`](Terminology/README.md). Use those names when writing prompts, issues, changelogs, pull requests, and implementation notes.
 
-### Prerequisites
-- **Node.js** (v18 or higher)
-- **npm** (comes with Node.js)
+## Current Product Shape
 
-### Installation
+Anote is organized around an authenticated **App Shell** that renders one active page from Zustand view state:
+
+- **Calendar Page**: two-month planning workspace with day selection, friend read-only mode, day inspection, day visual settings, and multi-day range entry.
+- **Day Events Administration Page**: focused event workbench for one day, with event CRUD, completion, event history, copy/move, and postponed transfer actions.
+- **Postponed Events Administration Page**: manages postponed events in `This week events` and `All events` scopes, including restoration back to calendar days.
+- **Profile Page**: username, background image, accent color, noise overlay, and theme preferences.
+- **Friends Page**: friend management and read-only friend calendar access.
+- **Roles Page**: role and subrole labels used by event notes.
+- **Admin Page**: admin-only app configuration, event/user management, raw table inspection, and bulk deletion.
+- **Authentication Page**: login and registration surface.
+
+Core event data supports title, date, hour, priority, note, link, completion state, postponed scope, and origin history. Role notes support Markdown and uploaded files.
+
+## Architecture
+
+```text
+anote/
+├── src/
+│   ├── App.tsx                 # App Shell and active page selection
+│   ├── components/
+│   │   ├── Auth/               # Authentication Page
+│   │   ├── Calendar/           # Calendar, day administration, postponed, notes
+│   │   ├── Input/              # Range Sequence Console
+│   │   ├── Profile/            # Profile Page
+│   │   ├── Friends/            # Friends Page
+│   │   ├── Roles/              # Roles Page
+│   │   └── Admin/              # Admin Page
+│   ├── store/                  # Zustand state, API actions, tests
+│   ├── utils/                  # API, date, storage, priority helpers
+│   ├── index.css               # Base styles and design tokens
+│   └── App.css                 # App-level visual system
+├── server/
+│   ├── index.js                # Express API
+│   ├── db.js                   # SQLite connection/helpers
+│   ├── static_admin/           # Static admin support
+│   └── uploads/                # Uploaded note files
+├── Terminology/                # Shared page and component vocabulary
+├── ChangeLog/                  # Release and change records
+├── Enhancements/               # Enhancement specs
+├── Bugs/                       # Bug records
+└── scripts/                    # Release, deploy, and production user ops
+```
+
+The frontend uses React, TypeScript, Vite, Zustand, Tailwind CSS utilities, lucide-react icons, and React Markdown. The backend uses Express with SQLite through `better-sqlite3`, JWT authentication, and file uploads.
+
+## Terminology
+
+Terminology is arranged by page, then by page-relative component:
+
+```text
+Terminology/
+├── README.md
+└── Pages/
+    ├── calendar-page/
+    ├── day-events-administration-page/
+    ├── postponed-events-administration-page/
+    ├── profile-page/
+    ├── friends-page/
+    ├── roles-page/
+    ├── admin-page/
+    ├── authentication-page/
+    └── app-shell/
+```
+
+Examples of canonical terms:
+
+- **Day Event Board**: the editable event board on the Day Events Administration Page.
+- **Range Transfer Board**: the day-administration board for copying, moving, and postponing selected day events.
+- **Postponed Vault**: the page-level postponed storage context.
+- **View Scope**: the postponed bucket, either `This week events` or `All events`.
+- **Track Record**: event origin and transfer history.
+- **Role Note Workspace**: the full-screen Markdown note editor for an event role or subrole.
+
+For detailed component-part names, start at [`Terminology/README.md`](Terminology/README.md).
+
+## Development
+
+Install dependencies once:
 
 ```bash
-# 1. Clone/copy the project
-cd /path/to/anote
-
-# 2. Install frontend dependencies
 npm install
-
-# 3. Install server dependencies
 cd server && npm install && cd ..
 ```
 
-### Running the App
-
-**Option A: Run both in separate terminals**
+Run the app with separate frontend and backend terminals:
 
 ```bash
-# Terminal 1 - Start the backend server
 cd server && PORT=3002 node index.js
-# Development server runs at http://localhost:3002
+```
 
-# Terminal 2 - Start the frontend
+```bash
 npm run dev
-# Frontend runs at http://localhost:5173
 ```
 
-**Option B: Quick start script (run from project root)**
+Default local URLs:
+
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:5173 |
+| Development API/Admin | http://localhost:3002 |
+| Production API/Admin | http://localhost:3001 |
+
+## Verification
 
 ```bash
-# Start server in background, then frontend
-cd server && PORT=3002 node index.js & cd .. && npm run dev
+npm run lint
+npm run build
+npx vitest
 ```
 
----
+Tests currently cover store behavior, calendar boards, postponed boards, day administration behavior, priority utilities, and backend migration/profile helpers.
 
-## 🔄 Patch Production Copy (keep DB/uploads)
+## Server And Data
 
-- Default production path is `/Users/digogonz/Desktop/Calendario/cal-ap`.
-- One-shot deploy: run `bash scripts/deploy_to_prod.sh` from the dev root. It syncs code, installs deps in the prod copy (frontend + server), and leaves DB/uploads untouched.
-- Dry run: `DRY_RUN=1 bash scripts/deploy_to_prod.sh` (only previews rsync).
-- Skip installs: `SKIP_INSTALL=1 bash scripts/deploy_to_prod.sh` (sync only).
-- Override prod path: `PROD_DIR=/custom/path bash scripts/deploy_to_prod.sh`.
-- Under the hood it uses `scripts/patch_to_prod.sh`, which protects `server/calendar.db*`, `server/uploads/`, and root `uploads/`; stale code is cleaned with `--delete`.
-- After a deploy, restart the production services if they are running.
+The development API expects `server/calendar.db` beside `server/index.js`. A fresh database is created on startup if the file is missing.
 
----
-
-## 🧰 Production User Ops
-
-- Use the dev repo as the control point for production user changes.
-- Promote admin: `npm run --silent prod:user:make-admin -- --username=USACO`
-- Remove admin: `npm run --silent prod:user:remove-admin -- --username=USACO`
-- Change username: `npm run --silent prod:user:change-username -- --username=oldname --new-username=newname`
-- Explicit target dir: append `--dir=/path/to/prod`
-- Save that dir as the new default: append `--dir-default`
-- Show current resolved default: `node scripts/prod_user_ops.cjs show-default-dir`
-- Inspect role history: `npm run --silent prod:user:history -- --username=USACO`
-- Full notes: `scripts/PROD_USER_OPS.md`
-
----
-
-## 🔗 URLs
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| Frontend | http://localhost:5173 | Main calendar app |
-| Development API/Admin | http://localhost:3002 | Development database and administration |
-| Production API/Admin | http://localhost:3001 | Production database and administration |
-
----
-
-## 🔧 Fresh Start (Clean Database)
-
-To start with a completely fresh database:
+To reset local development data:
 
 ```bash
-# Remove database files
 rm -f server/calendar.db server/calendar.db-shm server/calendar.db-wal
-
-# Optional: Clear uploaded files
 rm -rf server/uploads/*
-
-# Restart the server (creates fresh DB)
-cd server && node index.js
+cd server && PORT=3002 node index.js
 ```
 
----
+Do not commit local databases, uploads, secrets, or production data. Production paths and secrets should be environment-driven before broader deployment.
 
-## 👤 First Admin User
+## Production Operations
 
-When starting fresh, create an admin user:
+Patch the production copy while preserving database and uploads:
 
-1. Register a new user via the frontend at http://localhost:5173
-2. From the dev repo, promote that user with `npm run --silent prod:user:make-admin -- --username=<username>`
-3. Restart the production server if needed so the latest backend code is active
-
-Or use the seeded admin account (if available):
-- **Username:** `admin`
-- **Password:** `admin123`
-
----
-
-## 📁 Project Structure
-
-```
-anote/
-├── src/                    # Frontend React code
-│   ├── components/         # UI components
-│   ├── store/              # Zustand state management
-│   └── utils/              # Utility functions
-├── server/                 # Backend Node.js server
-│   ├── index.js            # Main server file
-│   ├── static_admin/       # Admin panel HTML
-│   ├── uploads/            # Uploaded files
-│   └── calendar.db         # SQLite database
-├── package.json            # Frontend dependencies
-└── README.md               # This file
+```bash
+npm run prod:deploy
 ```
 
----
+Useful options:
 
-## 🛠️ Tech Stack
+```bash
+DRY_RUN=1 bash scripts/deploy_to_prod.sh
+SKIP_INSTALL=1 bash scripts/deploy_to_prod.sh
+PROD_DIR=/custom/path bash scripts/deploy_to_prod.sh
+```
 
-- **Frontend:** React, Vite, Zustand, TailwindCSS
-- **Backend:** Node.js (LTS), Express, SQLite (better-sqlite3)
-- **Auth:** JWT (JSON Web Tokens)
+Production user operations run from the development repo:
 
----
+```bash
+npm run --silent prod:user:make-admin -- --username=USACO
+npm run --silent prod:user:remove-admin -- --username=USACO
+npm run --silent prod:user:change-username -- --username=oldname --new-username=newname
+npm run --silent prod:user:history -- --username=USACO
+```
 
-## 📝 Features
+See [`scripts/PROD_USER_OPS.md`](scripts/PROD_USER_OPS.md) for full production user operation notes.
 
-- ✅ Calendar with event management
-- ✅ Role-based notes system
-- ✅ User authentication (login/register)
-- ✅ Admin panel with full CRUD
-- ✅ File uploads in notes
-- ✅ Markdown support in notes
-- ✅ Multi-user support
-- ✅ Friend calendar sharing
+## Contribution Notes
+
+Use TypeScript, React function components, typed props/state, single quotes, semicolons, and 4-space indentation. Prefer existing Zustand actions, utility helpers, and page/component vocabulary before introducing new abstractions.
+
+When adding or changing a user-facing page component, update the matching terminology file in `Terminology/Pages/...` in the same change.
