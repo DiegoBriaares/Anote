@@ -33,6 +33,11 @@ export const isDateInRange = (date: Date, start: Date | null, end: Date | null) 
 };
 
 export const formatDate = (date: Date) => format(date, 'yyyy-MM-dd');
+export const parseDateKey = (dateKey: string) => {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+};
 export const formatFullDate = (date: Date) => format(date, 'EEEE, MMMM do, yyyy');
 export const formatMonthYear = (date: Date) => format(date, 'MMMM yyyy');
 

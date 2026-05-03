@@ -10,7 +10,8 @@ const crypto = require('crypto');
 const { ensureEventNotesSchema } = require('./ensureEventNotesSchema');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const defaultPort = process.env.NODE_ENV === 'production' ? 3001 : 3002;
+const port = process.env.PORT || defaultPort;
 const host = process.env.HOST || '0.0.0.0';
 const SECRET_KEY = process.env.SECRET_KEY || 'da_vinci_secret_key'; // In prod, use env var
 const adminUiDir = path.resolve(__dirname, '../../admin-db');
@@ -597,10 +598,13 @@ app.post('/events', (req, res) => {
 
     db.serialize(() => {
         db.run('BEGIN TRANSACTION');
+        let insertError = null;
+        let insertedCount = 0;
 
         events.forEach(event => {
+            if (insertError) return;
             if (!event.title || !event.date) {
-                console.error('Invalid event payload skipped');
+                insertError = new Error('Invalid event payload: title and date are required');
                 return;
             }
             const eventId = event.id || crypto.randomUUID();
@@ -624,20 +628,33 @@ app.post('/events', (req, res) => {
             stmt.run(eventId, event.title, event.date, req.user.id, cleanTime, cleanPriority, cleanNote, cleanLink, cleanCompleted, now, cleanResources, cleanUnlock, (err) => {
                 if (err) {
                     console.error('Error inserting event:', err.message);
+                    insertError = err;
+                    return;
                 }
+                insertedCount += 1;
             });
         });
+
+        if (insertError) {
+            db.run('ROLLBACK', (rollbackErr) => {
+                if (rollbackErr) {
+                    console.error('Error rolling back event insert:', rollbackErr.message);
+                }
+                res.status(500).json({ error: insertError.message || 'Failed to insert event' });
+            });
+            stmt.finalize();
+            return;
+        }
 
         db.run('COMMIT', (err) => {
             if (err) {
                 res.status(500).json({ error: err.message });
                 return;
             }
-            res.json({ message: 'success', count: events.length });
+            res.json({ message: 'success', count: insertedCount });
         });
+        stmt.finalize();
     });
-
-    stmt.finalize();
 });
 
 // DELETE /events - Clear current user's events (for testing/reset)

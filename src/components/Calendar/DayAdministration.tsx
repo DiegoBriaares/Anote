@@ -8,6 +8,14 @@ interface DayAdministrationProps {
 }
 
 export const DayAdministration: React.FC<DayAdministrationProps> = ({ activeDate }) => {
+    const [showManagement, setShowManagement] = React.useState(false);
+
+    React.useEffect(() => {
+        setShowManagement(false);
+        const timeoutId = window.setTimeout(() => setShowManagement(true), 0);
+        return () => window.clearTimeout(timeoutId);
+    }, [activeDate]);
+
     if (!activeDate) return null;
 
     return (
@@ -17,7 +25,7 @@ export const DayAdministration: React.FC<DayAdministrationProps> = ({ activeDate
             </div>
             <EventBoard selectedDate={activeDate} />
             <DayEventsInformation activeDate={activeDate} />
-            <RangeBoard activeDate={activeDate} />
+            {showManagement ? <RangeBoard activeDate={activeDate} /> : null}
         </div>
     );
 };

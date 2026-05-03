@@ -14,9 +14,31 @@ interface DayModalProps {
     onClose: () => void;
     onUpdateEvent: (event: CalendarEvent) => void;
     onConfigure: () => void;
+    onAdminister: () => void;
 }
 
-export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onConfigure }) => {
+const DayEventsAdministrationIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+        aria-hidden="true"
+    >
+        <rect x="3.5" y="4.25" width="17" height="4.25" rx="1.1" />
+        <rect x="3.5" y="9.9" width="17" height="4.25" rx="1.1" />
+        <rect x="3.5" y="15.55" width="17" height="4.25" rx="1.1" />
+        <circle cx="7" cy="6.35" r="0.7" fill="currentColor" stroke="none" />
+        <path d="M6.4 12.05h1.2M7 11.45v1.2" />
+        <path d="M6.25 17.7l0.55 0.55l1.05-1.2" />
+        <path d="M10 6.35h6.6M10 12.05h6.6M10 17.65h6.6" />
+    </svg>
+);
+
+export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onConfigure, onAdminister }) => {
     const { viewMode, subroles, fetchSubroles } = useCalendarStore();
     const [sortOrder, setSortOrder] = useState<'time' | 'priority'>('time');
 
@@ -115,6 +137,14 @@ export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onCon
                             </select>
                         </div>
                         <div className="flex gap-2">
+                            <button
+                                onClick={onAdminister}
+                                className="p-2 text-stone-400 hover:text-orange-500 hover:bg-orange-100 rounded-full transition-all"
+                                title="Open Day Events Administration"
+                                aria-label="Open Day Events Administration"
+                            >
+                                <DayEventsAdministrationIcon className="w-5 h-5" />
+                            </button>
                             <button
                                 onClick={onConfigure}
                                 className="p-2 text-stone-400 hover:text-orange-500 hover:bg-orange-100 rounded-full transition-all"

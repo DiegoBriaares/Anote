@@ -9,6 +9,7 @@ import { ProfilePanel } from './components/Profile/ProfilePanel';
 import { AdminPanel } from './components/Admin/AdminPanel';
 import { RolesPanel } from './components/Roles/RolesPanel';
 import { PostponedEventsView } from './components/Calendar/PostponedEventsView';
+import { DayEventsAdministrationPage } from './components/Calendar/DayEventsAdministrationPage';
 
 function App() {
   const { user, logout, viewMode, viewingUsername, profile, viewingPreferences, localPreferences, currentView, navigateToProfile, navigateToFriends, navigateToRoles, viewOwnCalendar, navigateToAdmin, appConfig, socialError, bootstrap, fetchAppConfig } = useCalendarStore();
@@ -230,6 +231,8 @@ function App() {
           <AdminPanel />
         ) : currentView === 'postponed' ? (
           <PostponedEventsView />
+        ) : currentView === 'day-administration' ? (
+          <DayEventsAdministrationPage />
         ) : (
           <>
             {currentView === 'calendar' && socialError && (

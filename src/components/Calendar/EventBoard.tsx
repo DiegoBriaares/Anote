@@ -327,8 +327,7 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                                             wasPostponed: editingEvent?.wasPostponed || null
                                         } as CalendarEvent);
                                     } else {
-                                        await addEvent(selectedDate, { ...draft, priority: parsePriority(draft.priority) });
-                                        didSave = true;
+                                        didSave = await addEvent(selectedDate, { ...draft, priority: parsePriority(draft.priority) });
                                     }
 
                                     if (!didSave) return;

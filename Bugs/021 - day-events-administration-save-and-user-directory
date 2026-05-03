@@ -1,0 +1,5 @@
+The Day Events Administration page exposed two related runtime failures after it was moved out of the calendar page.
+
+First, startup user-directory failures were shown as a top-level calendar error even though they only matter in the Friends panel. Second, adding an event from the new administration page could appear to succeed, clear the form, then disappear from the page and calendar when the backend save failed or the client was pointed at the wrong API port.
+
+The fix needs scoped social errors, a development API default that matches the client, client-side event creation that reports success or failure, draft preservation on failed saves, and server insert handling that never returns a false success.

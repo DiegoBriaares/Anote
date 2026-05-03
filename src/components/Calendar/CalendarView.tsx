@@ -3,7 +3,6 @@ import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
 import { ChevronLeft, ChevronRight, Compass } from 'lucide-react';
-import { DayAdministration } from './DayAdministration';
 import { DayModal } from './DayModal';
 import { DayConfigModal } from './DayConfigModal';
 
@@ -21,13 +20,13 @@ export const CalendarView: React.FC = () => {
         viewMode,
         viewingUserId,
         viewingUsername,
-        navigateToPostponed
+        navigateToPostponed,
+        navigateToDayAdministration
     } = useCalendarStore();
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectionStart, setSelectionStart] = useState<Date | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(false); // New state
     const [hoverDate, setHoverDate] = useState<Date | null>(null);
-    const [activeDate, setActiveDate] = useState<Date | null>(null);
     const [modalDate, setModalDate] = useState<Date | null>(null);
 
     // Concurrency: Auto-refresh data every 10 seconds
@@ -69,7 +68,7 @@ export const CalendarView: React.FC = () => {
         };
         window.addEventListener('mouseup', handleMouseUp);
         return () => window.removeEventListener('mouseup', handleMouseUp);
-    }, [isSelecting, selectionStart, hoverDate, setSelection]);
+    }, [isSelecting, selectionStart, hoverDate, setSelection, setSelectionActive]);
 
     const handleDateClick = (date: Date) => {
         setIsSelecting(true);
@@ -77,7 +76,6 @@ export const CalendarView: React.FC = () => {
         setSelectionStart(date);
         setHoverDate(date);
         setSelection(date, date);
-        setActiveDate(date);
     };
 
     const handleDateEnter = (date: Date) => {
@@ -88,8 +86,12 @@ export const CalendarView: React.FC = () => {
     };
 
     const handleDateDoubleClick = (date: Date) => {
-        setActiveDate(date);
         setModalDate(date);
+    };
+
+    const handleOpenDayAdministration = (date: Date) => {
+        setModalDate(null);
+        navigateToDayAdministration(date);
     };
 
     const handlePrev = () => {
@@ -197,6 +199,7 @@ export const CalendarView: React.FC = () => {
                     onClose={() => setModalDate(null)}
                     onUpdateEvent={() => fetchEvents()}
                     onConfigure={() => setIsConfigOpen(true)}
+                    onAdminister={() => handleOpenDayAdministration(modalDate)}
                 />
             )}
 
@@ -215,10 +218,6 @@ export const CalendarView: React.FC = () => {
             // AWAITING INPUT VECTOR // INITIATE DRAG SEQUENCE
                     </span>
                 </div>
-            )}
-
-            {activeDate && (
-                <DayAdministration activeDate={activeDate} />
             )}
 
         </div>

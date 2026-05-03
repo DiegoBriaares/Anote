@@ -223,7 +223,8 @@ interface CalendarState {
     viewingPreferences: UserPreferences | null;
     profile: User | null;
     localPreferences: UserPreferences | null;
-    currentView: 'calendar' | 'postponed' | 'profile' | 'friends' | 'roles' | 'admin';
+    currentView: 'calendar' | 'day-administration' | 'postponed' | 'profile' | 'friends' | 'roles' | 'admin';
+    dayAdministrationDate: string | null;
 
     setSelection: (start: Date | null, end: Date | null) => void;
     setSelectionActive: (active: boolean) => void;
@@ -231,7 +232,7 @@ interface CalendarState {
     fetchPostponedEvents: () => Promise<void>;
     fetchFriendEvents: (friendId: string, friendName: string) => Promise<void>;
     viewOwnCalendar: () => Promise<void>;
-    addEvent: (date: Date, entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }) => Promise<void>;
+    addEvent: (date: Date, entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }) => Promise<boolean>;
     addEventsToRange: (entries: Array<{ title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }>) => Promise<void>;
     addEventsBulk: (entries: Array<{ title: string; date: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; wasPostponed?: boolean | null }>) => Promise<boolean>;
     deleteEvent: (id: string) => Promise<void>;
@@ -248,6 +249,7 @@ interface CalendarState {
     navigateToFriends: () => void;
     navigateToRoles: () => void;
     navigateToCalendar: () => void;
+    navigateToDayAdministration: (date: Date | string) => void;
     navigateToAdmin: () => void;
     navigateToPostponed: () => void;
 
@@ -320,6 +322,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             viewingPreferences: null,
             profile: null,
             currentView: 'calendar',
+            dayAdministrationDate: null,
             dailyFacts: {},
             dayBackgrounds: {},
             roles: [],
@@ -360,6 +363,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             }
         })(),
         currentView: 'calendar',
+        dayAdministrationDate: null,
         users: [],
         friends: [],
         socialError: null,
@@ -461,6 +465,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         navigateToFriends: () => set({ currentView: 'friends' }),
         navigateToRoles: () => set({ currentView: 'roles' }),
         navigateToCalendar: () => set({ currentView: 'calendar' }),
+        navigateToDayAdministration: (date) => set({
+            currentView: 'day-administration',
+            dayAdministrationDate: typeof date === 'string' ? date : formatDate(date)
+        }),
         navigateToAdmin: () => set({ currentView: 'admin' }),
         navigateToPostponed: () => set({ currentView: 'postponed' }),
 
@@ -808,8 +816,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
 
         addEvent: async (date, entry) => {
             const { token, user, viewMode, fetchEvents } = get();
-            if (!token || !user || viewMode === 'friend') return;
-            if (!entry.title) return;
+            if (!token || !user || viewMode === 'friend') return false;
+            if (!entry.title) return false;
+            set({ actionError: null });
             const rawTime = entry.startTime ?? entry.time;
             const newEvent: CalendarEvent = {
                 id: crypto.randomUUID(),
@@ -834,7 +843,13 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
                 if (res.status === 401 || res.status === 403) {
                     logoutAndReset();
-                    return;
+                    return false;
+                }
+
+                if (!res.ok) {
+                    const actionError = await readResponseErrorMessage(res, 'Failed to add event');
+                    set({ actionError });
+                    return false;
                 }
 
                 set((state) => {
@@ -846,8 +861,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
 
                 await fetchEvents();
+                return true;
             } catch (e) {
                 console.error('Failed to add event', e);
+                set({ actionError: `Unable to add event. Is the API running at ${API_URL}?` });
+                return false;
             }
         },
 
@@ -1230,10 +1248,15 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 if (data.message === 'success') {
                     set({ users: data.data.filter((u: User) => u.id !== user.id), socialError: null });
                 } else {
-                    set({ socialError: data.error || 'Failed to load users' });
+                    const socialError = data.error || 'Failed to load users';
+                    if (get().currentView === 'friends') {
+                        set({ socialError });
+                    }
                 }
             } catch (e) {
-                set({ socialError: 'Unable to load users' });
+                if (get().currentView === 'friends') {
+                    set({ socialError: 'Unable to load users' });
+                }
             }
         },
 
