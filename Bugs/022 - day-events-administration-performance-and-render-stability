@@ -1,0 +1,3 @@
+The new Day Events Administration page could feel laggy during navigation because the full administration surface, including the heavier range-management board, mounted immediately on page entry. An attempted broad store-subscription optimization also introduced a blank-page regression where only the app background rendered.
+
+The fix needs a conservative rendering strategy: preserve the existing store/component contracts that are known to render correctly, restore the page subtree, and reduce perceived lag by deferring the Day Events Management board until after the page shell and primary day administration sections paint.

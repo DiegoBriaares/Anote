@@ -102,4 +102,19 @@ describe('EventBoard', () => {
         expect(screen.getByText('Completed')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Unmark' })).toBeTruthy();
     });
+
+    it('keeps the create draft when adding an event fails', async () => {
+        const addEvent = vi.fn().mockResolvedValue(false);
+        mockedUseCalendarStore.mockReturnValue(buildState({ addEvent }));
+
+        const user = userEvent.setup();
+        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+
+        const titleInput = screen.getByPlaceholderText('Title');
+        await user.type(titleInput, 'New planning block');
+        await user.click(screen.getByRole('button', { name: 'Add Entry' }));
+
+        expect(addEvent).toHaveBeenCalledTimes(1);
+        expect((titleInput as HTMLInputElement).value).toBe('New planning block');
+    });
 });
