@@ -23,6 +23,9 @@ Also from the bug/enhancements folder, infeer/deduce a natural language explanat
 Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/ChangeLog/
 
 Push the latest changes into the repo https://github.com/DiegoBriaares/Anote as a NEW Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
+
+Run scripts/archive_prod_snapshot.sh to backup this new version.
+
 Deploy the changes to /Users/digogonz/Desktop/Calendario/cal-ap using /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/scripts/deploy_to_prod.sh
 
-Then run scripts/archive_prod_snapshot.sh to backup this new version.
+
