@@ -168,6 +168,59 @@ describe('CalendarView range selection', () => {
         expect(screen.getByRole('button', { name: /select days/i })).toBeTruthy();
     });
 
+    it('shares only checked events when Select Events is enabled', async () => {
+        const shareEventsToFriends = vi.fn().mockResolvedValue(true);
+        useCalendarStore.setState({
+            friends: [
+                { id: 'friend-1', username: 'Ada Friend' }
+            ],
+            events: {
+                '2026-04-23': [
+                    {
+                        id: 'event-1',
+                        title: 'Planning review',
+                        date: '2026-04-23',
+                        startTime: '09:30',
+                        priority: 2,
+                        note: null,
+                        link: null,
+                        completed: false
+                    },
+                    {
+                        id: 'event-2',
+                        title: 'Launch readout',
+                        date: '2026-04-23',
+                        startTime: '11:00',
+                        priority: 1,
+                        note: null,
+                        link: null,
+                        completed: false
+                    }
+                ]
+            },
+            shareEventsToFriends
+        } as never);
+
+        render(<CalendarView />);
+
+        fireEvent.click(screen.getByRole('button', { name: /select days/i }));
+
+        const day23 = screen.getAllByText('23')[0].closest('.calendar-cell');
+        fireEvent.mouseDown(day23!);
+        fireEvent.mouseUp(window);
+        fireEvent.click(screen.getByRole('button', { name: /share events/i }));
+
+        fireEvent.click(screen.getByLabelText('Ada Friend'));
+        fireEvent.click(screen.getByLabelText('Select Events'));
+        await screen.findByText('Launch readout');
+        fireEvent.click(screen.getByText('Launch readout').closest('label')!);
+        fireEvent.click(screen.getAllByRole('button', { name: /share events/i }).at(-1)!);
+
+        await waitFor(() => {
+            expect(shareEventsToFriends).toHaveBeenCalledWith(['friend-1'], ['2026-04-23'], ['event-1']);
+        });
+    });
+
     it('cancels an in-progress marked-day operation with the X action', () => {
         render(<CalendarView />);
 

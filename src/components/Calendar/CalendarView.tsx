@@ -63,6 +63,8 @@ export const CalendarView: React.FC = () => {
     const [groupDraft, setGroupDraft] = useState<GroupEventDraft>(emptyGroupDraft);
     const [queuedGroupEvents, setQueuedGroupEvents] = useState<QueuedGroupEvent[]>([]);
     const [selectedShareFriendIds, setSelectedShareFriendIds] = useState<string[]>([]);
+    const [isShareEventSelectionEnabled, setIsShareEventSelectionEnabled] = useState(false);
+    const [selectedShareEventIds, setSelectedShareEventIds] = useState<string[]>([]);
 
     // Concurrency: Auto-refresh data every 10 seconds
     useEffect(() => {
@@ -152,6 +154,8 @@ export const CalendarView: React.FC = () => {
         setMarkedDateKeys([]);
         setQueuedGroupEvents([]);
         setSelectedShareFriendIds([]);
+        setIsShareEventSelectionEnabled(false);
+        setSelectedShareEventIds([]);
         setGroupDraft(emptyGroupDraft);
         setIsMarkingDays(false);
         setMarkingStart(null);
@@ -169,6 +173,8 @@ export const CalendarView: React.FC = () => {
         setMarkedDateKeys([]);
         setQueuedGroupEvents([]);
         setSelectedShareFriendIds([]);
+        setIsShareEventSelectionEnabled(false);
+        setSelectedShareEventIds([]);
         setGroupDraft(emptyGroupDraft);
         setGroupStep('select-days');
     };
@@ -205,11 +211,49 @@ export const CalendarView: React.FC = () => {
         ));
     };
 
+    const getShareableEventIds = () => (
+        markedDateKeys.flatMap((dateKey) => events[dateKey] || []).map((event) => event.id)
+    );
+
+    const handleToggleShareEventSelection = () => {
+        const next = !isShareEventSelectionEnabled;
+        setIsShareEventSelectionEnabled(next);
+        setSelectedShareEventIds(next ? getShareableEventIds() : []);
+    };
+
+    const handleToggleShareEvent = (eventId: string) => {
+        setSelectedShareEventIds((current) => (
+            current.includes(eventId)
+                ? current.filter((id) => id !== eventId)
+                : [...current, eventId]
+        ));
+    };
+
+    const handleSelectAllShareEvents = () => {
+        setSelectedShareEventIds(getShareableEventIds());
+    };
+
+    const handleUnselectAllShareEvents = () => {
+        setSelectedShareEventIds([]);
+    };
+
+    const handleSelectIncompleteShareEvents = () => {
+        setSelectedShareEventIds(
+            markedDateKeys
+                .flatMap((dateKey) => events[dateKey] || [])
+                .filter((event) => !event.completed)
+                .map((event) => event.id)
+        );
+    };
+
     const handleShareGroupEvents = async () => {
         if (markedDateKeys.length === 0 || selectedShareFriendIds.length === 0 || groupStep === 'sharing') return;
+        if (isShareEventSelectionEnabled && selectedShareEventIds.length === 0) return;
         clearActionError();
         setGroupStep('sharing');
-        const wasShared = await shareEventsToFriends(selectedShareFriendIds, markedDateKeys);
+        const wasShared = isShareEventSelectionEnabled
+            ? await shareEventsToFriends(selectedShareFriendIds, markedDateKeys, selectedShareEventIds)
+            : await shareEventsToFriends(selectedShareFriendIds, markedDateKeys);
         if (!wasShared) {
             setGroupStep('share-events');
             return;
@@ -449,8 +493,15 @@ export const CalendarView: React.FC = () => {
                         eventsByDate={events}
                         friends={friends}
                         selectedFriendIds={selectedShareFriendIds}
+                        isEventSelectionEnabled={isShareEventSelectionEnabled}
+                        selectedEventIds={selectedShareEventIds}
                         isSubmitting={isBusySharing}
                         onToggleFriend={handleToggleShareFriend}
+                        onToggleEventSelection={handleToggleShareEventSelection}
+                        onToggleEvent={handleToggleShareEvent}
+                        onSelectAllEvents={handleSelectAllShareEvents}
+                        onUnselectAllEvents={handleUnselectAllShareEvents}
+                        onSelectIncompleteEvents={handleSelectIncompleteShareEvents}
                         onShare={handleShareGroupEvents}
                     />
                 </>

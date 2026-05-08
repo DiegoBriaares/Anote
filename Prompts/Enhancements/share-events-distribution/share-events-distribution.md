@@ -27,3 +27,19 @@ prompt: Run /Users/digogonz/Desktop/Desarrollo/plan-administration-management-sy
 answer: Archived the Share Events prompts, documented the solved enhancement, refreshed the changelog, backed up production, deployed the production copy, and prepared the GitHub pull request workflow.
 
 sugestion: Review the generated pull request and verify the production copy after services restart.
+
+---
+
+prompt: /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/Share events/second with this *
+
+answer: Improved Share Events with an optional Select Events section, event-level checkboxes grouped by selected day, quick selection actions, and an API payload that only shares checked events when filtering is enabled.
+
+sugestion: Test Share Events locally with Select Events both disabled and enabled to confirm all-events and filtered-event sharing behave as expected.
+
+---
+
+prompt: Improve with this, and repeat the procedure of the compiled prompt for the not already done, and include i same PR
+
+answer: Updated the existing Share Events PR with selective event sharing, refreshed prompt archive, solved enhancement, changelog, documentation, validation, production backup, production deploy, and pushed the changes to the same pull request.
+
+sugestion: Review the updated PR and confirm the production copy after services restart.

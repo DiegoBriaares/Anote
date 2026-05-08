@@ -232,7 +232,7 @@ interface CalendarState {
     addEvent: (date: Date, entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }) => Promise<boolean>;
     addEventsToRange: (entries: Array<{ title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }>) => Promise<void>;
     addEventsBulk: (entries: Array<{ title: string; date: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; wasPostponed?: boolean | null }>) => Promise<boolean>;
-    shareEventsToFriends: (friendIds: string[], dateKeys: string[]) => Promise<boolean>;
+    shareEventsToFriends: (friendIds: string[], dateKeys: string[], eventIds?: string[]) => Promise<boolean>;
     deleteEvent: (id: string) => Promise<void>;
     editEvent: (event: CalendarEvent) => Promise<boolean>;
     setEventCompleted: (event: CalendarEvent, completed: boolean) => Promise<boolean>;
@@ -812,10 +812,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             }
         },
 
-        shareEventsToFriends: async (friendIds, dateKeys) => {
+        shareEventsToFriends: async (friendIds, dateKeys, eventIds) => {
             const { token, user, viewMode } = get();
             if (!token || !user || viewMode === 'friend') return false;
             if (friendIds.length === 0 || dateKeys.length === 0) return false;
+            if (eventIds && eventIds.length === 0) return false;
             set({ actionError: null });
             try {
                 const response = await fetch(`${API_URL}/friends/share-events`, {
@@ -824,7 +825,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ friendIds, dateKeys })
+                    body: JSON.stringify({
+                        friendIds,
+                        dateKeys,
+                        ...(eventIds ? { eventIds } : {})
+                    })
                 });
 
                 if (response.status === 401 || response.status === 403) {

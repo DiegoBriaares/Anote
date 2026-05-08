@@ -15,7 +15,7 @@ The **Calendar Workspace** is the main interactive calendar component.
 - **Marked Day Set**: The days selected for group event publishing.
 - **Execution Cancellation Action**: The X button that clears the current marked-day operation and returns the workspace to idle.
 - **Group Event Reader**: The responsive selected-day event distribution panel.
-- **Group Event Sharer**: The friend checkbox panel that shares marked-day events into selected friends' calendars.
+- **Group Event Sharer**: The friend and event checkbox panel that shares all or selected marked-day events into selected friends' calendars.
 - **Group Event Publisher**: The event draft and queue panel shown after marked days are accepted.
 - **Month Board Grid**: The two-column area that renders the visible months.
 - **Selection Prompt**: The footer hint shown when no date range is selected.

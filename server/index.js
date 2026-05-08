@@ -1015,9 +1015,14 @@ app.post('/friends/share-events', authenticateToken, (req, res) => {
         .filter((date) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()))
         .map((date) => date.trim())))
         .sort();
+    const hasEventSelection = Array.isArray(req.body?.eventIds);
+    const eventIds = Array.from(new Set((hasEventSelection ? req.body.eventIds : [])
+        .filter((id) => typeof id === 'string' && id.trim() !== '')
+        .map((id) => id.trim())));
 
     if (friendIds.length === 0) return res.status(400).json({ error: 'Select at least one friend' });
     if (dateKeys.length === 0) return res.status(400).json({ error: 'Select at least one day' });
+    if (hasEventSelection && eventIds.length === 0) return res.status(400).json({ error: 'Select at least one event' });
     if (friendIds.includes(req.user.id)) return res.status(400).json({ error: 'Cannot share events to yourself' });
 
     const friendPlaceholders = friendIds.map(() => '?').join(', ');
@@ -1036,13 +1041,15 @@ app.post('/friends/share-events', authenticateToken, (req, res) => {
         }
 
         const datePlaceholders = dateKeys.map(() => '?').join(', ');
+        const eventIdPlaceholders = eventIds.map(() => '?').join(', ');
+        const eventIdClause = hasEventSelection ? ` AND id IN (${eventIdPlaceholders})` : '';
         const eventSql = `
             SELECT title, date, start_time as startTime, priority, note, link, completed, resources, unlock_date as unlockDate
             FROM events
-            WHERE user_id = ? AND date IN (${datePlaceholders})
+            WHERE user_id = ? AND date IN (${datePlaceholders})${eventIdClause}
             ORDER BY date, start_time, title`;
 
-        db.all(eventSql, [req.user.id, ...dateKeys], (eventErr, sourceEvents) => {
+        db.all(eventSql, [req.user.id, ...dateKeys, ...eventIds], (eventErr, sourceEvents) => {
             if (eventErr) return res.status(500).json({ error: 'Failed to load events to share' });
 
             const insertCount = sourceEvents.length * allowedFriendIds.length;
