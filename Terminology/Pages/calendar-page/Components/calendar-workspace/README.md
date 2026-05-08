@@ -11,7 +11,7 @@ The **Calendar Workspace** is the main interactive calendar component.
 - **Month Stepper**: The previous/next month control.
 - **Compare Toggle**: Friend-view control that overlays the user's matching events as ghost events.
 - **Postponed Entry Button**: Opens Postponed Events Administration.
-- **Group Publishing Steps**: The Select Days, Share Events, Read Events, Input Events, Publish Events, and X cancellation controls.
+- **Group Publishing Steps**: The Select Days, Read Events, Input Events, Publish Events, Share Events, and X cancellation controls.
 - **Marked Day Set**: The days selected for group event publishing.
 - **Execution Cancellation Action**: The X button that clears the current marked-day operation and returns the workspace to idle.
 - **Group Event Reader**: The responsive selected-day event distribution panel.

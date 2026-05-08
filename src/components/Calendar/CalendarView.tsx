@@ -416,15 +416,6 @@ export const CalendarView: React.FC = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={handleOpenGroupShare}
-                            disabled={!canShareGroupEvents}
-                            className={stepButtonClass(isGroupSharing, false, !canShareGroupEvents)}
-                        >
-                            <Share2 className="w-4 h-4" />
-                            Share Events
-                        </button>
-                        <button
-                            type="button"
                             onClick={handleReadGroupEvents}
                             disabled={!canReadGroupEvents}
                             className={stepButtonClass(isGroupReading, false, !canReadGroupEvents)}
@@ -449,6 +440,15 @@ export const CalendarView: React.FC = () => {
                         >
                             <Send className="w-4 h-4" />
                             {isGroupPublishing ? 'Publishing...' : `Publish Events${totalPublishableGroupEvents > 0 ? ` (${totalPublishableGroupEvents})` : ''}`}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleOpenGroupShare}
+                            disabled={!canShareGroupEvents}
+                            className={stepButtonClass(isGroupSharing, false, !canShareGroupEvents)}
+                        >
+                            <Share2 className="w-4 h-4" />
+                            Share Events
                         </button>
                     </div>
 

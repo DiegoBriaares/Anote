@@ -13,7 +13,7 @@ The **Calendar Page** is the main planning workspace. Users navigate months, ins
 - **Selection Window**: The in-calendar day range selected by dragging across month boards.
 - **Read Events View**: The selected-day event distribution panel with one column per marked day.
 - **Share Events View**: The selected-day event distribution panel for copying all or selected marked-day events into selected friends' calendars.
-- **Group Publishing Steps**: The Select Days, Share Events, Read Events, Input Events, Publish Events, and cancellation controls used for selected-day event distribution work.
+- **Group Publishing Steps**: The Select Days, Read Events, Input Events, Publish Events, Share Events, and cancellation controls used for selected-day event distribution work.
 
 ## Components
 
