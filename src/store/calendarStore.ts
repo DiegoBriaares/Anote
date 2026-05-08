@@ -1309,13 +1309,14 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             const { token, user, fetchProfile } = get();
             if (!token || !user) return;
             try {
+                const { avatar_url, username, ...preferences } = prefs;
                 const res = await fetch(`${API_URL}/me`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ avatar_url: prefs.avatar_url, preferences: prefs, username: prefs.username })
+                    body: JSON.stringify({ avatar_url, preferences, username })
                 });
                 if (res.status === 401 || res.status === 403) {
                     logoutAndReset();

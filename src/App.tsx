@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { CalendarView } from './components/Calendar/CalendarView';
 import { Login } from './components/Auth/Login';
-import { useCalendarStore } from './store/calendarStore';
+import { useCalendarStore, type UserPreferences } from './store/calendarStore';
+import { resolveOwnPreferences } from './utils/preferences';
 import { LogOut, Eye, User, Users, ChevronDown, Settings, Shield } from 'lucide-react';
 import { SocialPanel } from './components/Friends/SocialPanel';
 import { ProfilePanel } from './components/Profile/ProfilePanel';
@@ -57,13 +58,13 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  let storedPrefs: any = null;
+  let storedPrefs: UserPreferences | null = null;
   try {
     storedPrefs = JSON.parse(localStorage.getItem('preferences') || 'null');
   } catch {
     storedPrefs = null;
   }
-  const userPrefs = localPreferences || profile?.preferences || storedPrefs || {};
+  const userPrefs = resolveOwnPreferences(profile?.preferences, storedPrefs, localPreferences);
   const friendPrefs = viewMode === 'friend' ? viewingPreferences || {} : {};
 
   // Never let friend views override user theme/accent
