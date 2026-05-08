@@ -1,0 +1,3 @@
+Configuring a background image URL in the profile page saved the preference successfully, and friend calendar views could render that saved background through the viewed user's preferences. The owner view could still miss the image because local appearance preferences were treated as a complete replacement for profile preferences.
+
+The fix merges stored, profile, and local owner preferences so partial local settings such as accent color or theme no longer hide the saved background URL. Saving profile preferences also updates the local appearance cache with the background value immediately, so the configured image is effective for the user who configured it as well as friends viewing that profile.

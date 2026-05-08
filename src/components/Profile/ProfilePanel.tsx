@@ -54,13 +54,17 @@ export const ProfilePanel: React.FC = () => {
     }, [profile, cachedPrefs, isDirty]);
 
     const handleSave = async () => {
-        await updateProfile({
+        const nextPreferences = {
             backgroundUrl: bgUrl || undefined,
             accentColor,
             noiseOverlay,
-            theme,
+            theme
+        };
+        await updateProfile({
+            ...nextPreferences,
             username
         });
+        setLocalPreferences({ ...nextPreferences, _updatedAt: Date.now() });
         applyAppearance({ theme, accentColor });
         setIsDirty(false);
         navigateToCalendar();
