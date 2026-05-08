@@ -8,7 +8,7 @@ The shared product vocabulary lives in [`Terminology/`](Terminology/README.md). 
 
 Anote is organized around an authenticated **App Shell** that renders one active page from Zustand view state:
 
-- **Calendar Page**: two-month planning workspace with in-calendar day selection, friend read-only mode, day inspection, day visual settings, selected-day event reading, and explicit group event day marking.
+- **Calendar Page**: two-month planning workspace with in-calendar day selection, friend read-only mode, day inspection, day visual settings, selected-day event reading, selected-day event sharing with optional event filtering, and explicit group event day marking.
 - **Day Events Administration Page**: focused event workbench for one day, with event CRUD, completion, event history, copy/move, and postponed transfer actions.
 - **Postponed Events Administration Page**: manages postponed events in `This week events` and `All events` scopes, including restoration back to calendar days.
 - **Profile Page**: username, background image, accent color, noise overlay, and theme preferences.

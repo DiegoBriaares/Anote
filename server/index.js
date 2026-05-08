@@ -1007,6 +1007,124 @@ app.get('/friends', authenticateToken, (req, res) => {
     });
 });
 
+app.post('/friends/share-events', authenticateToken, (req, res) => {
+    const friendIds = Array.from(new Set((Array.isArray(req.body?.friendIds) ? req.body.friendIds : [])
+        .filter((id) => typeof id === 'string' && id.trim() !== '')
+        .map((id) => id.trim())));
+    const dateKeys = Array.from(new Set((Array.isArray(req.body?.dateKeys) ? req.body.dateKeys : [])
+        .filter((date) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date.trim()))
+        .map((date) => date.trim())))
+        .sort();
+    const hasEventSelection = Array.isArray(req.body?.eventIds);
+    const eventIds = Array.from(new Set((hasEventSelection ? req.body.eventIds : [])
+        .filter((id) => typeof id === 'string' && id.trim() !== '')
+        .map((id) => id.trim())));
+
+    if (friendIds.length === 0) return res.status(400).json({ error: 'Select at least one friend' });
+    if (dateKeys.length === 0) return res.status(400).json({ error: 'Select at least one day' });
+    if (hasEventSelection && eventIds.length === 0) return res.status(400).json({ error: 'Select at least one event' });
+    if (friendIds.includes(req.user.id)) return res.status(400).json({ error: 'Cannot share events to yourself' });
+
+    const friendPlaceholders = friendIds.map(() => '?').join(', ');
+    const friendSql = `
+        SELECT CASE WHEN user_a = ? THEN user_b ELSE user_a END as id
+        FROM friendships
+        WHERE (user_a = ? OR user_b = ?)
+          AND (CASE WHEN user_a = ? THEN user_b ELSE user_a END) IN (${friendPlaceholders})`;
+
+    db.all(friendSql, [req.user.id, req.user.id, req.user.id, req.user.id, ...friendIds], (friendErr, rows) => {
+        if (friendErr) return res.status(500).json({ error: 'Friendship check failed' });
+
+        const allowedFriendIds = rows.map((row) => row.id);
+        if (allowedFriendIds.length !== friendIds.length) {
+            return res.status(403).json({ error: 'Events can only be shared with friends' });
+        }
+
+        const datePlaceholders = dateKeys.map(() => '?').join(', ');
+        const eventIdPlaceholders = eventIds.map(() => '?').join(', ');
+        const eventIdClause = hasEventSelection ? ` AND id IN (${eventIdPlaceholders})` : '';
+        const eventSql = `
+            SELECT title, date, start_time as startTime, priority, note, link, completed, resources, unlock_date as unlockDate
+            FROM events
+            WHERE user_id = ? AND date IN (${datePlaceholders})${eventIdClause}
+            ORDER BY date, start_time, title`;
+
+        db.all(eventSql, [req.user.id, ...dateKeys, ...eventIds], (eventErr, sourceEvents) => {
+            if (eventErr) return res.status(500).json({ error: 'Failed to load events to share' });
+
+            const insertCount = sourceEvents.length * allowedFriendIds.length;
+            if (insertCount === 0) {
+                return res.json({ message: 'success', count: 0, days: dateKeys.length, friends: allowedFriendIds.length });
+            }
+
+            const stmt = db.prepare(`
+                INSERT INTO events (id, title, date, user_id, start_time, priority, note, link, completed, updated_at, resources, unlock_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            const now = Date.now();
+            let pending = insertCount;
+            let inserted = 0;
+            let insertError = null;
+
+            const finish = () => {
+                pending -= 1;
+                if (pending > 0) return;
+
+                stmt.finalize();
+                if (insertError) {
+                    db.run('ROLLBACK', (rollbackErr) => {
+                        if (rollbackErr) console.error('Error rolling back shared events:', rollbackErr.message);
+                        res.status(500).json({ error: 'Failed to share events' });
+                    });
+                    return;
+                }
+
+                db.run('COMMIT', (commitErr) => {
+                    if (commitErr) return res.status(500).json({ error: commitErr.message });
+                    res.json({
+                        message: 'success',
+                        count: inserted,
+                        days: dateKeys.length,
+                        friends: allowedFriendIds.length
+                    });
+                });
+            };
+
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                allowedFriendIds.forEach((friendId) => {
+                    sourceEvents.forEach((event) => {
+                        stmt.run(
+                            crypto.randomUUID(),
+                            event.title,
+                            event.date,
+                            friendId,
+                            event.startTime || null,
+                            event.priority === null || event.priority === undefined
+                                ? null
+                                : (Number.isFinite(Number(event.priority)) ? Math.trunc(Number(event.priority)) : null),
+                            event.note || null,
+                            event.link || null,
+                            normalizeCompletedValue(event.completed),
+                            now,
+                            event.resources || null,
+                            event.unlockDate || null,
+                            (insertErr) => {
+                                if (insertErr) {
+                                    console.error('Error sharing event:', insertErr.message);
+                                    insertError = insertErr;
+                                } else {
+                                    inserted += 1;
+                                }
+                                finish();
+                            }
+                        );
+                    });
+                });
+            });
+        });
+    });
+});
+
 app.post('/friends/:friendId', authenticateToken, (req, res) => {
     const friendId = req.params.friendId;
     if (!friendId) return res.status(400).json({ error: 'Missing friend id' });

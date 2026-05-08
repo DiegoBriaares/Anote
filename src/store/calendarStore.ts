@@ -232,6 +232,7 @@ interface CalendarState {
     addEvent: (date: Date, entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }) => Promise<boolean>;
     addEventsToRange: (entries: Array<{ title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null }>) => Promise<void>;
     addEventsBulk: (entries: Array<{ title: string; date: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; wasPostponed?: boolean | null }>) => Promise<boolean>;
+    shareEventsToFriends: (friendIds: string[], dateKeys: string[], eventIds?: string[]) => Promise<boolean>;
     deleteEvent: (id: string) => Promise<void>;
     editEvent: (event: CalendarEvent) => Promise<boolean>;
     setEventCompleted: (event: CalendarEvent, completed: boolean) => Promise<boolean>;
@@ -807,6 +808,51 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 return true;
             } catch (error) {
                 console.error('Failed to save events:', error);
+                return false;
+            }
+        },
+
+        shareEventsToFriends: async (friendIds, dateKeys, eventIds) => {
+            const { token, user, viewMode } = get();
+            if (!token || !user || viewMode === 'friend') return false;
+            if (friendIds.length === 0 || dateKeys.length === 0) return false;
+            if (eventIds && eventIds.length === 0) return false;
+            set({ actionError: null });
+            try {
+                const response = await fetch(`${API_URL}/friends/share-events`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        friendIds,
+                        dateKeys,
+                        ...(eventIds ? { eventIds } : {})
+                    })
+                });
+
+                if (response.status === 401 || response.status === 403) {
+                    if (response.status === 403) {
+                        const actionError = await readResponseErrorMessage(response, 'Cannot share events with the selected friends');
+                        set({ actionError });
+                        return false;
+                    }
+                    logoutAndReset();
+                    return false;
+                }
+
+                if (!response.ok) {
+                    const actionError = await readResponseErrorMessage(response, 'Failed to share events');
+                    set({ actionError });
+                    return false;
+                }
+
+                set({ actionError: null });
+                return true;
+            } catch (error) {
+                console.error('Failed to share events:', error);
+                set({ actionError: `Unable to share events. Is the API running at ${API_URL}?` });
                 return false;
             }
         },
