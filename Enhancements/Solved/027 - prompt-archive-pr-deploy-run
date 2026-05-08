@@ -1,0 +1,3 @@
+This release workflow enhancement records the current conversation prompts, links them to the resolved bug and release work, creates concise future-facing documentation, and carries the local changes through the repository publication and deployment flow.
+
+The workflow should keep prompt archives grouped by issue, add a changelog entry that explains the actual product change, publish the work as a new pull request, archive the existing production copy, and deploy the updated development tree to the production directory.

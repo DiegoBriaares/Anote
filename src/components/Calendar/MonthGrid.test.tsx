@@ -58,4 +58,25 @@ describe('MonthGrid', () => {
         expect(timeChip.closest('.time-pill-completed')).not.toBeNull();
         expect(timeChip.closest('.event-chip-completed')).not.toBeNull();
     });
+
+    it('marks explicitly selected group-event days outside the drag range selection', () => {
+        const markedDate = new Date(2026, 3, 23);
+        const dateKey = formatDate(markedDate);
+
+        render(
+            <MonthGrid
+                year={2026}
+                month={3}
+                onDateClick={() => {}}
+                onDateEnter={() => {}}
+                isSelecting={false}
+                markedDateKeys={[dateKey]}
+                isDayMarkingActive
+            />
+        );
+
+        expect(screen.getByText('MARKED')).toBeTruthy();
+        expect(screen.getByText('SELECTED')).toBeTruthy();
+        expect(screen.getByText('23').closest('.cell-selected')).not.toBeNull();
+    });
 });

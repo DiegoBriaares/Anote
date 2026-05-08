@@ -2,9 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
-import { ChevronLeft, ChevronRight, Compass } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send } from 'lucide-react';
 import { DayModal } from './DayModal';
 import { DayConfigModal } from './DayConfigModal';
+import { GroupEventPublisher } from './GroupEventPublisher';
+import { buildGroupEventPublishEntries, buildQueuedGroupEvent, hasPublishableGroupDraft, type GroupEventDraft, type QueuedGroupEvent } from './groupEventUtils';
+import clsx from 'clsx';
+
+type GroupEventStep = 'idle' | 'select-days' | 'input-events' | 'ready-to-publish' | 'publishing';
+
+const emptyGroupDraft: GroupEventDraft = {
+    title: '',
+    startTime: '',
+    priority: '',
+    link: '',
+    note: ''
+};
 
 export const CalendarView: React.FC = () => {
     const {
@@ -21,13 +34,21 @@ export const CalendarView: React.FC = () => {
         viewingUserId,
         viewingUsername,
         navigateToPostponed,
-        navigateToDayAdministration
+        navigateToDayAdministration,
+        clearSelection,
+        addEventsBulk,
+        actionError,
+        clearActionError
     } = useCalendarStore();
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectionStart, setSelectionStart] = useState<Date | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(false); // New state
     const [hoverDate, setHoverDate] = useState<Date | null>(null);
     const [modalDate, setModalDate] = useState<Date | null>(null);
+    const [groupStep, setGroupStep] = useState<GroupEventStep>('idle');
+    const [markedDateKeys, setMarkedDateKeys] = useState<string[]>([]);
+    const [groupDraft, setGroupDraft] = useState<GroupEventDraft>(emptyGroupDraft);
+    const [queuedGroupEvents, setQueuedGroupEvents] = useState<QueuedGroupEvent[]>([]);
 
     // Concurrency: Auto-refresh data every 10 seconds
     useEffect(() => {
@@ -71,6 +92,16 @@ export const CalendarView: React.FC = () => {
     }, [isSelecting, selectionStart, hoverDate, setSelection, setSelectionActive]);
 
     const handleDateClick = (date: Date) => {
+        if (groupStep === 'select-days') {
+            const dateKey = formatDate(date);
+            setMarkedDateKeys((current) => (
+                current.includes(dateKey)
+                    ? current.filter((key) => key !== dateKey)
+                    : [...current, dateKey].sort()
+            ));
+            return;
+        }
+
         setIsSelecting(true);
         setSelectionActive(true);
         setSelectionStart(date);
@@ -79,6 +110,7 @@ export const CalendarView: React.FC = () => {
     };
 
     const handleDateEnter = (date: Date) => {
+        if (groupStep === 'select-days') return;
         if (isSelecting && selectionStart) {
             setHoverDate(date);
             setSelection(selectionStart, date);
@@ -86,7 +118,64 @@ export const CalendarView: React.FC = () => {
     };
 
     const handleDateDoubleClick = (date: Date) => {
+        if (groupStep === 'select-days') return;
         setModalDate(date);
+    };
+
+    const resetGroupPublishing = () => {
+        setGroupStep('idle');
+        setMarkedDateKeys([]);
+        setQueuedGroupEvents([]);
+        setGroupDraft(emptyGroupDraft);
+    };
+
+    const handleStartGroupSelection = () => {
+        clearActionError();
+        clearSelection();
+        setIsSelecting(false);
+        setSelectionStart(null);
+        setHoverDate(null);
+        setMarkedDateKeys([]);
+        setQueuedGroupEvents([]);
+        setGroupDraft(emptyGroupDraft);
+        setGroupStep('select-days');
+    };
+
+    const handleMarkDays = () => {
+        if (markedDateKeys.length === 0) return;
+        clearActionError();
+        setGroupStep('input-events');
+    };
+
+    const handleAddQueuedEvent = () => {
+        clearActionError();
+        const event = buildQueuedGroupEvent(groupDraft);
+        if (!event) return;
+        setQueuedGroupEvents((current) => [...current, event]);
+        setGroupDraft(emptyGroupDraft);
+        setGroupStep('ready-to-publish');
+    };
+
+    const handleRemoveQueuedEvent = (id: string) => {
+        const willRemoveLastEvent = queuedGroupEvents.length === 1 && queuedGroupEvents[0]?.id === id;
+        setQueuedGroupEvents((current) => current.filter((event) => event.id !== id));
+        if (willRemoveLastEvent && groupStep === 'ready-to-publish') {
+            setGroupStep('input-events');
+        }
+    };
+
+    const handlePublishGroupEvents = async () => {
+        const hasActiveDraft = hasPublishableGroupDraft(groupDraft);
+        if ((queuedGroupEvents.length === 0 && !hasActiveDraft) || markedDateKeys.length === 0 || groupStep === 'publishing') return;
+        clearActionError();
+        setGroupStep('publishing');
+        const payload = buildGroupEventPublishEntries(markedDateKeys, queuedGroupEvents, groupDraft);
+        const wasPublished = await addEventsBulk(payload);
+        if (!wasPublished) {
+            setGroupStep(queuedGroupEvents.length > 0 || hasActiveDraft ? 'ready-to-publish' : 'input-events');
+            return;
+        }
+        resetGroupPublishing();
     };
 
     const handleOpenDayAdministration = (date: Date) => {
@@ -110,6 +199,23 @@ export const CalendarView: React.FC = () => {
         monthsToDisplay.push({ ...current });
         current = getNextMonth(current.year, current.month);
     }
+
+    const isGroupSelecting = groupStep === 'select-days';
+    const isGroupInputActive = groupStep === 'input-events';
+    const isGroupPublishReady = groupStep === 'ready-to-publish';
+    const isGroupPublishing = groupStep === 'publishing';
+    const hasActiveGroupDraft = hasPublishableGroupDraft(groupDraft);
+    const totalPublishableGroupEvents = queuedGroupEvents.length + (hasActiveGroupDraft ? 1 : 0);
+    const canMarkDays = isGroupSelecting && markedDateKeys.length > 0;
+    const canPublishGroupEvents = (isGroupInputActive || isGroupPublishReady || isGroupPublishing) && totalPublishableGroupEvents > 0 && markedDateKeys.length > 0;
+
+    const stepButtonClass = (isActive: boolean, isComplete: boolean, isDisabled = false) => clsx(
+        'min-h-[44px] px-4 py-2 rounded-xl border text-xs font-mono font-bold uppercase tracking-[0.18em] transition-all flex items-center gap-2',
+        isActive && 'bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-300/40',
+        isComplete && !isActive && 'bg-stone-100 text-stone-500 border-stone-200',
+        !isActive && !isComplete && 'bg-white/85 text-stone-500 border-orange-200 hover:border-orange-400 hover:text-orange-600',
+        isDisabled && 'opacity-50 cursor-not-allowed hover:border-orange-200 hover:text-stone-500'
+    );
 
     return (
         <div className="flex flex-col w-full max-w-[1600px] mx-auto p-4 sm:p-8">
@@ -176,6 +282,73 @@ export const CalendarView: React.FC = () => {
                 </div>
             )}
 
+            {viewMode !== 'friend' && (
+                <div className="mb-6 flex flex-col items-center gap-3">
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={groupStep === 'idle' ? handleStartGroupSelection : handleMarkDays}
+                            disabled={(groupStep !== 'idle' && !isGroupSelecting) || (isGroupSelecting && !canMarkDays) || isGroupPublishing}
+                            className={stepButtonClass(isGroupSelecting || groupStep === 'idle', groupStep !== 'idle' && !isGroupSelecting, isGroupSelecting && !canMarkDays)}
+                        >
+                            {groupStep !== 'idle' && !isGroupSelecting ? <CheckCircle2 className="w-4 h-4" /> : <CalendarDays className="w-4 h-4" />}
+                            {isGroupSelecting ? `Mark Days (${markedDateKeys.length})` : 'Select Days'}
+                        </button>
+                        <button
+                            type="button"
+                            disabled
+                            className={stepButtonClass(isGroupInputActive, isGroupPublishReady || isGroupPublishing, !isGroupInputActive && !isGroupPublishReady && !isGroupPublishing)}
+                        >
+                            {isGroupPublishReady || isGroupPublishing ? <CheckCircle2 className="w-4 h-4" /> : <ListChecks className="w-4 h-4" />}
+                            Input Events
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handlePublishGroupEvents}
+                            disabled={!canPublishGroupEvents || isGroupPublishing}
+                            className={stepButtonClass(isGroupPublishReady || isGroupPublishing, false, !canPublishGroupEvents || isGroupPublishing)}
+                        >
+                            <Send className="w-4 h-4" />
+                            {isGroupPublishing ? 'Publishing...' : `Publish Events${totalPublishableGroupEvents > 0 ? ` (${totalPublishableGroupEvents})` : ''}`}
+                        </button>
+                    </div>
+
+                    {groupStep !== 'idle' && (
+                        <div className="flex items-center gap-3 text-[10px] font-mono text-stone-500 uppercase tracking-[0.2em] flex-wrap justify-center">
+                            <span>{markedDateKeys.length} selected day{markedDateKeys.length === 1 ? '' : 's'}</span>
+                            <span>{queuedGroupEvents.length} queued event{queuedGroupEvents.length === 1 ? '' : 's'}</span>
+                            <button
+                                type="button"
+                                onClick={resetGroupPublishing}
+                                disabled={isGroupPublishing}
+                                className="text-stone-400 hover:text-stone-700 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {(isGroupInputActive || isGroupPublishReady || isGroupPublishing) && (
+                <>
+                    {actionError && (
+                        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
+                            {actionError}
+                        </div>
+                    )}
+                    <GroupEventPublisher
+                        selectedDateKeys={markedDateKeys}
+                        draft={groupDraft}
+                        queuedEvents={queuedGroupEvents}
+                        isSubmitting={isGroupPublishing}
+                        onDraftChange={setGroupDraft}
+                        onAddQueuedEvent={handleAddQueuedEvent}
+                        onRemoveQueuedEvent={handleRemoveQueuedEvent}
+                    />
+                </>
+            )}
+
             {/* Main Grid */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 select-none">
                 {monthsToDisplay.map((m) => (
@@ -187,6 +360,8 @@ export const CalendarView: React.FC = () => {
                         onDateDoubleClick={handleDateDoubleClick}
                         onDateEnter={handleDateEnter}
                         isSelecting={isSelecting}
+                        markedDateKeys={markedDateKeys}
+                        isDayMarkingActive={isGroupSelecting}
                     />
                 ))}
             </div>
