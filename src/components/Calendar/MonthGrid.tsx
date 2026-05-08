@@ -11,6 +11,8 @@ interface MonthGridProps {
     onDateDoubleClick?: (date: Date) => void;
     onDateEnter: (date: Date) => void;
     isSelecting: boolean;
+    markedDateKeys?: string[];
+    isDayMarkingActive?: boolean;
 }
 
 export const MonthGrid: React.FC<MonthGridProps> = ({
@@ -19,11 +21,14 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
     onDateClick,
     onDateDoubleClick,
     onDateEnter,
-    isSelecting
+    isSelecting,
+    markedDateKeys = [],
+    isDayMarkingActive = false
 }) => {
     const days = getMonthGrid(year, month);
     const { events, selection, compareMode, compareEvents } = useCalendarStore();
     const currentMonthDate = new Date(year, month);
+    const markedDates = new Set(markedDateKeys);
 
     return (
         <div className="relative flex flex-col calendar-panel p-4 rounded-2xl">
@@ -75,7 +80,9 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                         });
                     })();
                     const ghostEvents = compareMode ? (compareEvents[dateStr] || []) : [];
-                    const isSelected = isDateInRange(date, selection.start, selection.end);
+                    const isRangeSelected = isDateInRange(date, selection.start, selection.end);
+                    const isMarked = markedDates.has(dateStr);
+                    const isSelected = isRangeSelected || isMarked;
                     const isCurrentMonth = isSameMonth(date, currentMonthDate);
                     const isDayToday = isToday(date);
 
@@ -114,6 +121,11 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                     {String(date.getDate()).padStart(2, '0')}
                                 </span>
                                 <div className="flex gap-1">
+                                    {isMarked && (
+                                        <span className="text-[9px] text-orange-600 font-mono bg-orange-100 px-1 rounded event-count">
+                                            MARKED
+                                        </span>
+                                    )}
                                     {dayEvents.length > 0 && (
                                         <span className="text-[9px] text-stone-500 font-mono bg-stone-100 px-1 rounded event-count">
                                             [{dayEvents.length}]
@@ -171,6 +183,11 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                 <div className="absolute inset-0 border-2 border-orange-400 pointer-events-none rounded selection-overlay">
                                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[1px] bg-orange-300/50" />
                                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-[1px] bg-orange-300/50" />
+                                    {isMarked && isDayMarkingActive && (
+                                        <div className="absolute bottom-2 left-2 rounded-full bg-orange-500 px-2 py-0.5 text-[9px] font-mono text-white shadow-sm">
+                                            SELECTED
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

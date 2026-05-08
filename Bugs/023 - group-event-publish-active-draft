@@ -1,0 +1,5 @@
+The group event publishing flow could appear to accept a newly entered event while failing to persist it when the user clicked Publish Events directly from the input form.
+
+The root issue was that publishing only considered events already added to the queued-events list. A valid draft still present in the active input fields was excluded from the bulk payload, so the publish action could complete without creating the event the user had just typed.
+
+The fix should treat a non-empty active draft as publishable input, build the same normalized bulk event payload for queued events and active drafts, and keep the publish button enabled whenever there is either a queued event or a valid draft for at least one selected day.
