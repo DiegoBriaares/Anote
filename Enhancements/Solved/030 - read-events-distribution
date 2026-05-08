@@ -1,0 +1,3 @@
+The selected-day event distribution workflow needs a read-only view that merges all events from the selected days into one workspace.
+
+The implemented view reuses the marked day set from the event distribution controls. Users can select or drag across days, then choose Read Events to render one responsive column per selected day. When the selected set is too wide, the columns wrap into additional rows instead of forcing horizontal page scrolling.

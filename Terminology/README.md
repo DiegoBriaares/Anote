@@ -27,6 +27,8 @@ Use these names in prompts, issues, pull requests, changelogs, screenshots, and 
 - **Track Record**: The user-facing event history disclosure for origin dates and postponed status.
 - **Selection Window**: The date range selected by dragging across the calendar; it remains an in-calendar highlight until another selection or clear action replaces it.
 - **Marked Day Set**: The days selected for group event publishing.
+- **Execution Cancellation Action**: The X action that clears the active selected-day operation before it is published.
+- **Read Events View**: A selected-day event distribution panel that wraps day columns into additional rows instead of relying on horizontal overflow.
 - **Source Day**: The selected day whose events are being copied, moved, or postponed.
 - **Target Day**: The destination day for copied or moved events.
 - **View Scope**: The postponed bucket currently visible: `This week events` or `All events`.
