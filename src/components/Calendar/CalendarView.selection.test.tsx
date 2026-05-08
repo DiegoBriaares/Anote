@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CalendarView } from './CalendarView';
 import { useCalendarStore } from '../../store/calendarStore';
 import { formatDate } from '../../utils/dateUtils';
@@ -16,6 +16,7 @@ describe('CalendarView range selection', () => {
             viewingUserId: null,
             viewingUsername: null,
             actionError: null,
+            friends: [],
             compareMode: false,
             compareEvents: {},
             dailyFacts: {},
@@ -23,7 +24,8 @@ describe('CalendarView range selection', () => {
             fetchEvents: vi.fn().mockResolvedValue(undefined),
             fetchFriendEvents: vi.fn().mockResolvedValue(undefined),
             fetchMonthVisuals: vi.fn().mockResolvedValue(undefined),
-            addEventsBulk: vi.fn().mockResolvedValue(true)
+            addEventsBulk: vi.fn().mockResolvedValue(true),
+            shareEventsToFriends: vi.fn().mockResolvedValue(true)
         } as never);
     });
 
@@ -118,6 +120,52 @@ describe('CalendarView range selection', () => {
         expect(screen.getByText('Planning review')).toBeTruthy();
         expect(screen.getByText('Launch readout')).toBeTruthy();
         expect(useCalendarStore.getState().selection.start).toBeNull();
+    });
+
+    it('shares marked-day events to checked friends', async () => {
+        const shareEventsToFriends = vi.fn().mockResolvedValue(true);
+        useCalendarStore.setState({
+            friends: [
+                { id: 'friend-1', username: 'Ada Friend' },
+                { id: 'friend-2', username: 'Grace Friend' }
+            ],
+            events: {
+                '2026-04-23': [
+                    {
+                        id: 'event-1',
+                        title: 'Planning review',
+                        date: '2026-04-23',
+                        startTime: '09:30',
+                        priority: 2,
+                        note: null,
+                        link: null,
+                        completed: false
+                    }
+                ]
+            },
+            shareEventsToFriends
+        } as never);
+
+        render(<CalendarView />);
+
+        fireEvent.click(screen.getByRole('button', { name: /select days/i }));
+
+        const day23 = screen.getAllByText('23')[0].closest('.calendar-cell');
+        fireEvent.mouseDown(day23!);
+        fireEvent.mouseUp(window);
+        fireEvent.click(screen.getByRole('button', { name: /share events/i }));
+
+        expect(screen.getByText('Select Friends')).toBeTruthy();
+
+        fireEvent.click(screen.getByLabelText('Ada Friend'));
+        fireEvent.click(screen.getAllByRole('button', { name: /share events/i }).at(-1)!);
+
+        await waitFor(() => {
+            expect(shareEventsToFriends).toHaveBeenCalledWith(['friend-1'], ['2026-04-23']);
+        });
+
+        expect(screen.queryByText('Select Friends')).toBeNull();
+        expect(screen.getByRole('button', { name: /select days/i })).toBeTruthy();
     });
 
     it('cancels an in-progress marked-day operation with the X action', () => {

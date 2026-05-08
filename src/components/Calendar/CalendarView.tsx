@@ -3,15 +3,16 @@ import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
 import { eachDayOfInterval } from 'date-fns';
-import { BookOpenText, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send, X } from 'lucide-react';
+import { BookOpenText, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send, Share2, X } from 'lucide-react';
 import { DayModal } from './DayModal';
 import { DayConfigModal } from './DayConfigModal';
 import { GroupEventPublisher } from './GroupEventPublisher';
 import { GroupEventReader } from './GroupEventReader';
+import { GroupEventSharer } from './GroupEventSharer';
 import { buildGroupEventPublishEntries, buildQueuedGroupEvent, hasPublishableGroupDraft, type GroupEventDraft, type QueuedGroupEvent } from './groupEventUtils';
 import clsx from 'clsx';
 
-type GroupEventStep = 'idle' | 'select-days' | 'read-events' | 'input-events' | 'ready-to-publish' | 'publishing';
+type GroupEventStep = 'idle' | 'select-days' | 'share-events' | 'sharing' | 'read-events' | 'input-events' | 'ready-to-publish' | 'publishing';
 
 const emptyGroupDraft: GroupEventDraft = {
     title: '',
@@ -45,6 +46,8 @@ export const CalendarView: React.FC = () => {
         navigateToDayAdministration,
         clearSelection,
         addEventsBulk,
+        shareEventsToFriends,
+        friends,
         actionError,
         clearActionError
     } = useCalendarStore();
@@ -59,6 +62,7 @@ export const CalendarView: React.FC = () => {
     const [markedDateKeys, setMarkedDateKeys] = useState<string[]>([]);
     const [groupDraft, setGroupDraft] = useState<GroupEventDraft>(emptyGroupDraft);
     const [queuedGroupEvents, setQueuedGroupEvents] = useState<QueuedGroupEvent[]>([]);
+    const [selectedShareFriendIds, setSelectedShareFriendIds] = useState<string[]>([]);
 
     // Concurrency: Auto-refresh data every 10 seconds
     useEffect(() => {
@@ -147,6 +151,7 @@ export const CalendarView: React.FC = () => {
         setGroupStep('idle');
         setMarkedDateKeys([]);
         setQueuedGroupEvents([]);
+        setSelectedShareFriendIds([]);
         setGroupDraft(emptyGroupDraft);
         setIsMarkingDays(false);
         setMarkingStart(null);
@@ -163,6 +168,7 @@ export const CalendarView: React.FC = () => {
         setHoverDate(null);
         setMarkedDateKeys([]);
         setQueuedGroupEvents([]);
+        setSelectedShareFriendIds([]);
         setGroupDraft(emptyGroupDraft);
         setGroupStep('select-days');
     };
@@ -174,15 +180,41 @@ export const CalendarView: React.FC = () => {
     };
 
     const handleReadGroupEvents = () => {
-        if (markedDateKeys.length === 0 || groupStep === 'publishing') return;
+        if (markedDateKeys.length === 0 || groupStep === 'publishing' || groupStep === 'sharing') return;
         clearActionError();
         setGroupStep('read-events');
     };
 
+    const handleOpenGroupShare = () => {
+        if (markedDateKeys.length === 0 || groupStep === 'publishing' || groupStep === 'sharing') return;
+        clearActionError();
+        setGroupStep('share-events');
+    };
+
     const handleOpenGroupInput = () => {
-        if (markedDateKeys.length === 0 || groupStep === 'publishing') return;
+        if (markedDateKeys.length === 0 || groupStep === 'publishing' || groupStep === 'sharing') return;
         clearActionError();
         setGroupStep(queuedGroupEvents.length > 0 ? 'ready-to-publish' : 'input-events');
+    };
+
+    const handleToggleShareFriend = (friendId: string) => {
+        setSelectedShareFriendIds((current) => (
+            current.includes(friendId)
+                ? current.filter((id) => id !== friendId)
+                : [...current, friendId]
+        ));
+    };
+
+    const handleShareGroupEvents = async () => {
+        if (markedDateKeys.length === 0 || selectedShareFriendIds.length === 0 || groupStep === 'sharing') return;
+        clearActionError();
+        setGroupStep('sharing');
+        const wasShared = await shareEventsToFriends(selectedShareFriendIds, markedDateKeys);
+        if (!wasShared) {
+            setGroupStep('share-events');
+            return;
+        }
+        resetGroupPublishing();
     };
 
     const handleAddQueuedEvent = () => {
@@ -239,15 +271,18 @@ export const CalendarView: React.FC = () => {
     }
 
     const isGroupSelecting = groupStep === 'select-days';
+    const isGroupSharing = groupStep === 'share-events' || groupStep === 'sharing';
     const isGroupReading = groupStep === 'read-events';
     const isGroupInputActive = groupStep === 'input-events';
     const isGroupPublishReady = groupStep === 'ready-to-publish';
     const isGroupPublishing = groupStep === 'publishing';
+    const isBusySharing = groupStep === 'sharing';
     const hasActiveGroupDraft = hasPublishableGroupDraft(groupDraft);
     const totalPublishableGroupEvents = queuedGroupEvents.length + (hasActiveGroupDraft ? 1 : 0);
     const canMarkDays = isGroupSelecting && markedDateKeys.length > 0;
-    const canReadGroupEvents = markedDateKeys.length > 0 && !isGroupPublishing;
-    const canOpenGroupInput = markedDateKeys.length > 0 && !isGroupPublishing;
+    const canShareGroupEvents = markedDateKeys.length > 0 && !isGroupPublishing && !isBusySharing;
+    const canReadGroupEvents = markedDateKeys.length > 0 && !isGroupPublishing && !isBusySharing;
+    const canOpenGroupInput = markedDateKeys.length > 0 && !isGroupPublishing && !isBusySharing;
     const canPublishGroupEvents = (isGroupInputActive || isGroupPublishReady || isGroupPublishing) && totalPublishableGroupEvents > 0 && markedDateKeys.length > 0;
 
     const stepButtonClass = (isActive: boolean, isComplete: boolean, isDisabled = false) => clsx(
@@ -337,6 +372,15 @@ export const CalendarView: React.FC = () => {
                         </button>
                         <button
                             type="button"
+                            onClick={handleOpenGroupShare}
+                            disabled={!canShareGroupEvents}
+                            className={stepButtonClass(isGroupSharing, false, !canShareGroupEvents)}
+                        >
+                            <Share2 className="w-4 h-4" />
+                            Share Events
+                        </button>
+                        <button
+                            type="button"
                             onClick={handleReadGroupEvents}
                             disabled={!canReadGroupEvents}
                             className={stepButtonClass(isGroupReading, false, !canReadGroupEvents)}
@@ -368,10 +412,13 @@ export const CalendarView: React.FC = () => {
                         <div className="flex items-center gap-3 text-[10px] font-mono text-stone-500 uppercase tracking-[0.2em] flex-wrap justify-center">
                             <span>{markedDateKeys.length} selected day{markedDateKeys.length === 1 ? '' : 's'}</span>
                             <span>{queuedGroupEvents.length} queued event{queuedGroupEvents.length === 1 ? '' : 's'}</span>
+                            {selectedShareFriendIds.length > 0 && (
+                                <span>{selectedShareFriendIds.length} selected friend{selectedShareFriendIds.length === 1 ? '' : 's'}</span>
+                            )}
                             <button
                                 type="button"
                                 onClick={resetGroupPublishing}
-                                disabled={isGroupPublishing}
+                                disabled={isGroupPublishing || isBusySharing}
                                 aria-label="Cancel group event operation"
                                 title="Cancel group event operation"
                                 className="rounded-full border border-orange-100 bg-white/80 p-1.5 text-stone-400 hover:border-orange-300 hover:text-stone-700 disabled:opacity-50"
@@ -388,6 +435,25 @@ export const CalendarView: React.FC = () => {
                     selectedDateKeys={markedDateKeys}
                     eventsByDate={events}
                 />
+            )}
+
+            {isGroupSharing && (
+                <>
+                    {actionError && (
+                        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
+                            {actionError}
+                        </div>
+                    )}
+                    <GroupEventSharer
+                        selectedDateKeys={markedDateKeys}
+                        eventsByDate={events}
+                        friends={friends}
+                        selectedFriendIds={selectedShareFriendIds}
+                        isSubmitting={isBusySharing}
+                        onToggleFriend={handleToggleShareFriend}
+                        onShare={handleShareGroupEvents}
+                    />
+                </>
             )}
 
             {(isGroupInputActive || isGroupPublishReady || isGroupPublishing) && (
