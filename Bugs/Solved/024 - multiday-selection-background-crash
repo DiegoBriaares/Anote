@@ -1,0 +1,3 @@
+Dragging across more than one day on the calendar could trigger the legacy multi-day range input surface after mouseup. That surface was no longer a safe entry point for the current calendar workflow and could leave the app showing only the themed background with no loaded page content.
+
+The fix keeps multi-day drag selection as an in-calendar selection state. Releasing the mouse preserves the selected day range on the calendar and avoids mounting the broken range input surface, so the user can make another selection or proceed through the explicit day-marking flow without being navigated away.

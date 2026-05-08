@@ -94,7 +94,7 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                             key={date.toISOString()}
                             onMouseDown={() => onDateClick(date)}
                             onDoubleClick={() => onDateDoubleClick?.(date)}
-                            onMouseEnter={() => isSelecting && onDateEnter(date)}
+                            onMouseEnter={() => (isSelecting || isDayMarkingActive) && onDateEnter(date)}
                             className={clsx(
                                 "calendar-cell min-h-[120px] relative p-2 transition-all duration-200 group",
                                 !isCurrentMonth && "cell-faded",

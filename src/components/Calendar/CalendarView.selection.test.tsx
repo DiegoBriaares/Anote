@@ -51,4 +51,23 @@ describe('CalendarView range selection', () => {
         expect(selectionActive).toBe(false);
         expect(screen.queryByText('SEQUENCE_INPUT_CONSOLE')).toBeNull();
     });
+
+    it('marks every day in a continuous drag while selecting group event days', () => {
+        render(<CalendarView />);
+
+        fireEvent.click(screen.getByRole('button', { name: /select days/i }));
+
+        const day23 = screen.getAllByText('23')[0].closest('.calendar-cell');
+        const day25 = screen.getAllByText('25')[0].closest('.calendar-cell');
+
+        expect(day23).not.toBeNull();
+        expect(day25).not.toBeNull();
+
+        fireEvent.mouseDown(day23!);
+        fireEvent.mouseEnter(day25!);
+        fireEvent.mouseUp(window);
+
+        expect(screen.getByText('Mark Days (3)')).toBeTruthy();
+        expect(screen.getAllByText('MARKED')).toHaveLength(3);
+    });
 });

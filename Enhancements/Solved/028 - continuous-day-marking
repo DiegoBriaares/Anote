@@ -1,0 +1,3 @@
+Select Days mode should support the same ergonomic click-and-drag interaction as normal calendar range selection.
+
+The enhancement lets users hold the mouse button and hover continuously across multiple days while marking days for group event publishing. Every day in the hovered range is added to the marked set, and the marked days remain visible after mouseup until the user cancels, proceeds, or starts a different marking action.
