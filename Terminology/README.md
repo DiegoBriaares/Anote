@@ -25,7 +25,8 @@ Use these names in prompts, issues, pull requests, changelogs, screenshots, and 
 - **Completion State**: Whether an event is active or completed.
 - **Origin Dates**: The event's transfer history, used by Track Record panels.
 - **Track Record**: The user-facing event history disclosure for origin dates and postponed status.
-- **Selection Window**: The date range selected by dragging across the calendar.
+- **Selection Window**: The date range selected by dragging across the calendar; it remains an in-calendar highlight until another selection or clear action replaces it.
+- **Marked Day Set**: The days selected for group event publishing.
 - **Source Day**: The selected day whose events are being copied, moved, or postponed.
 - **Target Day**: The destination day for copied or moved events.
 - **View Scope**: The postponed bucket currently visible: `This week events` or `All events`.

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
+import { eachDayOfInterval } from 'date-fns';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send } from 'lucide-react';
 import { DayModal } from './DayModal';
 import { DayConfigModal } from './DayConfigModal';
@@ -17,6 +18,12 @@ const emptyGroupDraft: GroupEventDraft = {
     priority: '',
     link: '',
     note: ''
+};
+
+const getDateKeysBetween = (start: Date, end: Date) => {
+    const intervalStart = start < end ? start : end;
+    const intervalEnd = start < end ? end : start;
+    return eachDayOfInterval({ start: intervalStart, end: intervalEnd }).map(formatDate);
 };
 
 export const CalendarView: React.FC = () => {
@@ -42,6 +49,8 @@ export const CalendarView: React.FC = () => {
     } = useCalendarStore();
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectionStart, setSelectionStart] = useState<Date | null>(null);
+    const [isMarkingDays, setIsMarkingDays] = useState(false);
+    const [markingStart, setMarkingStart] = useState<Date | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(false); // New state
     const [hoverDate, setHoverDate] = useState<Date | null>(null);
     const [modalDate, setModalDate] = useState<Date | null>(null);
@@ -82,6 +91,8 @@ export const CalendarView: React.FC = () => {
             if (isSelecting && selectionStart && hoverDate) {
                 setSelection(selectionStart, hoverDate);
             }
+            setIsMarkingDays(false);
+            setMarkingStart(null);
             setSelectionActive(false);
             setIsSelecting(false);
             setSelectionStart(null);
@@ -99,6 +110,8 @@ export const CalendarView: React.FC = () => {
                     ? current.filter((key) => key !== dateKey)
                     : [...current, dateKey].sort()
             ));
+            setIsMarkingDays(true);
+            setMarkingStart(date);
             return;
         }
 
@@ -110,7 +123,13 @@ export const CalendarView: React.FC = () => {
     };
 
     const handleDateEnter = (date: Date) => {
-        if (groupStep === 'select-days') return;
+        if (groupStep === 'select-days') {
+            if (isMarkingDays && markingStart) {
+                const dateKeys = getDateKeysBetween(markingStart, date);
+                setMarkedDateKeys((current) => Array.from(new Set([...current, ...dateKeys])).sort());
+            }
+            return;
+        }
         if (isSelecting && selectionStart) {
             setHoverDate(date);
             setSelection(selectionStart, date);
@@ -134,6 +153,8 @@ export const CalendarView: React.FC = () => {
         clearSelection();
         setIsSelecting(false);
         setSelectionStart(null);
+        setIsMarkingDays(false);
+        setMarkingStart(null);
         setHoverDate(null);
         setMarkedDateKeys([]);
         setQueuedGroupEvents([]);

@@ -1,0 +1,3 @@
+The prompt archival workflow now explicitly requires newly documented bugs and enhancements to be created directly under their corresponding `Solved` directories.
+
+This keeps the top-level `Bugs` and `Enhancements` directories clean after release runs and avoids a separate follow-up move step when a session resolves the documented work before publication.

@@ -1,8 +1,8 @@
 # Calendar Page
 
-**Component anchors:** `src/App.tsx`, `src/components/Calendar/CalendarView.tsx`, `src/components/Input/RangeEventInput.tsx`
+**Component anchors:** `src/App.tsx`, `src/components/Calendar/CalendarView.tsx`
 
-The **Calendar Page** is the main planning workspace. Users navigate months, inspect day events, select ranges, open day administration, and enter postponed event management.
+The **Calendar Page** is the main planning workspace. Users navigate months, inspect day events, select ranges, mark days for group event publishing, open day administration, and enter postponed event management.
 
 ## Page-Level Terms
 
@@ -10,7 +10,8 @@ The **Calendar Page** is the main planning workspace. Users navigate months, ins
 - **Calendar Status Header**: The self/friend indicator above the calendar workspace.
 - **Friend Read-Only Header**: The header shown while viewing a friend calendar.
 - **Postponed Entry Button**: The button that opens Postponed Events Administration.
-- **Range Sequence Console**: The modal opened after selecting a multi-day range on the calendar page.
+- **Selection Window**: The in-calendar day range selected by dragging across month boards.
+- **Group Publishing Steps**: The Select Days, Input Events, and Publish Events controls used to publish queued events across marked days.
 
 ## Components
 
@@ -18,7 +19,7 @@ The **Calendar Page** is the main planning workspace. Users navigate months, ins
 - **Month Board**: One rendered month.
 - **Day Inspector**: The double-click day detail modal.
 - **Day Visual Settings Dialog**: The modal for day background and context label.
-- **Range Sequence Console**: Multi-day bulk creation and quick copy modal.
+- **Group Event Publisher**: The input surface for queued or active event drafts that will be published across marked days.
 - **Role Picker Dialog**: Role selection for event notes.
 - **Subrole Picker Dialog**: Subrole selection for event notes.
 - **Role Note Workspace**: Full-screen markdown note editor for an event role.

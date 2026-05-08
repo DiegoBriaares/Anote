@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { CalendarView } from './components/Calendar/CalendarView';
-import { RangeEventInput } from './components/Input/RangeEventInput';
 import { Login } from './components/Auth/Login';
 import { useCalendarStore } from './store/calendarStore';
 import { LogOut, Eye, User, Users, ChevronDown, Settings, Shield } from 'lucide-react';
@@ -277,7 +276,6 @@ function App() {
               )}
             </div>
             <CalendarView />
-            <RangeEventInput />
           </>
         )}
       </main>

@@ -20,6 +20,8 @@ leave a blank line between prompt:<>, answer: <>, sugestion:<> in the files with
 
 Also from the bug/enhancements folder, infeer/deduce a natural language explanation of the enhacenment/bug, and add to administration-management-plan-system/Bugs or administration-management-plan-system/Enhancements (acordingly) a file named xxx - y, where xxx is the next prefix number of bug/enhacenment (accordingly to the greatest numnber in the directory (including inside /Solved) and y is the folder name, the content of the file is the explanation.
 
+Make sure all new bugs and enhacements are put in Solved of corresponing dir /Bugs or /Enhacenments.
+
 Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/ChangeLog/
 
 Push the latest changes into the repo https://github.com/DiegoBriaares/Anote as a NEW Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
