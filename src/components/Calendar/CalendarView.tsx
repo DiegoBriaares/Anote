@@ -3,14 +3,15 @@ import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
 import { eachDayOfInterval } from 'date-fns';
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send } from 'lucide-react';
+import { BookOpenText, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send, X } from 'lucide-react';
 import { DayModal } from './DayModal';
 import { DayConfigModal } from './DayConfigModal';
 import { GroupEventPublisher } from './GroupEventPublisher';
+import { GroupEventReader } from './GroupEventReader';
 import { buildGroupEventPublishEntries, buildQueuedGroupEvent, hasPublishableGroupDraft, type GroupEventDraft, type QueuedGroupEvent } from './groupEventUtils';
 import clsx from 'clsx';
 
-type GroupEventStep = 'idle' | 'select-days' | 'input-events' | 'ready-to-publish' | 'publishing';
+type GroupEventStep = 'idle' | 'select-days' | 'read-events' | 'input-events' | 'ready-to-publish' | 'publishing';
 
 const emptyGroupDraft: GroupEventDraft = {
     title: '',
@@ -142,10 +143,14 @@ export const CalendarView: React.FC = () => {
     };
 
     const resetGroupPublishing = () => {
+        clearActionError();
         setGroupStep('idle');
         setMarkedDateKeys([]);
         setQueuedGroupEvents([]);
         setGroupDraft(emptyGroupDraft);
+        setIsMarkingDays(false);
+        setMarkingStart(null);
+        setHoverDate(null);
     };
 
     const handleStartGroupSelection = () => {
@@ -166,6 +171,18 @@ export const CalendarView: React.FC = () => {
         if (markedDateKeys.length === 0) return;
         clearActionError();
         setGroupStep('input-events');
+    };
+
+    const handleReadGroupEvents = () => {
+        if (markedDateKeys.length === 0 || groupStep === 'publishing') return;
+        clearActionError();
+        setGroupStep('read-events');
+    };
+
+    const handleOpenGroupInput = () => {
+        if (markedDateKeys.length === 0 || groupStep === 'publishing') return;
+        clearActionError();
+        setGroupStep(queuedGroupEvents.length > 0 ? 'ready-to-publish' : 'input-events');
     };
 
     const handleAddQueuedEvent = () => {
@@ -222,12 +239,15 @@ export const CalendarView: React.FC = () => {
     }
 
     const isGroupSelecting = groupStep === 'select-days';
+    const isGroupReading = groupStep === 'read-events';
     const isGroupInputActive = groupStep === 'input-events';
     const isGroupPublishReady = groupStep === 'ready-to-publish';
     const isGroupPublishing = groupStep === 'publishing';
     const hasActiveGroupDraft = hasPublishableGroupDraft(groupDraft);
     const totalPublishableGroupEvents = queuedGroupEvents.length + (hasActiveGroupDraft ? 1 : 0);
     const canMarkDays = isGroupSelecting && markedDateKeys.length > 0;
+    const canReadGroupEvents = markedDateKeys.length > 0 && !isGroupPublishing;
+    const canOpenGroupInput = markedDateKeys.length > 0 && !isGroupPublishing;
     const canPublishGroupEvents = (isGroupInputActive || isGroupPublishReady || isGroupPublishing) && totalPublishableGroupEvents > 0 && markedDateKeys.length > 0;
 
     const stepButtonClass = (isActive: boolean, isComplete: boolean, isDisabled = false) => clsx(
@@ -317,8 +337,18 @@ export const CalendarView: React.FC = () => {
                         </button>
                         <button
                             type="button"
-                            disabled
-                            className={stepButtonClass(isGroupInputActive, isGroupPublishReady || isGroupPublishing, !isGroupInputActive && !isGroupPublishReady && !isGroupPublishing)}
+                            onClick={handleReadGroupEvents}
+                            disabled={!canReadGroupEvents}
+                            className={stepButtonClass(isGroupReading, false, !canReadGroupEvents)}
+                        >
+                            <BookOpenText className="w-4 h-4" />
+                            Read Events
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleOpenGroupInput}
+                            disabled={!canOpenGroupInput}
+                            className={stepButtonClass(isGroupInputActive, isGroupPublishReady || isGroupPublishing, !canOpenGroupInput)}
                         >
                             {isGroupPublishReady || isGroupPublishing ? <CheckCircle2 className="w-4 h-4" /> : <ListChecks className="w-4 h-4" />}
                             Input Events
@@ -342,13 +372,22 @@ export const CalendarView: React.FC = () => {
                                 type="button"
                                 onClick={resetGroupPublishing}
                                 disabled={isGroupPublishing}
-                                className="text-stone-400 hover:text-stone-700 disabled:opacity-50"
+                                aria-label="Cancel group event operation"
+                                title="Cancel group event operation"
+                                className="rounded-full border border-orange-100 bg-white/80 p-1.5 text-stone-400 hover:border-orange-300 hover:text-stone-700 disabled:opacity-50"
                             >
-                                Cancel
+                                <X className="h-3.5 w-3.5" />
                             </button>
                         </div>
                     )}
                 </div>
+            )}
+
+            {isGroupReading && (
+                <GroupEventReader
+                    selectedDateKeys={markedDateKeys}
+                    eventsByDate={events}
+                />
             )}
 
             {(isGroupInputActive || isGroupPublishReady || isGroupPublishing) && (

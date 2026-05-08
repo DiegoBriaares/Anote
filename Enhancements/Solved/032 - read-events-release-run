@@ -1,0 +1,1 @@
+The Read Events session release process archives the feature prompts, stores solved enhancement records directly under `Enhancements/Solved`, records the changelog, publishes the work as a new pull request, backs up the production copy, deploys the development tree, and clears local development ports after completion.

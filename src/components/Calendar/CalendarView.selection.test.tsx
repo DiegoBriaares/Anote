@@ -70,4 +70,75 @@ describe('CalendarView range selection', () => {
         expect(screen.getByText('Mark Days (3)')).toBeTruthy();
         expect(screen.getAllByText('MARKED')).toHaveLength(3);
     });
+
+    it('opens a read view for marked days without leaving the calendar', () => {
+        useCalendarStore.setState({
+            events: {
+                '2026-04-23': [
+                    {
+                        id: 'event-1',
+                        title: 'Planning review',
+                        date: '2026-04-23',
+                        startTime: '09:30',
+                        priority: 2,
+                        note: null,
+                        link: null,
+                        completed: false
+                    }
+                ],
+                '2026-04-24': [
+                    {
+                        id: 'event-2',
+                        title: 'Launch readout',
+                        date: '2026-04-24',
+                        startTime: '11:00',
+                        priority: 1,
+                        note: null,
+                        link: null,
+                        completed: false
+                    }
+                ]
+            }
+        } as never);
+
+        render(<CalendarView />);
+
+        fireEvent.click(screen.getByRole('button', { name: /select days/i }));
+
+        const day23 = screen.getAllByText('23')[0].closest('.calendar-cell');
+        const day24 = screen.getAllByText('24')[0].closest('.calendar-cell');
+
+        fireEvent.mouseDown(day23!);
+        fireEvent.mouseEnter(day24!);
+        fireEvent.mouseUp(window);
+        fireEvent.click(screen.getByRole('button', { name: /read events/i }));
+
+        expect(screen.getByRole('region', { name: 'Events for 2026-04-23' })).toBeTruthy();
+        expect(screen.getByRole('region', { name: 'Events for 2026-04-24' })).toBeTruthy();
+        expect(screen.getByText('Planning review')).toBeTruthy();
+        expect(screen.getByText('Launch readout')).toBeTruthy();
+        expect(useCalendarStore.getState().selection.start).toBeNull();
+    });
+
+    it('cancels an in-progress marked-day operation with the X action', () => {
+        render(<CalendarView />);
+
+        fireEvent.click(screen.getByRole('button', { name: /select days/i }));
+
+        const day23 = screen.getAllByText('23')[0].closest('.calendar-cell');
+        const day25 = screen.getAllByText('25')[0].closest('.calendar-cell');
+
+        fireEvent.mouseDown(day23!);
+        fireEvent.mouseEnter(day25!);
+        fireEvent.mouseUp(window);
+        fireEvent.click(screen.getByRole('button', { name: /read events/i }));
+
+        expect(screen.getByRole('region', { name: 'Events for 2026-04-23' })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: /cancel group event operation/i }));
+
+        expect(screen.queryByRole('region', { name: 'Events for 2026-04-23' })).toBeNull();
+        expect(screen.queryAllByText('MARKED')).toHaveLength(0);
+        expect(screen.getByRole('button', { name: /select days/i })).toBeTruthy();
+    });
 });

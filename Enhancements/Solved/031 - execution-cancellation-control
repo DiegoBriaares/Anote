@@ -1,0 +1,3 @@
+Selected-day event distribution operations need an explicit cancellation procedure.
+
+The cancellation action is exposed as an X control while a marked-day operation is active. It clears the selected day set, queued event drafts, active draft input, action errors, and read/input panels, returning the Calendar Workspace to idle without publishing anything.
