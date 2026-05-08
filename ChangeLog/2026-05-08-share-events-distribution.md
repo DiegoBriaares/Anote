@@ -7,9 +7,11 @@ The backend now validates that every target is an existing friend before cloning
 Documentation was updated in README and Calendar Page terminology, including the new Group Event Sharer component vocabulary.
 
 Validation:
-- `npx vitest run src/components/Calendar/CalendarView.selection.test.tsx src/store/calendarStore.share.test.ts`
+- `npx vitest run src/components/Calendar/CalendarView.selection.test.tsx src/store/calendarStore.share.test.ts src/App.test.ts src/store/calendarStore.profile.test.ts`
 - `npm run build`
 - `node --check server/index.js`
+- `bash scripts/archive_prod_snapshot.sh` archived production to `/Users/digogonz/Desktop/Calendario/VersionesPasadas/30`
+- `bash scripts/deploy_to_prod.sh`
 
 Known check status:
-- `npm run lint` still fails on existing lint issues in server tests, App preference typing, admin/calendar effect rules, ProfilePanel effect rules, and store typing/unused variables.
+- `npm run lint` still fails on existing lint issues in server tests, admin/calendar effect rules, ProfilePanel effect rules, and store typing/unused variables.
