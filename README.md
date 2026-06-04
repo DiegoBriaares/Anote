@@ -1,6 +1,6 @@
 # Anote
 
-Anote is a full-stack calendar and event administration system. It combines calendar planning, day-level event administration, postponed event workflows, role-based notes, friend calendar viewing, profile preferences, and an admin console.
+Anote is a full-stack calendar and event administration system. It combines calendar planning, day-level event administration, postponed event workflows, role-based notes, friend calendar viewing, profile preferences, automatic program settings, and an admin console.
 
 The shared product vocabulary lives in [`Terminology/`](Terminology/README.md). Use those names when writing prompts, issues, changelogs, pull requests, and implementation notes.
 
@@ -12,12 +12,43 @@ Anote is organized around an authenticated **App Shell** that renders one active
 - **Day Events Administration Page**: focused event workbench for one day, with event CRUD, completion, event history, copy/move, and postponed transfer actions.
 - **Postponed Events Administration Page**: manages postponed events in `This week events` and `All events` scopes, including restoration back to calendar days.
 - **Profile Page**: username, background image, accent color, noise overlay, and theme preferences.
+- **Programs Page**: user-level automatic program settings, including the To Tomorrow Program activation time and enabled state.
 - **Friends Page**: friend management and read-only friend calendar access.
 - **Roles Page**: role and subrole labels used by event notes.
 - **Admin Page**: admin-only app configuration, event/user management, raw table inspection, and bulk deletion.
 - **Authentication Page**: login and registration surface.
 
-Core event data supports title, date, hour, priority, note, link, completion state, postponed scope, and origin history. Role notes support Markdown and uploaded files.
+Core event data supports title, date, hour, priority, note, link, completion state, postponed scope, and origin history. Role notes support Markdown and uploaded files. Program data currently supports To Tomorrow Program rows with a name, `HH:mm` activation time, and enabled flag.
+
+## To Tomorrow Program
+
+The **To Tomorrow Program** is an automatic calendar program configured from the **Programs Page** in the user menu. When an enabled row reaches its activation time according to the connected browser session clock, Anote activates the tomorrow program parameter, moves today's incomplete events to tomorrow, and closes the current session with this message:
+
+```text
+Tomorrow program activated, to disable, please go to Programs section.
+```
+
+The program does not move completed events, past events, future events, or events that are not assigned to the current day. This keeps the automation scoped to the user's active daily plan rather than rewriting calendar history.
+
+Users can:
+
+- Set one or more To Tomorrow Program rows with a descriptive name.
+- Enter an activation time in `00:00` through `23:59` format.
+- Enable or disable each row without deleting it.
+- Run the program manually from the Programs Page to move today's incomplete events immediately.
+- Keep completed work fixed on its original date while carrying unfinished work into tomorrow.
+
+Example workflow:
+
+1. Open the user menu from the avatar in the top-right corner.
+2. Choose **Programs**.
+3. Add or edit a To Tomorrow Program row named `Daily Carryover`.
+4. Set activation time to `23:30` and enable the row.
+5. Save Programs.
+6. Continue using the calendar during the day and mark finished events as completed.
+7. If the session is open at `23:30`, Anote moves only today's incomplete events to tomorrow and closes the session with the activation message.
+
+This is useful for daily review routines, end-of-day carryover, and preserving completion records while keeping unfinished events visible on the next day's calendar.
 
 ## Architecture
 
@@ -29,6 +60,7 @@ anote/
 │   │   ├── Auth/               # Authentication Page
 │   │   ├── Calendar/           # Calendar, day administration, postponed, notes
 │   │   ├── Profile/            # Profile Page
+│   │   ├── Programs/           # Programs Page
 │   │   ├── Friends/            # Friends Page
 │   │   ├── Roles/              # Roles Page
 │   │   └── Admin/              # Admin Page
@@ -62,6 +94,7 @@ Terminology/
     ├── day-events-administration-page/
     ├── postponed-events-administration-page/
     ├── profile-page/
+    ├── programs-page/
     ├── friends-page/
     ├── roles-page/
     ├── admin-page/
@@ -77,6 +110,8 @@ Examples of canonical terms:
 - **View Scope**: the postponed bucket, either `This week events` or `All events`.
 - **Track Record**: event origin and transfer history.
 - **Role Note Workspace**: the full-screen Markdown note editor for an event role or subrole.
+- **Programs Page**: the user-menu page for automatic program rows.
+- **To Tomorrow Program**: the automatic program that moves today's incomplete events to tomorrow.
 
 For detailed component-part names, start at [`Terminology/README.md`](Terminology/README.md).
 
