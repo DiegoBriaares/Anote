@@ -4,7 +4,7 @@ import { API_URL, normalizeApiAssetUrl } from '../utils/api';
 import { normalizePriority } from '../utils/priorityUtils';
 import { storage } from '../utils/storage';
 import { DEFAULT_POSTPONED_EVENT_DOMAIN, FALLBACK_POSTPONED_EVENT_DOMAIN, readPostponedEventDomain, type PostponedEventDomain } from '../utils/postponedDomains';
-import { eachDayOfInterval } from 'date-fns';
+import { addDays, eachDayOfInterval } from 'date-fns';
 
 // Polyfill for crypto.randomUUID if not available (e.g. older Safari)
 if (!crypto.randomUUID) {
@@ -62,6 +62,14 @@ export interface AdminEvent {
     completed?: boolean | null;
     userId?: string;
     username?: string;
+}
+
+export interface Program {
+    id: string;
+    name: string;
+    activationTime: string;
+    isEnabled: boolean;
+    tomorrowProgramParameter?: boolean;
 }
 
 const normalizeCompleted = (value: unknown) => (
@@ -175,6 +183,63 @@ const shouldKeepLocalEvent = (localEvent: CalendarEvent | null, incomingVersion:
     && localEvent.version > incomingVersion
 );
 
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const TOMORROW_PROGRAM_DEFAULT_ID = 'to-tomorrow-program';
+const TOMORROW_PROGRAM_MESSAGE = 'Tomorrow program activated, to disable, please go to Programs section.';
+
+const normalizeProgram = (program: Partial<Program> | null | undefined, index: number): Program | null => {
+    if (!program) return null;
+    const fallbackId = index === 0 ? TOMORROW_PROGRAM_DEFAULT_ID : crypto.randomUUID();
+    const activationTime = typeof program.activationTime === 'string' && TIME_PATTERN.test(program.activationTime)
+        ? program.activationTime
+        : '00:00';
+    const name = typeof program.name === 'string' && program.name.trim()
+        ? program.name.trim()
+        : 'To Tomorrow Program';
+
+    return {
+        id: typeof program.id === 'string' && program.id.trim() ? program.id : fallbackId,
+        name,
+        activationTime,
+        isEnabled: program.isEnabled === true,
+        tomorrowProgramParameter: program.tomorrowProgramParameter === true
+    };
+};
+
+const normalizePrograms = (programs: unknown): Program[] => {
+    if (!Array.isArray(programs)) {
+        return [{
+            id: TOMORROW_PROGRAM_DEFAULT_ID,
+            name: 'To Tomorrow Program',
+            activationTime: '00:00',
+            isEnabled: false,
+            tomorrowProgramParameter: false
+        }];
+    }
+
+    const normalized = programs
+        .map((program, index) => normalizeProgram(program as Partial<Program>, index))
+        .filter((program): program is Program => Boolean(program));
+
+    if (normalized.length === 0) {
+        return normalizePrograms(null);
+    }
+
+    return normalized;
+};
+
+const buildProgramRunKey = (userId: string, program: Program, dateKey: string) => (
+    `program-run:${userId}:${program.id}:${program.activationTime}:${dateKey}`
+);
+
+const readStoredPrograms = () => {
+    try {
+        return normalizePrograms(JSON.parse(storage.getItem('profile') || 'null')?.preferences?.programs);
+    } catch {
+        return normalizePrograms(null);
+    }
+};
+
 export interface AdminUser {
     id: string;
     username: string;
@@ -220,8 +285,10 @@ interface CalendarState {
     viewingPreferences: UserPreferences | null;
     profile: User | null;
     localPreferences: UserPreferences | null;
-    currentView: 'calendar' | 'day-administration' | 'postponed' | 'profile' | 'friends' | 'roles' | 'admin';
+    currentView: 'calendar' | 'day-administration' | 'postponed' | 'profile' | 'friends' | 'roles' | 'programs' | 'admin';
     dayAdministrationDate: string | null;
+    programs: Program[];
+    tomorrowProgramParameter: boolean;
 
     setSelection: (start: Date | null, end: Date | null) => void;
     setSelectionActive: (active: boolean) => void;
@@ -246,6 +313,7 @@ interface CalendarState {
     navigateToProfile: () => void;
     navigateToFriends: () => void;
     navigateToRoles: () => void;
+    navigateToPrograms: () => void;
     navigateToCalendar: () => void;
     navigateToDayAdministration: (date: Date | string) => void;
     navigateToAdmin: () => void;
@@ -261,6 +329,12 @@ interface CalendarState {
     removeFriend: (id: string) => Promise<void>;
     fetchProfile: () => Promise<void>;
     updateProfile: (prefs: Partial<UserPreferences> & { avatar_url?: string | null; username?: string }) => Promise<void>;
+    savePrograms: (programs: Program[]) => Promise<void>;
+    createProgram: (program: Omit<Program, 'id'>) => Promise<void>;
+    updateProgram: (id: string, patch: Partial<Omit<Program, 'id'>>) => Promise<void>;
+    deleteProgram: (id: string) => Promise<void>;
+    setTomorrowProgramParameter: (value: boolean, options?: { closeSession?: boolean }) => Promise<boolean>;
+    checkAutomaticPrograms: () => Promise<void>;
 
     // Visuals
     dailyFacts: Record<string, string>;
@@ -302,13 +376,14 @@ interface CalendarState {
 }
 
 export const useCalendarStore = create<CalendarState>((set, get) => {
-    const logoutAndReset = () => {
+    const logoutAndReset = (message?: string) => {
         storage.removeItem('token');
         storage.removeItem('user');
         storage.removeItem('profile');
         set({
             user: null,
             token: null,
+            error: message || null,
             actionError: null,
             events: {},
             postponedEvents: [],
@@ -321,6 +396,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             profile: null,
             currentView: 'calendar',
             dayAdministrationDate: null,
+            programs: normalizePrograms(null),
+            tomorrowProgramParameter: false,
             dailyFacts: {},
             dayBackgrounds: {},
             roles: [],
@@ -362,6 +439,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         })(),
         currentView: 'calendar',
         dayAdministrationDate: null,
+        programs: readStoredPrograms(),
+        tomorrowProgramParameter: false,
         users: [],
         friends: [],
         socialError: null,
@@ -462,6 +541,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         navigateToProfile: () => set({ currentView: 'profile' }),
         navigateToFriends: () => set({ currentView: 'friends' }),
         navigateToRoles: () => set({ currentView: 'roles' }),
+        navigateToPrograms: () => set({ currentView: 'programs' }),
         navigateToCalendar: () => set({ currentView: 'calendar' }),
         navigateToDayAdministration: (date) => set({
             currentView: 'day-administration',
@@ -1329,7 +1409,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         };
                         const nextState: Partial<CalendarState> = {
                             profile: nextProfile,
-                            user: nextUser
+                            user: nextUser,
+                            programs: normalizePrograms(nextProfile.preferences?.programs)
                         };
                         if (state.viewMode === 'self') {
                             nextState.viewingUserId = nextProfile.id;
@@ -1356,22 +1437,115 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             if (!token || !user) return;
             try {
                 const { avatar_url, username, ...preferences } = prefs;
+                const mergedPreferences = {
+                    ...(get().profile?.preferences || {}),
+                    ...preferences
+                };
                 const res = await fetch(`${API_URL}/me`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ avatar_url, preferences, username })
+                    body: JSON.stringify({
+                        avatar_url: avatar_url ?? get().profile?.avatar_url ?? user.avatar_url ?? null,
+                        preferences: mergedPreferences,
+                        username: username ?? get().profile?.username ?? user.username
+                    })
                 });
                 if (res.status === 401 || res.status === 403) {
                     logoutAndReset();
                     return;
                 }
                 await fetchProfile();
-                await get().viewOwnCalendar();
             } catch (e) {
                 console.error('Failed to update profile', e);
+            }
+        },
+
+        savePrograms: async (programs) => {
+            const normalized = normalizePrograms(programs);
+            set({ programs: normalized });
+            await get().updateProfile({ programs: normalized });
+        },
+
+        createProgram: async (program) => {
+            const nextProgram = normalizeProgram({
+                ...program,
+                id: crypto.randomUUID()
+            }, get().programs.length);
+            if (!nextProgram) return;
+            await get().savePrograms([...get().programs, nextProgram]);
+        },
+
+        updateProgram: async (id, patch) => {
+            const nextPrograms = get().programs.map((program) => (
+                program.id === id
+                    ? normalizeProgram({ ...program, ...patch }, 0) || program
+                    : program
+            ));
+            await get().savePrograms(nextPrograms);
+        },
+
+        deleteProgram: async (id) => {
+            const nextPrograms = get().programs.filter((program) => program.id !== id);
+            await get().savePrograms(nextPrograms.length > 0 ? nextPrograms : normalizePrograms(null));
+        },
+
+        setTomorrowProgramParameter: async (value, options) => {
+            set({ tomorrowProgramParameter: value });
+            if (!value) return true;
+
+            const todayDate = formatDate(new Date());
+            const tomorrowDate = formatDate(addDays(new Date(), 1));
+            await get().fetchEvents();
+            const eventsToMove = Object.values(get().events)
+                .flat()
+                .filter((event) => !event.completed && event.date === todayDate);
+
+            let didSucceed = true;
+            for (const event of eventsToMove) {
+                const originDates = [
+                    ...(event.originDates || []),
+                    event.date
+                ].filter((date, index, dates) => date && dates.indexOf(date) === index);
+                const moved = await get().editEvent({
+                    ...event,
+                    date: tomorrowDate,
+                    originDates
+                });
+                if (!moved) {
+                    didSucceed = false;
+                    break;
+                }
+            }
+
+            set({ tomorrowProgramParameter: false });
+            if (didSucceed) {
+                await get().fetchEvents();
+                if (options?.closeSession) {
+                    logoutAndReset(TOMORROW_PROGRAM_MESSAGE);
+                }
+            }
+            return didSucceed;
+        },
+
+        checkAutomaticPrograms: async () => {
+            const { user, programs, tomorrowProgramParameter } = get();
+            if (!user || tomorrowProgramParameter) return;
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const dateKey = formatDate(now);
+            const activeProgram = programs.find((program) => (
+                program.isEnabled
+                && program.activationTime === currentTime
+                && storage.getItem(buildProgramRunKey(user.id, program, dateKey)) !== '1'
+            ));
+            if (!activeProgram) return;
+
+            const didRun = await get().setTomorrowProgramParameter(true, { closeSession: true });
+            if (didRun) {
+                storage.setItem(buildProgramRunKey(user.id, activeProgram, dateKey), '1');
             }
         },
 
@@ -1873,5 +2047,6 @@ export interface UserPreferences {
     accentColor?: string;
     noiseOverlay?: boolean;
     theme?: 'light' | 'dark';
+    programs?: Program[];
     _updatedAt?: number;
 }

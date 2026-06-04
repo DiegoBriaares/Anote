@@ -3,16 +3,17 @@ import { CalendarView } from './components/Calendar/CalendarView';
 import { Login } from './components/Auth/Login';
 import { useCalendarStore, type UserPreferences } from './store/calendarStore';
 import { resolveOwnPreferences } from './utils/preferences';
-import { LogOut, Eye, User, Users, ChevronDown, Settings, Shield } from 'lucide-react';
+import { Clock3, LogOut, Eye, User, Users, ChevronDown, Settings, Shield } from 'lucide-react';
 import { SocialPanel } from './components/Friends/SocialPanel';
 import { ProfilePanel } from './components/Profile/ProfilePanel';
 import { AdminPanel } from './components/Admin/AdminPanel';
 import { RolesPanel } from './components/Roles/RolesPanel';
+import { ProgramsPanel } from './components/Programs/ProgramsPanel';
 import { PostponedEventsView } from './components/Calendar/PostponedEventsView';
 import { DayEventsAdministrationPage } from './components/Calendar/DayEventsAdministrationPage';
 
 function App() {
-  const { user, logout, viewMode, viewingUsername, profile, viewingPreferences, localPreferences, currentView, navigateToProfile, navigateToFriends, navigateToRoles, viewOwnCalendar, navigateToAdmin, appConfig, socialError, bootstrap, fetchAppConfig } = useCalendarStore();
+  const { user, logout, viewMode, viewingUsername, profile, viewingPreferences, localPreferences, currentView, navigateToProfile, navigateToFriends, navigateToRoles, navigateToPrograms, viewOwnCalendar, navigateToAdmin, appConfig, socialError, bootstrap, fetchAppConfig, checkAutomaticPrograms } = useCalendarStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +48,17 @@ function App() {
       bootstrap();
     }
   }, [bootstrap, user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    checkAutomaticPrograms();
+    const interval = setInterval(() => {
+      checkAutomaticPrograms();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [checkAutomaticPrograms, user]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -160,6 +172,12 @@ function App() {
             >
               <Users className="w-4 h-4 text-orange-500" /> Friends
             </button>
+            <button
+              onClick={() => { navigateToPrograms(); setIsMenuOpen(false); }}
+              className="menu-item w-full text-left px-4 py-3 text-sm font-medium text-stone-700 hover:bg-orange-50 hover:text-orange-700 flex items-center gap-3 transition-all border-t border-orange-100"
+            >
+              <Clock3 className="w-4 h-4 text-orange-500" /> Programs
+            </button>
             {user.isAdmin && (
               <button
                 onClick={() => { navigateToAdmin(); setIsMenuOpen(false); }}
@@ -225,6 +243,8 @@ function App() {
           <ProfilePanel />
         ) : currentView === 'roles' ? (
           <RolesPanel />
+        ) : currentView === 'programs' ? (
+          <ProgramsPanel />
         ) : currentView === 'friends' ? (
           <SocialPanel />
         ) : currentView === 'admin' ? (
