@@ -11,5 +11,6 @@ The **User Menu** is the fixed avatar control in the top-right corner.
 - **Profile Link**: Opens the Profile Page.
 - **Roles Link**: Opens the Roles Page.
 - **Friends Link**: Opens the Friends Page.
+- **Programs Link**: Opens the Programs Page.
 - **Admin Link**: Opens the Admin Page for admin users.
 - **Logout Action**: Ends the session and returns to the Authentication Page.

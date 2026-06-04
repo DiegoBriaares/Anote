@@ -11,6 +11,7 @@ Use these names in prompts, issues, pull requests, changelogs, screenshots, and 
 - **Day Events Administration Page**: The focused page for creating, editing, completing, copying, moving, postponing, and reviewing events for one selected day.
 - **Postponed Events Administration Page**: The page for managing events that are not currently assigned to a calendar day.
 - **Profile Page**: The page for username and visual preference changes.
+- **Programs Page**: The page for user-configured automatic program rows.
 - **Friends Page**: The page for friend connections and read-only friend calendar access.
 - **Roles Page**: The page for maintaining role and subrole labels used by event notes.
 - **Admin Page**: The admin-only console for app configuration, system event/user management, and database inspection.
@@ -30,6 +31,10 @@ Use these names in prompts, issues, pull requests, changelogs, screenshots, and 
 - **Execution Cancellation Action**: The X action that clears the active selected-day operation before it is published.
 - **Read Events View**: A selected-day event distribution panel that wraps day columns into additional rows instead of relying on horizontal overflow.
 - **Share Events View**: A selected-day event distribution panel that copies all or selected marked-day events to selected friends' matching calendar days.
+- **Program Row**: A persisted automatic program configuration with a name, activation time, and enabled state.
+- **To Tomorrow Program**: The automatic program that moves today's incomplete Day Events to Tomorrow and leaves completed, past, and future events unchanged.
+- **Tomorrow Program Parameter**: The boolean cascade trigger that executes the To Tomorrow Program when set to true.
+- **Activation Time**: The `HH:mm` session-clock time at which an enabled Program Row runs automatically.
 - **Source Day**: The selected day whose events are being copied, moved, or postponed.
 - **Target Day**: The destination day for copied or moved events.
 - **View Scope**: The postponed bucket currently visible: `This week events` or `All events`.
@@ -44,6 +49,7 @@ Use these names in prompts, issues, pull requests, changelogs, screenshots, and 
 - `Pages/day-events-administration-page/`
 - `Pages/postponed-events-administration-page/`
 - `Pages/profile-page/`
+- `Pages/programs-page/`
 - `Pages/friends-page/`
 - `Pages/roles-page/`
 - `Pages/admin-page/`
