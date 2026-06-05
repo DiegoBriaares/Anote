@@ -1,6 +1,10 @@
 # Anote
 
-Anote is a full-stack calendar and event administration system. It combines calendar planning, day-level event administration, postponed event workflows, role-based notes, friend calendar viewing, profile preferences, automatic program settings, and an admin console.
+Anote is an operational calendar system for turning plans into managed event state. It is not only a date grid: it is a full-stack event administration workspace with day-level CRUD, completion tracking, postponed-event queues, event transfer history, role-scoped Markdown notes, friend calendar distribution, automatic carryover programs, profile-level visual configuration, and an admin console for system oversight.
+
+The product is designed for users who need a calendar that can preserve context while plans change. A Day Event can be completed, copied, moved, postponed, restored, shared with friends, annotated by role or subrole, and traced through origin history. The Calendar Page supports lightweight planning and social distribution, while administration pages provide controlled workflows for editing event state without losing the record of how the plan evolved.
+
+Anote's current automation layer is the To Tomorrow Program: a user-configured automatic program that moves today's incomplete events to tomorrow at a chosen session-clock activation time. This gives the calendar an explicit end-of-day carryover protocol instead of relying on manual cleanup or stale unfinished events.
 
 The shared product vocabulary lives in [`Terminology/`](Terminology/README.md). Use those names when writing prompts, issues, changelogs, pull requests, and implementation notes.
 
@@ -19,6 +23,21 @@ Anote is organized around an authenticated **App Shell** that renders one active
 - **Authentication Page**: login and registration surface.
 
 Core event data supports title, date, hour, priority, note, link, completion state, postponed scope, and origin history. Role notes support Markdown and uploaded files. Program data currently supports To Tomorrow Program rows with a name, `HH:mm` activation time, and enabled flag.
+
+## Why Use Anote
+
+Anote is useful when calendar items are not disposable reminders but active records of work, study, routines, coordination, or operational planning.
+
+- **Plan with continuity**: move or copy events across days while retaining origin metadata through Track Record surfaces.
+- **Separate unfinished work from completed work**: completion state is preserved across event editing, sharing, postponed transfer, and automatic carryover.
+- **Control today's execution**: use the Day Events Administration Page for focused event management on one date.
+- **Hold deferred work outside the grid**: keep postponed events in scoped postponed views until they should return to a calendar day.
+- **Coordinate with trusted users**: view friend calendars read-only and share all or selected marked-day events to friends' matching dates.
+- **Attach structured context**: maintain role and subrole Markdown notes with uploaded files for event-specific documentation.
+- **Automate daily carryover**: configure To Tomorrow Program rows so incomplete events from today move forward at a predictable activation time.
+- **Administer the system**: use the Admin Page for app configuration, user/event management, raw table inspection, and controlled bulk operations.
+
+The result is a calendar that behaves like an event-state management system: it supports planning, execution, deferral, collaboration, auditability, and daily reset workflows from one authenticated application.
 
 ## To Tomorrow Program
 
