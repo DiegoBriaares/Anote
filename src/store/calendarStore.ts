@@ -70,6 +70,7 @@ export interface Program {
     activationTime: string;
     isEnabled: boolean;
     tomorrowProgramParameter?: boolean;
+    targetOffsetDays?: number;
 }
 
 const normalizeCompleted = (value: unknown) => (
@@ -186,6 +187,14 @@ const shouldKeepLocalEvent = (localEvent: CalendarEvent | null, incomingVersion:
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TOMORROW_PROGRAM_DEFAULT_ID = 'to-tomorrow-program';
 const TOMORROW_PROGRAM_MESSAGE = 'Tomorrow program activated, to disable, please go to Programs section.';
+const PROGRAM_LAST_CHECK_PREFIX = 'program-last-check';
+const DEFAULT_PROGRAM_TARGET_OFFSET_DAYS = 1;
+
+const normalizeTargetOffsetDays = (value: unknown) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return DEFAULT_PROGRAM_TARGET_OFFSET_DAYS;
+    return Math.min(365, Math.max(0, Math.trunc(numeric)));
+};
 
 const normalizeProgram = (program: Partial<Program> | null | undefined, index: number): Program | null => {
     if (!program) return null;
@@ -202,7 +211,8 @@ const normalizeProgram = (program: Partial<Program> | null | undefined, index: n
         name,
         activationTime,
         isEnabled: program.isEnabled === true,
-        tomorrowProgramParameter: program.tomorrowProgramParameter === true
+        tomorrowProgramParameter: program.tomorrowProgramParameter === true,
+        targetOffsetDays: normalizeTargetOffsetDays(program.targetOffsetDays)
     };
 };
 
@@ -213,7 +223,8 @@ const normalizePrograms = (programs: unknown): Program[] => {
             name: 'To Tomorrow Program',
             activationTime: '00:00',
             isEnabled: false,
-            tomorrowProgramParameter: false
+            tomorrowProgramParameter: false,
+            targetOffsetDays: DEFAULT_PROGRAM_TARGET_OFFSET_DAYS
         }];
     }
 
@@ -231,6 +242,47 @@ const normalizePrograms = (programs: unknown): Program[] => {
 const buildProgramRunKey = (userId: string, program: Program, dateKey: string) => (
     `program-run:${userId}:${program.id}:${program.activationTime}:${dateKey}`
 );
+
+const buildProgramLastCheckKey = (userId: string) => `${PROGRAM_LAST_CHECK_PREFIX}:${userId}`;
+
+const readProgramLastCheckAt = (userId: string) => {
+    const raw = storage.getItem(buildProgramLastCheckKey(userId));
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const recordProgramClockCheck = (userId: string, date = new Date()) => {
+    storage.setItem(buildProgramLastCheckKey(userId), String(date.getTime()));
+};
+
+const buildDateAtTime = (date: Date, time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes, 0, 0);
+};
+
+const getElapsedProgramOccurrences = (program: Program, previousAt: number | null, now: Date) => {
+    if (!program.isEnabled) return [];
+
+    const occurrences: Date[] = [];
+    const nowTime = now.getTime();
+    const fallbackPreviousAt = nowTime - 60_000;
+    const previousTime = previousAt === null || previousAt > nowTime ? fallbackPreviousAt : previousAt;
+    const cursor = new Date(previousTime);
+    cursor.setHours(0, 0, 0, 0);
+    const finalDate = new Date(now);
+    finalDate.setHours(0, 0, 0, 0);
+
+    while (cursor.getTime() <= finalDate.getTime()) {
+        const activationDate = buildDateAtTime(cursor, program.activationTime);
+        const activationTime = activationDate.getTime();
+        if (activationTime > previousTime && activationTime <= nowTime) {
+            occurrences.push(activationDate);
+        }
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return occurrences;
+};
 
 const readStoredPrograms = () => {
     try {
@@ -333,7 +385,8 @@ interface CalendarState {
     createProgram: (program: Omit<Program, 'id'>) => Promise<void>;
     updateProgram: (id: string, patch: Partial<Omit<Program, 'id'>>) => Promise<void>;
     deleteProgram: (id: string) => Promise<void>;
-    setTomorrowProgramParameter: (value: boolean, options?: { closeSession?: boolean }) => Promise<boolean>;
+    moveIncompleteEventsToDate: (sourceDateKeys: string[], targetDateKey: string) => Promise<boolean>;
+    setTomorrowProgramParameter: (value: boolean, options?: { closeSession?: boolean; sourceDateKeys?: string[]; targetDateKey?: string }) => Promise<boolean>;
     checkAutomaticPrograms: () => Promise<void>;
 
     // Visuals
@@ -818,6 +871,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
 
                 await fetchEvents();
+                recordProgramClockCheck(user.id);
 
             } catch (error) {
                 console.error('Failed to save events:', error);
@@ -885,6 +939,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
 
                 await fetchEvents();
+                recordProgramClockCheck(user.id);
                 return true;
             } catch (error) {
                 console.error('Failed to save events:', error);
@@ -984,6 +1039,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 });
 
                 await fetchEvents();
+                recordProgramClockCheck(user.id);
                 return true;
             } catch (e) {
                 console.error('Failed to add event', e);
@@ -1015,6 +1071,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     return { events: merged };
                 });
                 await fetchEvents();
+                const { user } = get();
+                if (user) recordProgramClockCheck(user.id);
             } catch (e) {
                 console.error('Failed to delete event', e);
             }
@@ -1078,6 +1136,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         ? upsertExistingEventIntoDateMap(state.compareEvents, persistedEvent)
                         : state.compareEvents
                 }));
+                const { user } = get();
+                if (user) recordProgramClockCheck(user.id);
                 return true;
             } catch (e) {
                 console.error('Failed to edit event', e);
@@ -1135,6 +1195,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         ? upsertExistingEventIntoDateMap(state.compareEvents, updatedEvent)
                         : state.compareEvents
                 }));
+                const { user } = get();
+                if (user) recordProgramClockCheck(user.id);
                 return true;
             } catch (e) {
                 console.error('Failed to update event completion', e);
@@ -1208,6 +1270,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 }));
 
                 await fetchPostponedEvents();
+                recordProgramClockCheck(user.id);
                 return true;
             } catch (error) {
                 console.error('Failed to save postponed events:', error);
@@ -1262,6 +1325,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 }));
 
                 await fetchPostponedEvents();
+                recordProgramClockCheck(user.id);
             } catch (e) {
                 console.error('Failed to add postponed event', e);
             }
@@ -1283,6 +1347,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     postponedEvents: state.postponedEvents.filter((ev) => ev.id !== id)
                 }));
                 await fetchPostponedEvents();
+                const { user } = get();
+                if (user) recordProgramClockCheck(user.id);
             } catch (e) {
                 console.error('Failed to delete postponed event', e);
             }
@@ -1345,6 +1411,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         return a.title.localeCompare(b.title);
                     })
                 }));
+                const { user } = get();
+                if (user) recordProgramClockCheck(user.id);
                 return true;
             } catch (e) {
                 console.error('Failed to edit postponed event', e);
@@ -1466,6 +1534,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         savePrograms: async (programs) => {
             const normalized = normalizePrograms(programs);
             set({ programs: normalized });
+            const { user } = get();
+            if (user) recordProgramClockCheck(user.id);
             await get().updateProfile({ programs: normalized });
         },
 
@@ -1492,16 +1562,16 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             await get().savePrograms(nextPrograms.length > 0 ? nextPrograms : normalizePrograms(null));
         },
 
-        setTomorrowProgramParameter: async (value, options) => {
-            set({ tomorrowProgramParameter: value });
-            if (!value) return true;
+        moveIncompleteEventsToDate: async (sourceDateKeys, targetDateKey) => {
+            const { user, viewMode } = get();
+            if (!user || viewMode === 'friend') return false;
+            const uniqueSourceDateKeys = Array.from(new Set(sourceDateKeys.filter((dateKey) => dateKey && dateKey !== targetDateKey)));
+            if (uniqueSourceDateKeys.length === 0 || !targetDateKey) return false;
 
-            const todayDate = formatDate(new Date());
-            const tomorrowDate = formatDate(addDays(new Date(), 1));
             await get().fetchEvents();
             const eventsToMove = Object.values(get().events)
                 .flat()
-                .filter((event) => !event.completed && event.date === todayDate);
+                .filter((event) => !event.completed && uniqueSourceDateKeys.includes(event.date));
 
             let didSucceed = true;
             for (const event of eventsToMove) {
@@ -1511,7 +1581,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 ].filter((date, index, dates) => date && dates.indexOf(date) === index);
                 const moved = await get().editEvent({
                     ...event,
-                    date: tomorrowDate,
+                    date: targetDateKey,
                     originDates
                 });
                 if (!moved) {
@@ -1520,9 +1590,27 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 }
             }
 
-            set({ tomorrowProgramParameter: false });
             if (didSucceed) {
                 await get().fetchEvents();
+                recordProgramClockCheck(user.id);
+            }
+            return didSucceed;
+        },
+
+        setTomorrowProgramParameter: async (value, options) => {
+            set({ tomorrowProgramParameter: value });
+            if (!value) return true;
+
+            const todayDate = formatDate(new Date());
+            const tomorrowDate = formatDate(addDays(new Date(), 1));
+            const sourceDateKeys = options?.sourceDateKeys && options.sourceDateKeys.length > 0
+                ? options.sourceDateKeys
+                : [todayDate];
+            const targetDateKey = options?.targetDateKey || tomorrowDate;
+            const didSucceed = await get().moveIncompleteEventsToDate(sourceDateKeys, targetDateKey);
+
+            set({ tomorrowProgramParameter: false });
+            if (didSucceed) {
                 if (options?.closeSession) {
                     logoutAndReset(TOMORROW_PROGRAM_MESSAGE);
                 }
@@ -1534,18 +1622,35 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             const { user, programs, tomorrowProgramParameter } = get();
             if (!user || tomorrowProgramParameter) return;
             const now = new Date();
-            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-            const dateKey = formatDate(now);
-            const activeProgram = programs.find((program) => (
-                program.isEnabled
-                && program.activationTime === currentTime
-                && storage.getItem(buildProgramRunKey(user.id, program, dateKey)) !== '1'
-            ));
-            if (!activeProgram) return;
+            const previousAt = readProgramLastCheckAt(user.id);
+            const dueOccurrences = programs.flatMap((program) => (
+                getElapsedProgramOccurrences(program, previousAt, now).map((activationDate) => ({
+                    program,
+                    activationDate
+                }))
+            )).filter(({ program, activationDate }) => (
+                storage.getItem(buildProgramRunKey(user.id, program, formatDate(activationDate))) !== '1'
+            )).sort((a, b) => b.activationDate.getTime() - a.activationDate.getTime());
 
-            const didRun = await get().setTomorrowProgramParameter(true, { closeSession: true });
-            if (didRun) {
-                storage.setItem(buildProgramRunKey(user.id, activeProgram, dateKey), '1');
+            recordProgramClockCheck(user.id, now);
+            if (dueOccurrences.length === 0) return;
+
+            let didRunAny = false;
+            for (const { program, activationDate } of dueOccurrences) {
+                const sourceDateKey = formatDate(activationDate);
+                const targetDateKey = formatDate(addDays(activationDate, normalizeTargetOffsetDays(program.targetOffsetDays)));
+                const didRun = await get().setTomorrowProgramParameter(true, {
+                    sourceDateKeys: [sourceDateKey],
+                    targetDateKey
+                });
+                if (!didRun) return;
+
+                didRunAny = true;
+                storage.setItem(buildProgramRunKey(user.id, program, sourceDateKey), '1');
+            }
+
+            if (didRunAny) {
+                logoutAndReset(TOMORROW_PROGRAM_MESSAGE);
             }
         },
 
@@ -1874,7 +1979,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     return null;
                 }
                 const data = await res.json();
-                if (data.message === 'success' && data.url) {
+                if (data.url) {
                     return data.url as string;
                 }
             } catch (e) {

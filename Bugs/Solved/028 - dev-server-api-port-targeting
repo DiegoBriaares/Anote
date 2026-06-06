@@ -1,0 +1,1 @@
+The local development servers were started on ports that conflicted with the expected environment split. The client should run on 5174 and the development API should run on 3002, leaving 3001 available for production API use. The local processes were corrected and the code defaults remain aligned to dev API 3002 and production API 3001.

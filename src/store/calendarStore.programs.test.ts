@@ -174,4 +174,98 @@ describe('calendarStore programs', () => {
         expect(useCalendarStore.getState().error).toBe('Tomorrow program activated, to disable, please go to Programs section.');
         expect(localStorage.getItem('program-run:user-1:program-1:06:30:2026-06-04')).toBe('1');
     });
+
+    it('runs a missed enabled program after the system was inactive past the activation time', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 5, 5, 6, 0));
+        localStorage.setItem('program-last-check:user-1', String(new Date(2026, 5, 4, 6, 0).getTime()));
+
+        const missedEvent: CalendarEvent = {
+            id: 'event-1',
+            title: 'Missed work',
+            date: '2026-06-04',
+            startTime: '09:00',
+            completed: false,
+            originDates: null
+        };
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({
+                message: 'success',
+                data: [missedEvent]
+            }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 250 }))
+            .mockResolvedValueOnce(jsonResponse({
+                message: 'success',
+                data: [{ ...missedEvent, date: '2026-06-05', version: 250 }]
+            }));
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+        useCalendarStore.setState({
+            token: 'token-123',
+            user: { id: 'user-1', username: 'ada' },
+            viewMode: 'self',
+            programs: [{
+                id: 'program-1',
+                name: 'To Tomorrow Program',
+                activationTime: '06:30',
+                isEnabled: true,
+                targetOffsetDays: 1
+            }]
+        } as never);
+
+        await useCalendarStore.getState().checkAutomaticPrograms();
+
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        const requestBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+        expect(requestBody.date).toBe('2026-06-05');
+        expect(requestBody.resources).toEqual({ originDates: ['2026-06-04'] });
+        expect(localStorage.getItem('program-run:user-1:program-1:06:30:2026-06-04')).toBe('1');
+        expect(Number(localStorage.getItem('program-last-check:user-1'))).toBe(new Date(2026, 5, 5, 6, 0).getTime());
+        expect(useCalendarStore.getState().error).toBe('Tomorrow program activated, to disable, please go to Programs section.');
+    });
+
+    it('uses the program target offset when moving a missed source day', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 5, 5, 6, 0));
+        localStorage.setItem('program-last-check:user-1', String(new Date(2026, 5, 4, 6, 0).getTime()));
+
+        const missedEvent: CalendarEvent = {
+            id: 'event-1',
+            title: 'Later work',
+            date: '2026-06-04',
+            startTime: '09:00',
+            completed: false,
+            originDates: null
+        };
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({
+                message: 'success',
+                data: [missedEvent]
+            }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 260 }))
+            .mockResolvedValueOnce(jsonResponse({
+                message: 'success',
+                data: [{ ...missedEvent, date: '2026-06-07', version: 260 }]
+            }));
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+        useCalendarStore.setState({
+            token: 'token-123',
+            user: { id: 'user-1', username: 'ada' },
+            viewMode: 'self',
+            programs: [{
+                id: 'program-1',
+                name: 'To Tomorrow Program',
+                activationTime: '06:30',
+                isEnabled: true,
+                targetOffsetDays: 3
+            }]
+        } as never);
+
+        await useCalendarStore.getState().checkAutomaticPrograms();
+
+        const requestBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+        expect(requestBody.date).toBe('2026-06-07');
+    });
+
 });

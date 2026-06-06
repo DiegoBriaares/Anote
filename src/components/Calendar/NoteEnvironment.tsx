@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCalendarStore, type CalendarEvent, type Role } from '../../store/calendarStore';
-import { X, Save, FileText, RotateCcw, Link, Paperclip, Eye, Pencil } from 'lucide-react';
+import { X, Save, FileText, RotateCcw, Link, Paperclip, Eye, Pencil, UploadCloud } from 'lucide-react';
 import { formatFullDate } from '../../utils/dateUtils';
 import { toApiUrl } from '../../utils/api';
 import ReactMarkdown from 'react-markdown';
@@ -12,6 +12,8 @@ interface NoteEnvironmentProps {
     role: Role;
 }
 
+type AttachmentKind = 'pdf' | 'image' | 'text' | 'file';
+
 export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClose, event, role }) => {
     const { eventNotes, fetchEventNotes, saveEventNote, uploadFile } = useCalendarStore();
     const [content, setContent] = useState('');
@@ -19,8 +21,20 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [isPreview, setIsPreview] = useState(false);
     const [selectedFile, setSelectedFile] = useState<{ url: string; name: string } | null>(null);
+    const [textPreview, setTextPreview] = useState<{ isLoading: boolean; content: string | null; error: string | null }>({
+        isLoading: false,
+        content: null,
+        error: null
+    });
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const contentRef = useRef(content);
+
+    useEffect(() => {
+        contentRef.current = content;
+    }, [content]);
 
     // Initial load
     useEffect(() => {
@@ -47,21 +61,109 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
         }
     };
 
+    const isPdfFile = (fileName: string, fileType?: string) => {
+        return fileType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
+    };
+
+    const isPdfUrl = (url: string) => {
+        return url.split('?')[0].toLowerCase().endsWith('.pdf');
+    };
+
+    const getAttachmentKind = (url: string, name: string): AttachmentKind => {
+        const value = `${url} ${name}`.split('?')[0].toLowerCase();
+        if (value.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/)) return 'image';
+        if (value.match(/\.pdf(\s|$)/)) return 'pdf';
+        if (value.match(/\.(txt|md|markdown|csv|json|log|xml|html|css|js|jsx|ts|tsx|sql|yml|yaml)$/)) return 'text';
+        return 'file';
+    };
+
+    const getTextContent = (value: React.ReactNode): string => {
+        if (typeof value === 'string' || typeof value === 'number') {
+            return String(value);
+        }
+
+        if (Array.isArray(value)) {
+            return value.map(getTextContent).join('');
+        }
+
+        return 'Attachment';
+    };
+
+    const buildAttachmentMarkdown = (file: File, url: string) => {
+        if (file.type.startsWith('image/')) {
+            return `![${file.name}](${url})`;
+        }
+
+        const label = isPdfFile(file.name, file.type) ? `${file.name} PDF` : file.name;
+        return `[${label}](${url})`;
+    };
+
+    const insertTextAtCursor = (text: string, cursor = textareaRef.current?.selectionStart ?? contentRef.current.length) => {
+        const currentContent = contentRef.current;
+        const safeCursor = Math.min(cursor, currentContent.length);
+        const prefix = currentContent.slice(0, safeCursor);
+        const suffix = currentContent.slice(safeCursor);
+        const leadingBreak = prefix.trim().length > 0 && !prefix.endsWith('\n') ? '\n\n' : '';
+        const trailingBreak = suffix.trim().length > 0 && !suffix.startsWith('\n') ? '\n\n' : '\n';
+        const nextContent = `${prefix}${leadingBreak}${text}${trailingBreak}${suffix}`;
+
+        contentRef.current = nextContent;
+        setContent(nextContent);
+        setTimeout(() => {
+            const nextCursor = safeCursor + leadingBreak.length + text.length + trailingBreak.length;
+            textareaRef.current?.focus();
+            textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+        }, 100);
+    };
+
+    const uploadAndInsertFiles = async (files: FileList | File[]) => {
+        const filesToUpload = Array.from(files);
+        if (filesToUpload.length === 0 || isPreview) return;
+
+        setIsUploading(true);
+        const uploadedMarkdown: string[] = [];
+
+        for (const file of filesToUpload) {
+            const url = await uploadFile(file);
+            if (url) {
+                uploadedMarkdown.push(buildAttachmentMarkdown(file, url));
+            }
+        }
+
+        setIsUploading(false);
+        if (uploadedMarkdown.length > 0) {
+            insertTextAtCursor(uploadedMarkdown.join('\n\n'));
+        }
+    };
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = e.target.files;
+        if (files) {
+            await uploadAndInsertFiles(files);
+        }
+        e.target.value = '';
+    };
 
-        const url = await uploadFile(file);
-        if (url) {
-            const cursor = textareaRef.current?.selectionStart || content.length;
-            const textToInsert = file.type.startsWith('image/') ? `\n![${file.name}](${url})\n` : `\n[${file.name}](${url})`;
+    const handleFileDrop = async (e: React.DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingFile(false);
+        if (e.dataTransfer.files.length > 0) {
+            await uploadAndInsertFiles(e.dataTransfer.files);
+        }
+    };
 
-            const newContent = content.slice(0, cursor) + textToInsert + content.slice(cursor);
-            setContent(newContent);
+    const handleFileDragOver = (e: React.DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = isPreview ? 'none' : 'copy';
+        if (!isPreview) {
+            setIsDraggingFile(true);
+        }
+    };
 
-            setTimeout(() => {
-                textareaRef.current?.focus();
-            }, 100);
+    const handleFileDragLeave = (e: React.DragEvent<HTMLElement>) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setIsDraggingFile(false);
         }
     };
 
@@ -70,24 +172,96 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
         if (!url) return;
         const text = prompt('Enter link text:', 'link') || 'link';
 
-        const cursor = textareaRef.current?.selectionStart || content.length;
-        const textToInsert = `[${text}](${url})`;
-        const newContent = content.slice(0, cursor) + textToInsert + content.slice(cursor);
-        setContent(newContent);
-        setTimeout(() => {
-            textareaRef.current?.focus();
-        }, 100);
+        insertTextAtCursor(`[${text}](${url})`);
     };
 
     const resolveUrl = (url: string) => {
         return toApiUrl(url);
     };
 
-    const handleDownload = () => {
-        if (selectedFile) {
-            window.open(selectedFile.url, '_blank');
-            setSelectedFile(null);
+    useEffect(() => {
+        if (!selectedFile) {
+            setTextPreview({ isLoading: false, content: null, error: null });
+            return;
         }
+
+        const kind = getAttachmentKind(selectedFile.url, selectedFile.name);
+        if (kind !== 'text') {
+            setTextPreview({ isLoading: false, content: null, error: null });
+            return;
+        }
+
+        let isCancelled = false;
+        setTextPreview({ isLoading: true, content: null, error: null });
+        fetch(selectedFile.url)
+            .then((res) => {
+                if (!res.ok) {
+                    throw new Error('Could not load this file.');
+                }
+                return res.text();
+            })
+            .then((text) => {
+                if (!isCancelled) {
+                    setTextPreview({ isLoading: false, content: text, error: null });
+                }
+            })
+            .catch(() => {
+                if (!isCancelled) {
+                    setTextPreview({ isLoading: false, content: null, error: 'Could not load this text preview.' });
+                }
+            });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [selectedFile]);
+
+    const renderAttachmentViewer = () => {
+        if (!selectedFile) return null;
+
+        const kind = getAttachmentKind(selectedFile.url, selectedFile.name);
+
+        if (kind === 'pdf') {
+            return (
+                <iframe
+                    src={selectedFile.url}
+                    title={selectedFile.name}
+                    className="h-full min-h-0 w-full border-0 bg-stone-100"
+                />
+            );
+        }
+
+        if (kind === 'image') {
+            return (
+                <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-stone-100 p-4">
+                    <img src={selectedFile.url} alt={selectedFile.name} className="max-h-full max-w-full object-contain" />
+                </div>
+            );
+        }
+
+        if (kind === 'text') {
+            return (
+                <div className="h-full min-h-0 overflow-auto bg-stone-950 p-5">
+                    {textPreview.isLoading && <div className="text-sm text-stone-400">Loading text...</div>}
+                    {textPreview.error && <div className="text-sm text-red-300">{textPreview.error}</div>}
+                    {textPreview.content !== null && (
+                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-stone-100">
+                            {textPreview.content}
+                        </pre>
+                    )}
+                </div>
+            );
+        }
+
+        return (
+            <div className="flex h-full min-h-0 items-center justify-center bg-stone-50 p-8 text-center">
+                <div>
+                    <FileText className="mx-auto mb-4 h-12 w-12 text-stone-400" />
+                    <p className="text-sm font-semibold text-stone-700">{selectedFile.name}</p>
+                    <p className="mt-2 text-sm text-stone-500">This file type cannot be previewed inline.</p>
+                </div>
+            </div>
+        );
     };
 
     if (!isOpen) return null;
@@ -121,38 +295,88 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
             {/* Main Editor Area */}
             <div className="flex-1 flex overflow-hidden relative">
                 {/* Editor / Preview */}
-                <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full pb-32">
+                <div
+                    className={`flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full pb-32 transition-colors ${isDraggingFile ? 'bg-orange-50/40' : ''}`}
+                    onDrop={handleFileDrop}
+                    onDragOver={handleFileDragOver}
+                    onDragLeave={handleFileDragLeave}
+                >
                     {isPreview ? (
                         <div className="prose prose-stone prose-lg max-w-none">
                             <ReactMarkdown
                                 components={{
-                                    a: ({ node, ...props }) => {
-                                        const href = resolveUrl(props.href as string);
+                                    a: (props) => {
+                                        const { node, ...linkProps } = props;
+                                        void node;
+                                        const href = resolveUrl(linkProps.href as string);
                                         const isFile = href.includes('/uploads/');
-                                        const children = props.children;
+                                        const attachmentName = getTextContent(linkProps.children);
+                                        const attachmentKind = getAttachmentKind(href, attachmentName);
+                                        const isPdf = isFile && (isPdfUrl(href) || attachmentKind === 'pdf');
+
+                                        if (isPdf) {
+                                            return (
+                                                <div className="my-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
+                                                    <div className="flex items-center gap-3 border-b border-stone-200 bg-stone-50 px-4 py-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedFile({ url: href, name: attachmentName })}
+                                                            className="flex min-w-0 items-center gap-2 text-left text-sm font-semibold text-stone-700 transition-colors hover:text-orange-600"
+                                                        >
+                                                            <FileText className="h-4 w-4 shrink-0 text-red-500" />
+                                                            <span className="truncate">{attachmentName}</span>
+                                                        </button>
+                                                    </div>
+                                                    <iframe
+                                                        src={href}
+                                                        title={attachmentName}
+                                                        className="h-[420px] w-full border-0 bg-stone-100"
+                                                    />
+                                                </div>
+                                            );
+                                        }
+
+                                        if (isFile) {
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedFile({ url: href, name: attachmentName })}
+                                                    className="my-4 flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-orange-200 hover:bg-orange-50/30"
+                                                >
+                                                    <span className="flex min-w-0 items-center gap-3">
+                                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-500">
+                                                            <FileText className="h-5 w-5" />
+                                                        </span>
+                                                        <span className="min-w-0">
+                                                            <span className="block truncate text-sm font-semibold text-stone-800">{attachmentName}</span>
+                                                            <span className="block text-xs text-stone-400">Uploaded file</span>
+                                                        </span>
+                                                    </span>
+                                                    <span className="shrink-0 text-xs font-semibold text-stone-400">
+                                                        Preview
+                                                    </span>
+                                                </button>
+                                            );
+                                        }
 
                                         return (
                                             <a
-                                                {...props}
+                                                {...linkProps}
                                                 href={href}
-                                                onClick={(e) => {
-                                                    if (isFile) {
-                                                        e.preventDefault();
-                                                        setSelectedFile({ url: href, name: String(children) });
-                                                    }
-                                                }}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-orange-500 hover:text-orange-600 underline decoration-orange-200 underline-offset-4 transition-colors font-medium break-all cursor-pointer"
                                             />
                                         );
                                     },
-                                    img: ({ node, ...props }) => {
-                                        const src = resolveUrl(props.src as string);
+                                    img: (props) => {
+                                        const { node, ...imageProps } = props;
+                                        void node;
+                                        const src = resolveUrl(imageProps.src as string);
                                         return (
                                             <div className="my-4 rounded-xl overflow-hidden shadow-lg border border-stone-100 bg-stone-50">
                                                 <img
-                                                    {...props}
+                                                    {...imageProps}
                                                     src={src}
                                                     className="max-w-full h-auto max-h-[500px] object-contain mx-auto"
                                                     loading="lazy"
@@ -160,7 +384,11 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                                             </div>
                                         );
                                     },
-                                    p: ({ node, ...props }) => <p {...props} className="mb-4 leading-relaxed text-stone-700" />
+                                    p: (props) => {
+                                        const { node, ...paragraphProps } = props;
+                                        void node;
+                                        return <div {...paragraphProps} className="mb-4 leading-relaxed text-stone-700" />;
+                                    }
                                 }}
                             >
                                 {content}
@@ -174,6 +402,9 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                             ref={textareaRef}
                             value={content}
                             onChange={(e) => setContent(e.target.value)}
+                            onDrop={handleFileDrop}
+                            onDragOver={handleFileDragOver}
+                            onDragLeave={handleFileDragLeave}
                             placeholder={`Write your observations as ${role.label}...`}
                             className="w-full h-full min-h-[50vh] resize-none outline-none text-lg leading-relaxed text-stone-700 placeholder:text-stone-300 font-serif"
                             autoFocus
@@ -186,10 +417,13 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                     <div className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Attachments</div>
                     <div
                         onClick={() => !isPreview && fileInputRef.current?.click()}
-                        className={`border-2 border-dashed border-stone-200 rounded-xl p-8 flex flex-col items-center justify-center text-stone-400 gap-2 transition-colors group ${isPreview ? 'opacity-50 cursor-not-allowed' : 'hover:border-orange-300 hover:bg-orange-50/10 cursor-pointer'}`}
+                        onDrop={handleFileDrop}
+                        onDragOver={handleFileDragOver}
+                        onDragLeave={handleFileDragLeave}
+                        className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-stone-400 gap-2 transition-colors group ${isPreview ? 'border-stone-200 opacity-50 cursor-not-allowed' : isDraggingFile ? 'border-orange-400 bg-orange-50 text-orange-500 cursor-copy' : 'border-stone-200 hover:border-orange-300 hover:bg-orange-50/10 cursor-pointer'}`}
                     >
-                        <FileText className="w-8 h-8 group-hover:text-orange-400 transition-colors" />
-                        <span className="text-xs text-center">Drag files here<br />or click to upload</span>
+                        {isUploading ? <RotateCcw className="w-8 h-8 animate-spin text-orange-400" /> : <UploadCloud className="w-8 h-8 group-hover:text-orange-400 transition-colors" />}
+                        <span className="text-xs text-center">{isUploading ? 'Uploading...' : 'Drag files here'}<br />or click to upload</span>
                     </div>
 
                     <div className="flex-1"></div>
@@ -209,6 +443,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                             ref={fileInputRef}
                             className="hidden"
                             onChange={handleFileUpload}
+                            multiple
                         />
                         <button
                             onClick={() => setIsPreview(!isPreview)}
@@ -220,7 +455,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                         <div className="w-px h-6 bg-stone-200 mx-2" />
                         <button
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={isPreview}
+                            disabled={isPreview || isUploading}
                             className="p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Attach File"
                         >
@@ -246,29 +481,26 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                     </button>
                 </div>
 
-                {/* Download Popover */}
+                {/* Attachment Viewer */}
                 {selectedFile && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200">
-                        <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 text-center animate-in zoom-in-95 duration-200 border border-stone-100">
-                            <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <FileText className="w-6 h-6" />
-                            </div>
-                            <h3 className="font-bold text-stone-800 mb-1 truncate px-2">{selectedFile.name}</h3>
-                            <p className="text-sm text-stone-500 mb-6">Do you want to open this file?</p>
-
-                            <div className="flex gap-2">
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/25 p-5 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="flex h-full max-h-[84vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-4">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <FileText className="h-5 w-5 shrink-0 text-stone-500" />
+                                    <span className="truncate text-sm font-semibold text-stone-800">{selectedFile.name}</span>
+                                </div>
                                 <button
+                                    type="button"
                                     onClick={() => setSelectedFile(null)}
-                                    className="flex-1 px-4 py-2 rounded-xl text-stone-600 hover:bg-stone-100 font-medium transition-colors"
+                                    className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-900"
+                                    title="Close"
                                 >
-                                    Close
+                                    <X className="h-5 w-5" />
                                 </button>
-                                <button
-                                    onClick={handleDownload}
-                                    className="flex-1 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-medium shadow-lg shadow-orange-200 transition-all hover:scale-105"
-                                >
-                                    Open
-                                </button>
+                            </div>
+                            <div className="min-h-0 flex-1">
+                                {renderAttachmentViewer()}
                             </div>
                         </div>
                     </div>

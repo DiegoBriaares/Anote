@@ -1,0 +1,1 @@
+The release finishing workflow archives the prompts from the conversation, stores issue explanations under solved bug and enhancement directories, writes a changelog entry, creates an archive snapshot, deploys to the production working copy, and opens a new pull request for the completed changes.

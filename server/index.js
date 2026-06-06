@@ -1880,7 +1880,7 @@ app.post('/upload', authenticateToken, upload.single('file'), (req, res) => {
     }
     console.log('File uploaded:', req.file.path);
     const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl, filename: req.file.originalname });
+    res.json({ message: 'success', url: fileUrl, filename: req.file.originalname });
 });
 
 // Admin Routes for Roles
