@@ -1,0 +1,1 @@
+Event rollover is no longer limited to a fixed today-to-tomorrow move. Calendar multi-day selection now supports moving incomplete events from selected source days to a chosen target date, and To Tomorrow programs can store a daily target offset measured from the run date so automatic runs can move events to tomorrow, pasado mañana, or another intended future date.
