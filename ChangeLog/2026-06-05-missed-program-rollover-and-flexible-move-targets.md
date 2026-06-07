@@ -5,3 +5,5 @@ Implemented recovery for To Tomorrow programs that were missed while the app was
 Added flexible target-date controls so selected calendar days can move incomplete events to a chosen date, and scheduled programs can define a target offset in days after the source day. Local development ports were also restored to client 5174 and API 3002, leaving API 3001 for production.
 
 Refined the Programs screen so manual Run Now execution is visually separated from scheduled program definitions. Program definitions now keep daily activation semantics and use a Target Offset measured from the run date: 1 means tomorrow, 2 means pasado mañana, and so on.
+
+Added regression coverage for accumulated missed days. The test verifies that multiple elapsed program runs move each run date's incomplete events to its own target date rather than collapsing all events into a single current tomorrow bucket.

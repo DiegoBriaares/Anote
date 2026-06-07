@@ -268,4 +268,87 @@ describe('calendarStore programs', () => {
         expect(requestBody.date).toBe('2026-06-07');
     });
 
+    it('moves each accumulated missed day to its own next-day target without collapsing all events into tomorrow', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 5, 7, 6, 30));
+        localStorage.setItem('program-last-check:user-1', String(new Date(2026, 5, 4, 6, 0).getTime()));
+
+        const june4Event: CalendarEvent = {
+            id: 'event-4',
+            title: 'June 4 work',
+            date: '2026-06-04',
+            startTime: '09:00',
+            completed: false,
+            originDates: null
+        };
+        const june5Event: CalendarEvent = {
+            id: 'event-5',
+            title: 'June 5 work',
+            date: '2026-06-05',
+            startTime: '09:00',
+            completed: false,
+            originDates: null
+        };
+        const june6Event: CalendarEvent = {
+            id: 'event-6',
+            title: 'June 6 work',
+            date: '2026-06-06',
+            startTime: '09:00',
+            completed: false,
+            originDates: null
+        };
+        const june7Event: CalendarEvent = {
+            id: 'event-7',
+            title: 'June 7 work',
+            date: '2026-06-07',
+            startTime: '09:00',
+            completed: false,
+            originDates: null
+        };
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [june7Event] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 270 }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [{ ...june7Event, date: '2026-06-08', version: 270 }] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [june6Event] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 260 }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [{ ...june6Event, date: '2026-06-07', version: 260 }] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [june5Event] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 250 }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [{ ...june5Event, date: '2026-06-06', version: 250 }] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [june4Event] }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 240 }))
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', data: [{ ...june4Event, date: '2026-06-05', version: 240 }] }));
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+
+        useCalendarStore.setState({
+            token: 'token-123',
+            user: { id: 'user-1', username: 'ada' },
+            viewMode: 'self',
+            programs: [{
+                id: 'program-1',
+                name: 'To Tomorrow Program',
+                activationTime: '06:30',
+                isEnabled: true,
+                targetOffsetDays: 1
+            }]
+        } as never);
+
+        await useCalendarStore.getState().checkAutomaticPrograms();
+
+        const updateBodies = fetchMock.mock.calls
+            .filter((call) => String(call[0]).startsWith(`${API_URL}/events/event-`))
+            .map((call) => JSON.parse(String(call[1]?.body)));
+
+        expect(updateBodies).toEqual([
+            expect.objectContaining({ date: '2026-06-08', resources: { originDates: ['2026-06-07'] } }),
+            expect.objectContaining({ date: '2026-06-07', resources: { originDates: ['2026-06-06'] } }),
+            expect.objectContaining({ date: '2026-06-06', resources: { originDates: ['2026-06-05'] } }),
+            expect.objectContaining({ date: '2026-06-05', resources: { originDates: ['2026-06-04'] } })
+        ]);
+        expect(localStorage.getItem('program-run:user-1:program-1:06:30:2026-06-04')).toBe('1');
+        expect(localStorage.getItem('program-run:user-1:program-1:06:30:2026-06-05')).toBe('1');
+        expect(localStorage.getItem('program-run:user-1:program-1:06:30:2026-06-06')).toBe('1');
+        expect(localStorage.getItem('program-run:user-1:program-1:06:30:2026-06-07')).toBe('1');
+    });
+
 });
