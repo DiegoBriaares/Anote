@@ -59,3 +59,27 @@ prompt: But not that kind of selection but on set date as today for every day, s
 answer: Removed the start-date/cadence model and restored daily automatic runs where the target offset means run date plus N days.
 
 suggestion: Keep the field as Target Offset measured from today/run date: 1 for tomorrow, 2 for pasado mañana.
+
+---
+
+prompt: Thanks. If various days has happen after the last time the system was used, does all accumulated events over such days are put into tomorro events ?
+
+answer: Explained that missed activations are processed per run date, so events move to each missed run date plus the configured target offset rather than collapsing into the current tomorrow.
+
+suggestion: Add a focused test to prove this behavior.
+
+---
+
+prompt: completly sure? can a test be added?
+
+answer: Added a store test proving accumulated missed days move independently to their own next-day targets and do not all collapse into one tomorrow bucket.
+
+suggestion: Keep this regression test with the program scheduler tests.
+
+---
+
+prompt: good, so if 100% sure, run the prompt /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+
+answer: Updated the prompt archive, changelog, production snapshot, deployment, and pull request branch with the accumulated missed-days regression test.
+
+suggestion: Use the existing PR branch for this follow-up verification change.
