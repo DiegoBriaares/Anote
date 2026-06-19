@@ -13,7 +13,7 @@ import { PostponedEventsView } from './components/Calendar/PostponedEventsView';
 import { DayEventsAdministrationPage } from './components/Calendar/DayEventsAdministrationPage';
 
 function App() {
-  const { user, logout, viewMode, viewingUsername, profile, viewingPreferences, localPreferences, currentView, navigateToProfile, navigateToFriends, navigateToRoles, navigateToPrograms, viewOwnCalendar, navigateToAdmin, appConfig, socialError, bootstrap, fetchAppConfig, checkAutomaticPrograms } = useCalendarStore();
+  const { user, logout, viewMode, viewingUsername, profile, viewingPreferences, localPreferences, currentView, navigateToProfile, navigateToFriends, navigateToRoles, navigateToPrograms, viewOwnCalendar, navigateToAdmin, appConfig, socialError, bootstrap, fetchAppConfig, checkAutomaticPrograms, programs } = useCalendarStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -58,7 +58,7 @@ function App() {
     }, 30_000);
 
     return () => clearInterval(interval);
-  }, [checkAutomaticPrograms, user]);
+  }, [checkAutomaticPrograms, programs, user]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
