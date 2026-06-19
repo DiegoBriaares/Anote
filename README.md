@@ -1,6 +1,6 @@
 # Anote
 
-Anote is an personal calendar system for turning plans into managed event state. It is not only a date grid: it is a full-stack event administration workspace with day-level CRUD, completion tracking, postponed-event queues, event transfer history, role-scoped Markdown notes, friend calendar distribution, automatic carryover programs, profile-level visual configuration, and an admin console for system oversight.
+Anote is a personal calendar system for turning plans into managed event state. It is not only a date grid: it is a full-stack event administration workspace with day-level CRUD, completion tracking, postponed-event queues, event transfer history, role-scoped Markdown notes, friend calendar distribution, automatic carryover programs, profile-level visual configuration, and an admin console for system oversight.
 
 The product is designed for users who need a calendar that can preserve context while plans change. A Day Event can be completed, copied, moved, postponed, restored, shared with friends, annotated by role or subrole, and traced through origin history. The Calendar Page supports lightweight planning and social distribution, while administration pages provide controlled workflows for editing event state without losing the record of how the plan evolved.
 
