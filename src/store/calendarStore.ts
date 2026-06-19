@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, parseDateKey } from '../utils/dateUtils';
 import { API_URL, normalizeApiAssetUrl } from '../utils/api';
 import { normalizePriority } from '../utils/priorityUtils';
 import { storage } from '../utils/storage';
@@ -188,7 +188,10 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const TOMORROW_PROGRAM_DEFAULT_ID = 'to-tomorrow-program';
 const TOMORROW_PROGRAM_MESSAGE = 'Tomorrow program activated, to disable, please go to Programs section.';
 const PROGRAM_LAST_CHECK_PREFIX = 'program-last-check';
+const PROGRAM_PENDING_DAYS_PREFIX = 'program-pending-days';
+const PROGRAM_CATCH_UP_SKIP_PREFIX = 'program-catch-up-skip';
 const DEFAULT_PROGRAM_TARGET_OFFSET_DAYS = 1;
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const normalizeTargetOffsetDays = (value: unknown) => {
     const numeric = Number(value);
@@ -244,6 +247,64 @@ const buildProgramRunKey = (userId: string, program: Program, dateKey: string) =
 );
 
 const buildProgramLastCheckKey = (userId: string) => `${PROGRAM_LAST_CHECK_PREFIX}:${userId}`;
+const buildProgramPendingDaysKey = (userId: string, program: Program) => `${PROGRAM_PENDING_DAYS_PREFIX}:${userId}:${program.id}`;
+const buildProgramCatchUpSkipKey = (userId: string, program: Program, dateKey: string) => (
+    `${PROGRAM_CATCH_UP_SKIP_PREFIX}:${userId}:${program.id}:${dateKey}`
+);
+
+const isValidDateKey = (value: unknown): value is string => {
+    if (typeof value !== 'string' || !DATE_KEY_PATTERN.test(value)) return false;
+    const parsed = parseDateKey(value);
+    return Boolean(parsed && formatDate(parsed) === value);
+};
+
+const normalizeDateKeySet = (dateKeys: unknown[]) => (
+    Array.from(new Set(dateKeys.filter(isValidDateKey))).sort()
+);
+
+const readProgramPendingDays = (userId: string, program: Program) => {
+    try {
+        const parsed = JSON.parse(storage.getItem(buildProgramPendingDaysKey(userId, program)) || '[]');
+        return Array.isArray(parsed) ? normalizeDateKeySet(parsed) : [];
+    } catch {
+        return [];
+    }
+};
+
+const writeProgramPendingDays = (userId: string, program: Program, dateKeys: unknown[]) => {
+    const nextDateKeys = normalizeDateKeySet(dateKeys);
+    const storageKey = buildProgramPendingDaysKey(userId, program);
+    if (nextDateKeys.length === 0) {
+        storage.removeItem(storageKey);
+    } else {
+        storage.setItem(storageKey, JSON.stringify(nextDateKeys));
+    }
+    return nextDateKeys;
+};
+
+const seedProgramPendingDay = (userId: string, program: Program, dateKey: string) => {
+    const pendingDays = readProgramPendingDays(userId, program);
+    if (storage.getItem(buildProgramRunKey(userId, program, dateKey)) === '1') {
+        return writeProgramPendingDays(userId, program, pendingDays.filter((pendingDateKey) => pendingDateKey !== dateKey));
+    }
+    return writeProgramPendingDays(userId, program, [...pendingDays, dateKey]);
+};
+
+const removeProgramPendingDay = (userId: string, program: Program, dateKey: string) => (
+    writeProgramPendingDays(
+        userId,
+        program,
+        readProgramPendingDays(userId, program).filter((pendingDateKey) => pendingDateKey !== dateKey)
+    )
+);
+
+const recordProgramCatchUpSkip = (userId: string, program: Program, dateKey: string) => {
+    storage.setItem(buildProgramCatchUpSkipKey(userId, program, dateKey), '1');
+};
+
+const hasProgramCatchUpSkip = (userId: string, program: Program, dateKey: string) => (
+    storage.getItem(buildProgramCatchUpSkipKey(userId, program, dateKey)) === '1'
+);
 
 const readProgramLastCheckAt = (userId: string) => {
     const raw = storage.getItem(buildProgramLastCheckKey(userId));
@@ -353,7 +414,7 @@ interface CalendarState {
     addEventsBulk: (entries: Array<{ title: string; date: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; wasPostponed?: boolean | null }>) => Promise<boolean>;
     shareEventsToFriends: (friendIds: string[], dateKeys: string[], eventIds?: string[]) => Promise<boolean>;
     deleteEvent: (id: string) => Promise<void>;
-    editEvent: (event: CalendarEvent) => Promise<boolean>;
+    editEvent: (event: CalendarEvent, options?: { recordClockCheck?: boolean }) => Promise<boolean>;
     setEventCompleted: (event: CalendarEvent, completed: boolean) => Promise<boolean>;
     addPostponedEvent: (entry: { title: string; time?: string; startTime?: string; link?: string; note?: string; priority?: number | string | null; completed?: boolean | null; postponedView?: PostponedEventDomain }) => Promise<void>;
     addPostponedEventsBulk: (entries: Array<{ title: string; startTime?: string | null; priority?: number | string | null; link?: string | null; note?: string | null; completed?: boolean | null; originDates?: string[] | null; postponedView?: PostponedEventDomain }>) => Promise<boolean>;
@@ -385,8 +446,8 @@ interface CalendarState {
     createProgram: (program: Omit<Program, 'id'>) => Promise<void>;
     updateProgram: (id: string, patch: Partial<Omit<Program, 'id'>>) => Promise<void>;
     deleteProgram: (id: string) => Promise<void>;
-    moveIncompleteEventsToDate: (sourceDateKeys: string[], targetDateKey: string) => Promise<boolean>;
-    setTomorrowProgramParameter: (value: boolean, options?: { closeSession?: boolean; sourceDateKeys?: string[]; targetDateKey?: string }) => Promise<boolean>;
+    moveIncompleteEventsToDate: (sourceDateKeys: string[], targetDateKey: string, options?: { recordClockCheck?: boolean }) => Promise<boolean>;
+    setTomorrowProgramParameter: (value: boolean, options?: { closeSession?: boolean; sourceDateKeys?: string[]; targetDateKey?: string; recordClockCheck?: boolean }) => Promise<boolean>;
     checkAutomaticPrograms: () => Promise<void>;
 
     // Visuals
@@ -1078,7 +1139,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             }
         },
 
-        editEvent: async (event) => {
+        editEvent: async (event, options) => {
             const { token, viewMode } = get();
             if (!token || viewMode === 'friend') return false;
             const previousEvents = get().events;
@@ -1137,7 +1198,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                         : state.compareEvents
                 }));
                 const { user } = get();
-                if (user) recordProgramClockCheck(user.id);
+                if (user && options?.recordClockCheck !== false) {
+                    recordProgramClockCheck(user.id);
+                }
                 return true;
             } catch (e) {
                 console.error('Failed to edit event', e);
@@ -1535,7 +1598,12 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             const normalized = normalizePrograms(programs);
             set({ programs: normalized });
             const { user } = get();
-            if (user) recordProgramClockCheck(user.id);
+            if (user) {
+                normalized
+                    .filter((program) => !program.isEnabled)
+                    .forEach((program) => writeProgramPendingDays(user.id, program, []));
+                recordProgramClockCheck(user.id);
+            }
             await get().updateProfile({ programs: normalized });
         },
 
@@ -1562,7 +1630,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             await get().savePrograms(nextPrograms.length > 0 ? nextPrograms : normalizePrograms(null));
         },
 
-        moveIncompleteEventsToDate: async (sourceDateKeys, targetDateKey) => {
+        moveIncompleteEventsToDate: async (sourceDateKeys, targetDateKey, options) => {
             const { user, viewMode } = get();
             if (!user || viewMode === 'friend') return false;
             const uniqueSourceDateKeys = Array.from(new Set(sourceDateKeys.filter((dateKey) => dateKey && dateKey !== targetDateKey)));
@@ -1583,6 +1651,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     ...event,
                     date: targetDateKey,
                     originDates
+                }, {
+                    recordClockCheck: options?.recordClockCheck
                 });
                 if (!moved) {
                     didSucceed = false;
@@ -1592,7 +1662,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
 
             if (didSucceed) {
                 await get().fetchEvents();
-                recordProgramClockCheck(user.id);
+                if (options?.recordClockCheck !== false) {
+                    recordProgramClockCheck(user.id);
+                }
             }
             return didSucceed;
         },
@@ -1607,7 +1679,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 ? options.sourceDateKeys
                 : [todayDate];
             const targetDateKey = options?.targetDateKey || tomorrowDate;
-            const didSucceed = await get().moveIncompleteEventsToDate(sourceDateKeys, targetDateKey);
+            const didSucceed = await get().moveIncompleteEventsToDate(sourceDateKeys, targetDateKey, {
+                recordClockCheck: options?.recordClockCheck
+            });
 
             set({ tomorrowProgramParameter: false });
             if (didSucceed) {
@@ -1621,35 +1695,103 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         checkAutomaticPrograms: async () => {
             const { user, programs, tomorrowProgramParameter } = get();
             if (!user || tomorrowProgramParameter) return;
+            programs
+                .filter((program) => !program.isEnabled)
+                .forEach((program) => writeProgramPendingDays(user.id, program, []));
+            const enabledPrograms = programs.filter((program) => program.isEnabled);
+            if (enabledPrograms.length === 0) return;
             const now = new Date();
+            const todayDateKey = formatDate(now);
+            const yesterdayDateKey = formatDate(addDays(now, -1));
             const previousAt = readProgramLastCheckAt(user.id);
-            const dueOccurrences = programs.flatMap((program) => (
-                getElapsedProgramOccurrences(program, previousAt, now).map((activationDate) => ({
-                    program,
-                    activationDate
-                }))
-            )).filter(({ program, activationDate }) => (
-                storage.getItem(buildProgramRunKey(user.id, program, formatDate(activationDate))) !== '1'
-            )).sort((a, b) => b.activationDate.getTime() - a.activationDate.getTime());
+            const programOccurrences = enabledPrograms.map((program) => {
+                const pendingDateKeys = seedProgramPendingDay(user.id, program, todayDateKey);
+                const elapsedOccurrences = getElapsedProgramOccurrences(program, previousAt, now)
+                    .map((activationDate) => ({
+                        program,
+                        sourceDateKey: formatDate(activationDate),
+                        targetDateKey: formatDate(addDays(activationDate, normalizeTargetOffsetDays(program.targetOffsetDays))),
+                        activationDate
+                    }))
+                    .filter((occurrence) => (
+                        storage.getItem(buildProgramRunKey(user.id, program, occurrence.sourceDateKey)) !== '1'
+                    ));
+                const catchUpSourceDateKeys = normalizeDateKeySet([
+                    ...pendingDateKeys,
+                    ...elapsedOccurrences.map((occurrence) => occurrence.sourceDateKey)
+                ]).filter((sourceDateKey) => (
+                    sourceDateKey <= yesterdayDateKey
+                    && storage.getItem(buildProgramRunKey(user.id, program, sourceDateKey)) !== '1'
+                ));
 
-            recordProgramClockCheck(user.id, now);
-            if (dueOccurrences.length === 0) return;
+                return {
+                    program,
+                    catchUpOccurrences: catchUpSourceDateKeys.map((sourceDateKey) => ({
+                        program,
+                        sourceDateKey,
+                        targetDateKey: todayDateKey
+                    })),
+                    dueOccurrences: elapsedOccurrences.filter((occurrence) => (
+                        occurrence.sourceDateKey === todayDateKey
+                        && !hasProgramCatchUpSkip(user.id, program, todayDateKey)
+                    ))
+                };
+            });
+
+            const catchUpOccurrences = programOccurrences
+                .flatMap(({ catchUpOccurrences }) => catchUpOccurrences)
+                .sort((a, b) => a.sourceDateKey.localeCompare(b.sourceDateKey));
+
+            if (catchUpOccurrences.length > 0) {
+                let didRunAny = false;
+                const caughtUpPrograms = new Map<string, Program>();
+                for (const { program, sourceDateKey, targetDateKey } of catchUpOccurrences) {
+                    const didRun = await get().setTomorrowProgramParameter(true, {
+                        sourceDateKeys: [sourceDateKey],
+                        targetDateKey,
+                        recordClockCheck: false
+                    });
+                    if (!didRun) return;
+
+                    didRunAny = true;
+                    caughtUpPrograms.set(program.id, program);
+                    storage.setItem(buildProgramRunKey(user.id, program, sourceDateKey), '1');
+                    removeProgramPendingDay(user.id, program, sourceDateKey);
+                }
+
+                if (didRunAny) {
+                    caughtUpPrograms.forEach((program) => recordProgramCatchUpSkip(user.id, program, todayDateKey));
+                    recordProgramClockCheck(user.id, now);
+                    logoutAndReset(TOMORROW_PROGRAM_MESSAGE);
+                }
+                return;
+            }
+
+            const dueOccurrences = programOccurrences
+                .flatMap(({ dueOccurrences }) => dueOccurrences)
+                .sort((a, b) => a.activationDate.getTime() - b.activationDate.getTime());
+
+            if (dueOccurrences.length === 0) {
+                recordProgramClockCheck(user.id, now);
+                return;
+            }
 
             let didRunAny = false;
-            for (const { program, activationDate } of dueOccurrences) {
-                const sourceDateKey = formatDate(activationDate);
-                const targetDateKey = formatDate(addDays(activationDate, normalizeTargetOffsetDays(program.targetOffsetDays)));
+            for (const { program, sourceDateKey, targetDateKey } of dueOccurrences) {
                 const didRun = await get().setTomorrowProgramParameter(true, {
                     sourceDateKeys: [sourceDateKey],
-                    targetDateKey
+                    targetDateKey,
+                    recordClockCheck: false
                 });
                 if (!didRun) return;
 
                 didRunAny = true;
                 storage.setItem(buildProgramRunKey(user.id, program, sourceDateKey), '1');
+                removeProgramPendingDay(user.id, program, sourceDateKey);
             }
 
             if (didRunAny) {
+                recordProgramClockCheck(user.id, now);
                 logoutAndReset(TOMORROW_PROGRAM_MESSAGE);
             }
         },
