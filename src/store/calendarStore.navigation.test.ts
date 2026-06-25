@@ -32,6 +32,22 @@ describe('calendarStore day administration navigation', () => {
         expect(useCalendarStore.getState().dayAdministrationDate).toBe('2026-04-24');
     });
 
+    it('ignores non-message arguments when logging out', () => {
+        useCalendarStore.setState({
+            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
+            currentView: 'profile',
+            error: null
+        } as never);
+
+        (useCalendarStore.getState().logout as unknown as (message: unknown) => void)({ type: 'click' });
+
+        expect(useCalendarStore.getState().user).toBeNull();
+        expect(useCalendarStore.getState().token).toBeNull();
+        expect(useCalendarStore.getState().currentView).toBe('calendar');
+        expect(useCalendarStore.getState().error).toBeNull();
+    });
+
     it('keeps event state and reports action errors when adding an event fails', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: false,
