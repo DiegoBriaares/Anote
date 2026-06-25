@@ -490,14 +490,14 @@ interface CalendarState {
 }
 
 export const useCalendarStore = create<CalendarState>((set, get) => {
-    const logoutAndReset = (message?: string) => {
+    const logoutAndReset = (message?: unknown) => {
         storage.removeItem('token');
         storage.removeItem('user');
         storage.removeItem('profile');
         set({
             user: null,
             token: null,
-            error: message || null,
+            error: typeof message === 'string' ? message : null,
             actionError: null,
             events: {},
             postponedEvents: [],
