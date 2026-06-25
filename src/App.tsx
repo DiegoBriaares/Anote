@@ -187,7 +187,7 @@ function App() {
               </button>
             )}
             <button
-              onClick={logout}
+              onClick={() => { logout(); setIsMenuOpen(false); }}
               className="menu-item w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-3 transition-all border-t border-orange-100"
             >
               <LogOut className="w-4 h-4" /> Logout
