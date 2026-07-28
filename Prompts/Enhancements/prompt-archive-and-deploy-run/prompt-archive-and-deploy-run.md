@@ -1,4 +1,4 @@
-prompt: Looks good. run this prompt /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Looks good. run this prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Archived prompts, documented the bug fix, and prepared release artifacts plus deployment steps.
 
@@ -6,7 +6,7 @@ suggestion: Confirm the generated prompt archive, changelog entry, PR, and deplo
 
 ---
 
-prompt: Hey. In new PR. I already changed the prompt for specifying this. Continue run the prompt /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Hey. In new PR. I already changed the prompt for specifying this. Continue run the prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Updated the prompt archive for the new request and prepared a new PR branch plus deployment artifacts.
 

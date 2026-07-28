@@ -143,11 +143,8 @@ npm install
 cd server && npm install && cd ..
 ```
 
-Run the app with separate frontend and backend terminals:
-
-```bash
-cd server && PORT=3002 node index.js
-```
+Run both development services with one command. The script selects Node 20 and
+stops the API when Vite exits:
 
 ```bash
 npm run dev
@@ -157,16 +154,14 @@ Default local URLs:
 
 | Service | URL |
 | --- | --- |
-| Frontend | http://localhost:5173 |
-| Development API/Admin | http://localhost:3002 |
-| Production API/Admin | http://localhost:3001 |
+| Frontend | http://127.0.0.1:5174 |
+| Development API (through the frontend) | http://127.0.0.1:5174/api |
+| Direct development API diagnostics | http://127.0.0.1:3002/health/ready |
 
 ## Verification
 
 ```bash
-npm run lint
-npm run build
-npx vitest
+npm run verify
 ```
 
 Tests currently cover store behavior, calendar boards, postponed boards, day administration behavior, priority utilities, and backend migration/profile helpers.
@@ -183,31 +178,54 @@ rm -rf server/uploads/*
 cd server && PORT=3002 node index.js
 ```
 
-Do not commit local databases, uploads, secrets, or production data. Production paths and secrets should be environment-driven before broader deployment.
+Do not commit local databases, uploads, secrets, or production data. Production
+state is owned by `ANOTE_PRODUCTION_HOME`. Its portable default is the operating
+system's per-user application-state directory, outside the source checkout and
+images.
 
 ## Production Operations
 
-Patch the production copy while preserving database and uploads:
+Production is a two-container stack modeled after Barcelonnette ERP:
+
+- Nginx serves the compiled frontend and owns the only public gateway.
+- `/api/*` is proxied to an internal Node 20 API container.
+- SQLite, uploads, secrets, backups, and release manifests remain outside images.
+- The API is never published directly on host port `3001`.
+
+Users access production through:
+
+- `http://anote` over MagicDNS/Tailscale;
+- `https://<anote-device>.<tailnet>.ts.net` for browser-trusted HTTPS;
+- `http://<host>.local:15173` on the trusted local network.
+
+From a clean `main` commit that is present on `origin/main`, deploy with:
 
 ```bash
 npm run prod:deploy
 ```
 
-Useful options:
+The deploy command builds commit-tagged images first, creates an SQLite-safe
+pre-deploy backup, starts the replacement, waits for `/api/health/ready`, and
+writes a release manifest. It automatically restores the prior data/runtime if
+readiness fails.
+
+Backup and rollback commands:
 
 ```bash
-DRY_RUN=1 bash scripts/deploy_to_prod.sh
-SKIP_INSTALL=1 bash scripts/deploy_to_prod.sh
-PROD_DIR=/custom/path bash scripts/deploy_to_prod.sh
+npm run prod:backup
+npm run prod:rollback -- <backup-id>
 ```
+
+`ALLOW_DIRTY=1` exists only for the one-time architecture bootstrap. Routine
+production deployments must never use it.
 
 Production user operations run from the development repo:
 
 ```bash
-npm run --silent prod:user:make-admin -- --username=USACO
-npm run --silent prod:user:remove-admin -- --username=USACO
+npm run --silent prod:user:make-admin -- --username=example-user
+npm run --silent prod:user:remove-admin -- --username=example-user
 npm run --silent prod:user:change-username -- --username=oldname --new-username=newname
-npm run --silent prod:user:history -- --username=USACO
+npm run --silent prod:user:history -- --username=example-user
 ```
 
 See [`scripts/PROD_USER_OPS.md`](scripts/PROD_USER_OPS.md) for full production user operation notes.

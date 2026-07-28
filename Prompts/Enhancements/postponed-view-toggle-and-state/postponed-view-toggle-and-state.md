@@ -30,7 +30,7 @@ suggestion: Optionally add localStorage persistence if state should survive refr
 
 ---
 
-prompt: Excellent, run this prompt /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Excellent, run this prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Archived prompts, added changelog and enhancement/bug notes, opened a PR, deployed, and archived the prod snapshot.
 
@@ -38,7 +38,7 @@ suggestion: Review the PR and confirm production deployment success.
 
 ---
 
-prompt: Clean everything as needed from previous prompt.. and rerun prompt /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Clean everything as needed from previous prompt.. and rerun prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Restored an unexpected file deletion, refreshed prompt archives, and prepared a new branch/PR with updated release notes.
 

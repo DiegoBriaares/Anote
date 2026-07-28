@@ -1,3 +1,7 @@
-Deploy the changes to /Users/digogonz/Desktop/Calendario/cal-ap using /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/scripts/deploy_to_prod.sh   
+Resolve the repository root with `git rev-parse --show-toplevel` and run all commands from there.
 
-Then run scripts/archive_prod_snapshot.sh to backup this new version.
+Deploy only after the pull request is merged. Require local `main` to be clean and exactly match `origin/main`, then run `npm run prod:deploy`.
+
+The deploy command owns the immutable image build, SQLite/uploads backup, health-checked cutover, release manifest, and automatic rollback. Do not copy source into a second production checkout and do not run a separate snapshot command.
+
+Never print, archive, or commit production paths, environment files, credentials, tailnet identifiers, database contents, uploads, or other private machine data.

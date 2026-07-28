@@ -1,0 +1,6 @@
+Production served the frontend and API as separately addressed development
+processes. Opening Anote through MagicDNS loaded the frontend, but authentication
+could fail because browser code guessed an internal API port that was not a
+stable public contract. The application now uses one same-origin gateway:
+frontend requests use `/api`, the gateway owns routing, and the API port remains
+private. Health, restart, backup, and live-route checks verify the correction.

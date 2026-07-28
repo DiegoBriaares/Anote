@@ -1,91 +1,50 @@
-# Administration Management Plan System (AMPS) - Quick Start Guide
+# Anote Quick Start
 
-## 🚀 Run Development Server
+## Development
+
+Install dependencies once, then start the frontend and API together:
 
 ```bash
-# Terminal 1 - Backend (API)
-cd server && PORT=3002 node index.js
-
-# Terminal 2 - Frontend (UI)
+npm install
+cd server && npm install && cd ..
 npm run dev
 ```
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3002
+- App: `http://127.0.0.1:5174`
+- API readiness: `http://127.0.0.1:5174/api/health/ready`
+- The direct development API listens only on `127.0.0.1:3002`.
 
----
-
-## 📦 Generate New Production Environment
-
-Creates a clean copy with fresh database and admin user:
+## Verification
 
 ```bash
-node scripts/generate_prod.cjs --target=/path/to/destination --admin=USERNAME --password=PASSWORD
+npm run verify
 ```
 
-**Example:**
-```bash
-node scripts/generate_prod.cjs --target=~/Desktop/calendar-prod --admin=admin --password=secret123
-```
+## Production
 
----
-
-## 👑 Admin Management
-
-### Promote Existing User to Admin
-```bash
-node scripts/make_admin.cjs --username=USERNAME
-```
-
-### Check Who Is Admin
-```bash
-sqlite3 server/calendar.db "SELECT username, is_admin FROM users;"
-```
-
----
-
-## 🏭 Build for Production
+Production is built from the development repository; source files are not
+copied into a second runnable tree.
 
 ```bash
-# Build frontend
-npm run build
-
-# Run production server (serves built files)
-cd server && node index.js
+git switch main
+git pull --ff-only
+npm run verify
+npm run prod:deploy
 ```
 
-Access at: http://localhost:3001
+Production access:
 
----
+- `http://anote`
+- `https://<anote-device>.<tailnet>.ts.net`
+- `http://<host>.local:15173`
 
-## 🛑 Stop All Servers
+Operations:
 
 ```bash
-pkill -f "node.*index.js"; pkill -f "vite"
+npm run prod:backup
+npm run prod:rollback -- <backup-id>
+source scripts/production_paths.sh
+docker compose --env-file "$ANOTE_ENV_FILE" -f compose.production.yaml ps
 ```
 
----
-
-## 📁 Key Files
-
-| File | Purpose |
-|------|---------|
-| `server/index.js` | Backend API server |
-| `server/calendar.db` | SQLite database |
-| `scripts/generate_prod.cjs` | Create production copy |
-| `scripts/make_admin.cjs` | Promote user to admin |
-
----
-
-## ⚡ One-Liner Commands
-
-```bash
-# Start everything
-cd server && PORT=3002 node index.js & cd .. && npm run dev
-
-# Kill everything
-pkill -f "node.*index.js"; pkill -f "vite"
-
-# Check ports
-lsof -i:3002 -i:5173
-```
+The production API is internal to Docker. Do not open or proxy host port `3001`.

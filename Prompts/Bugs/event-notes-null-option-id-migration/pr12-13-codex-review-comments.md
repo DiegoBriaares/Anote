@@ -1,4 +1,4 @@
-prompt: Run /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/SolvingAllPRCodexComments for PR 12 and 13
+prompt: Run <repository-root>/Prompts/Actions/SolvingAllPRCodexComments for PR 12 and 13
 
 answer: Reviewed PR 12/13 Codex comments, updated the event_notes migration to preserve legacy option_id values, and added regression coverage.
 

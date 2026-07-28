@@ -7,26 +7,26 @@ In the pop-up window appearing after clicking a day in the calendar and displayi
 Please based on this, as excellence allows it (i.e no noise just for perfection in all points that ill later describe, but if not including a point, brtiefly write a justification, so at the end all of the points should be convered), abstract requirements (business requirements, functional requirements), design (logical design and technical design) the new feature and implement. 
 
 
-The business requirements should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/016 - Subroles of Roles/BusinessRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The business requirements should output in new file <repository-root>/Enhancements/016 - Subroles of Roles/BusinessRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
 	•	Business goals (increase X, reduce Y)
 	•	Product scope
 	•	High-level constraints (legal, budget, time)
 	•	Success metrics (KPIs)
 
-The functional requirements should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/016 - Subroles of Roles/FunctionalRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The functional requirements should output in new file <repository-root>/Enhancements/016 - Subroles of Roles/FunctionalRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
 	•	Use cases / user stories
 	•	Functional specs
 	•	State transitions
 	•	Business rules
 
-The non-functional requirements should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/016 - Subroles of Roles/Non-FunctionalRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The non-functional requirements should output in new file <repository-root>/Enhancements/016 - Subroles of Roles/Non-FunctionalRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
 	•	Performance SLAs
 	•	Availability targets
 	•	Security requirements
 	•	Scalability limits
 	•	Compliance rules
 
-The logical design should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/016 - Subroles of Roles/LogicalDesign.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The logical design should output in new file <repository-root>/Enhancements/016 - Subroles of Roles/LogicalDesign.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
 	•	System structure (components, modules, domains)
 	•	Responsibilities and interfaces
 	•	Data & behavior models
@@ -34,7 +34,7 @@ The logical design should output in new file /Users/digogonz/Desktop/Desarrollo/
 	•	Invariants & constraints
 
 
-The technical design should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/016 - Subroles of Roles/TechnicalDesign.md  the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The technical design should output in new file <repository-root>/Enhancements/016 - Subroles of Roles/TechnicalDesign.md  the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
 	•	Concrete technologies
 	•	Deployment topology
 	•	Data storage choices
@@ -42,7 +42,7 @@ The technical design should output in new file /Users/digogonz/Desktop/Desarroll
 	•	Resource sizing
 	•	Failure & recovery mechanisms
 
-The implementation should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/016 - Subroles of Roles/Implementation.md  the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The implementation should output in new file <repository-root>/Enhancements/016 - Subroles of Roles/Implementation.md  the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
 	•	Plan
 	•	Running code artifacts (binaries, services, packages)
 	•	Source code aligned with design

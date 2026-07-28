@@ -6,7 +6,7 @@ sugestion: Keep the Anote rename grouped with the completion release so deployme
 
 ---
 
-prompt: I mean continue running /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/BasePrompts and do the changes related to the app name :)
+prompt: I mean continue running <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/BasePrompts and do the changes related to the app name :)
 
 answer: Updated live app defaults, HTML metadata, package naming, README setup labels, production seed defaults, and compiled action prompt paths to use Anote and the current repository path.
 

@@ -24,29 +24,24 @@ describe('calendarStore profile updates', () => {
                     message: 'success',
                     data: {
                         id: 'user-1',
-                        username: 'mira',
+                        username: 'example-user',
                         avatar_url: '/uploads/avatar.png',
                         preferences: { noiseOverlay: true },
                         isAdmin: false
                     }
                 })
-            })
-            .mockResolvedValueOnce({
-                ok: true,
-                status: 200,
-                json: async () => ({ message: 'success', data: [] })
             });
         vi.stubGlobal('fetch', fetchMock as any);
 
         useCalendarStore.setState({
             token: 'token-123',
-            user: { id: 'user-1', username: 'mira', isAdmin: false }
+            user: { id: 'user-1', username: 'example-user', isAdmin: false }
         } as any);
 
         await useCalendarStore.getState().updateProfile({ avatar_url: `${API_URL}/uploads/avatar.png` });
 
         const state = useCalendarStore.getState();
-        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/me`);
         expect(fetchMock.mock.calls[0][1]?.method).toBe('PUT');
         expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/me`);

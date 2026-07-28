@@ -78,7 +78,7 @@ suggestion: Keep this regression test with the program scheduler tests.
 
 ---
 
-prompt: good, so if 100% sure, run the prompt /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: good, so if 100% sure, run the prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Updated the prompt archive, changelog, production snapshot, deployment, and pull request branch with the accumulated missed-days regression test.
 

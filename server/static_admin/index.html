@@ -442,6 +442,9 @@
             }
         };
 
+        const API_BASE = '/api';
+        const apiUrl = (path) => `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+
         function getToken() { return localStorage.getItem('admin_token'); }
         function showStatus(msg, isError = false) {
             const bar = document.getElementById('status-bar');
@@ -467,7 +470,7 @@
             const errEl = document.getElementById('login-error');
             errEl.classList.add('hidden');
             try {
-                const res = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
+                const res = await fetch(apiUrl('/login'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
                 const data = await res.json();
                 if (res.ok) {
                     if (!data.user.isAdmin) { errEl.textContent = 'User is not an admin.'; errEl.classList.remove('hidden'); return; }
@@ -501,7 +504,7 @@
             else url = `/admin/database/${table}`;
 
             try {
-                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+                const res = await fetch(apiUrl(url), { headers: { 'Authorization': `Bearer ${getToken()}` } });
                 if (res.status === 401 || res.status === 403) { logout(); return; }
                 const data = await res.json();
                 if (data.message === 'success') { tableData = data.data || []; renderTable(table); }
@@ -625,7 +628,7 @@
             }
 
             try {
-                const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+                const res = await fetch(apiUrl(url), { method, headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
                 if (res.ok) { showStatus('Saved successfully!'); closeModal(); loadTable(currentTab); }
                 else { const d = await res.json(); showStatus(d.error || 'Save failed', true); }
             } catch (e) { showStatus('Network error', true); }
@@ -641,7 +644,7 @@
             else return;
 
             try {
-                const res = await fetch(url, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
+                const res = await fetch(apiUrl(url), { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
                 if (res.ok) { showStatus('Deleted!'); loadTable(currentTab); }
                 else { const d = await res.json(); showStatus(d.error || 'Delete failed', true); }
             } catch (e) { showStatus('Network error', true); }
@@ -656,7 +659,7 @@
             else return;
 
             try {
-                const res = await fetch(url, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+                const res = await fetch(apiUrl(url), { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
                 if (res.ok) { showStatus(`Deleted ${ids.length} items!`); selectedIds.clear(); loadTable(currentTab); }
                 else { const d = await res.json(); showStatus(d.error || 'Bulk delete failed', true); }
             } catch (e) { showStatus('Network error', true); }

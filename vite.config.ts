@@ -16,7 +16,16 @@ export default defineConfig({
     }
   },
   server: {
-    host: true,
+    host: '127.0.0.1',
+    port: 5174,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    },
     // Disable caching in dev mode
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

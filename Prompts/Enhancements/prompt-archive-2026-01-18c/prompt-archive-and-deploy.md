@@ -1,4 +1,4 @@
-prompt: Run /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Run <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Prepared to archive prompts, add bug/enhancement summaries, and line up the changelog, PR, deploy, and snapshot steps.
 

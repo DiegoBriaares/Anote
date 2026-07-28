@@ -8,12 +8,10 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { ensureEventNotesSchema } = require('./ensureEventNotesSchema');
+const config = require('./config');
 
 const app = express();
-const defaultPort = process.env.NODE_ENV === 'production' ? 3001 : 3002;
-const port = process.env.PORT || defaultPort;
-const host = process.env.HOST || '0.0.0.0';
-const SECRET_KEY = process.env.SECRET_KEY || 'da_vinci_secret_key'; // In prod, use env var
+const { port, host, databasePath, uploadDir, secretKey: SECRET_KEY } = config;
 const adminUiDir = path.resolve(__dirname, '../../admin-db');
 const staticAdminDir = path.resolve(__dirname, 'static_admin');
 
@@ -23,23 +21,39 @@ const normalizeCompletedValue = (value) => (
         : 0
 );
 
-// Middleware
-app.use(cors());
+// Same-origin production traffic is routed by the web gateway. CORS is needed
+// only for the explicit local development frontend.
+if (!config.isProduction) {
+    app.use(cors({
+        origin: ['http://127.0.0.1:5174', 'http://localhost:5174']
+    }));
+}
 app.use(bodyParser.json());
 
 // Database Setup
-let hasInitializedDb = false;
+let initializationState = 'pending';
+let initializationCallbacks = [];
+
+function completeInitialization() {
+    initializationState = 'ready';
+    const callbacks = initializationCallbacks;
+    initializationCallbacks = [];
+    callbacks.forEach((callback) => callback());
+}
+
 function initDbOnce(onReady) {
-    if (hasInitializedDb) {
+    if (initializationState === 'ready') {
         onReady?.();
         return;
     }
-    hasInitializedDb = true;
-    initDb(onReady);
+    if (onReady) initializationCallbacks.push(onReady);
+    if (initializationState === 'initializing') return;
+
+    initializationState = 'initializing';
+    initDb(completeInitialization);
 }
 
-const dbPath = path.resolve(__dirname, 'calendar.db');
-const db = createDatabase(dbPath, (err, database) => {
+const db = createDatabase(databasePath, (err, database) => {
     if (err) {
         console.error('Error opening database:', err.message);
     } else {
@@ -51,6 +65,28 @@ const db = createDatabase(dbPath, (err, database) => {
         });
         initDbOnce();
     }
+});
+
+app.get('/health/live', (req, res) => {
+    res.json({ status: 'live' });
+});
+
+app.get('/health/ready', (req, res) => {
+    if (initializationState !== 'ready') {
+        return res.status(503).json({ status: 'initializing' });
+    }
+
+    db.get('SELECT 1 AS healthy', [], (err, row) => {
+        if (err || row?.healthy !== 1) {
+            return res.status(503).json({ status: 'database_unavailable' });
+        }
+        fs.access(uploadDir, fs.constants.R_OK | fs.constants.W_OK, (accessErr) => {
+            if (accessErr) {
+                return res.status(503).json({ status: 'uploads_unavailable' });
+            }
+            res.json({ status: 'ready' });
+        });
+    });
 });
 
 function initDb(onReady) {
@@ -106,11 +142,12 @@ function initDb(onReady) {
     )`);
         db.run('CREATE INDEX IF NOT EXISTS idx_user_role_events_user_event ON user_role_events(user_id, event_index)');
 
-        // Seed default admin user (admin/admin123)
-        // Password hash for 'admin123' generated with bcrypt (10 rounds)
-        const adminPasswordHash = '$2b$10$sRiFIjv/oPy1CvL0HHU3.umRmD7fL0TQTgufBNobLph0zMskaCKYi';
-        db.run(`INSERT OR IGNORE INTO users (id, username, password, is_admin) VALUES (?, ?, ?, 1)`,
-            ['admin-default-001', 'admin', adminPasswordHash]);
+        if (!config.isProduction && process.env.ANOTE_SEED_DEVELOPMENT_ADMIN === '1') {
+            // Opt-in development seed only. Production never creates a known credential.
+            const adminPasswordHash = '$2b$10$sRiFIjv/oPy1CvL0HHU3.umRmD7fL0TQTgufBNobLph0zMskaCKYi';
+            db.run(`INSERT OR IGNORE INTO users (id, username, password, is_admin) VALUES (?, ?, ?, 1)`,
+                ['admin-default-001', 'admin', adminPasswordHash]);
+        }
 
         // Roles Table (formerly event_options)
         db.run('DROP TABLE IF EXISTS event_options');
@@ -132,8 +169,6 @@ function initDb(onReady) {
             is_enabled INTEGER DEFAULT 1,
             order_index INTEGER DEFAULT 0
         )`);
-
-        ensureEventNotesSchema(db);
 
         // No default seed for user-specific options (users create their own)
     });
@@ -450,7 +485,7 @@ function ensureDefaultConfig(onReady) {
             if (err) console.error('Error seeding config:', err);
             const migrations = Object.entries(legacyDefaults);
             if (migrations.length === 0) {
-                onReady?.();
+                ensureEventNotesSchema(db, onReady);
                 return;
             }
             let remaining = migrations.length;
@@ -462,7 +497,7 @@ function ensureDefaultConfig(onReady) {
                     (updateErr) => {
                         if (updateErr) console.error(`Error migrating default config ${key}:`, updateErr.message);
                         remaining -= 1;
-                        if (remaining === 0) onReady?.();
+                        if (remaining === 0) ensureEventNotesSchema(db, onReady);
                     }
                 );
             });
@@ -1821,9 +1856,8 @@ app.delete('/subroles/:id', authenticateToken, (req, res) => {
 const multer = require('multer');
 const uploadStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, 'uploads');
         if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir);
+            fs.mkdirSync(uploadDir, { recursive: true });
         }
         cb(null, uploadDir);
     },
@@ -1870,7 +1904,7 @@ app.get('/admin/database/:table', authenticateToken, requireAdmin, (req, res) =>
 });
 
 // Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadDir));
 
 app.post('/upload', authenticateToken, upload.single('file'), (req, res) => {
     console.log('Upload request received');
@@ -1997,7 +2031,9 @@ if (require.main === module) {
 
 
         app.listen(port, host, () => {
-            console.log(`Server running on port ${port} (listening on ${host})`);
+            console.log(`Server running on http://${host}:${port}`);
         });
     });
 }
+
+module.exports = { app, config, initDbOnce };

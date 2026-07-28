@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { formatDate, parseDateKey } from '../utils/dateUtils';
 import { API_URL, normalizeApiAssetUrl } from '../utils/api';
+import { getAppText } from '../i18n/appText';
 import { normalizePriority } from '../utils/priorityUtils';
 import { storage } from '../utils/storage';
 import { DEFAULT_POSTPONED_EVENT_DOMAIN, FALLBACK_POSTPONED_EVENT_DOMAIN, readPostponedEventDomain, type PostponedEventDomain } from '../utils/postponedDomains';
@@ -602,7 +603,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     set({ error: data.error, isLoading: false });
                 }
             } catch (e) {
-                set({ error: 'Connection failed. Is the API running at ' + API_URL + '?', isLoading: false });
+                set({ error: getAppText().serviceUnavailable, isLoading: false });
             }
         },
 
@@ -637,7 +638,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                     set({ error: data.error, isLoading: false });
                 }
             } catch (e) {
-                set({ error: 'Connection failed. Is the API running at ' + API_URL + '?', isLoading: false });
+                set({ error: getAppText().serviceUnavailable, isLoading: false });
             }
         },
 
@@ -1048,7 +1049,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 return true;
             } catch (error) {
                 console.error('Failed to share events:', error);
-                set({ actionError: `Unable to share events. Is the API running at ${API_URL}?` });
+                set({ actionError: getAppText().shareUnavailable });
                 return false;
             }
         },
@@ -1104,7 +1105,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 return true;
             } catch (e) {
                 console.error('Failed to add event', e);
-                set({ actionError: `Unable to add event. Is the API running at ${API_URL}?` });
+                set({ actionError: getAppText().addEventUnavailable });
                 return false;
             }
         },
@@ -1205,7 +1206,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             } catch (e) {
                 console.error('Failed to edit event', e);
                 set({
-                    actionError: `Unable to update event. Is the API running at ${API_URL}?`,
+                    actionError: getAppText().updateEventUnavailable,
                     events: previousEvents,
                     compareEvents: previousCompareEvents
                 });
@@ -1263,7 +1264,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
                 return true;
             } catch (e) {
                 console.error('Failed to update event completion', e);
-                set({ actionError: `Unable to update event completion. Is the API running at ${API_URL}?` });
+                set({ actionError: getAppText().completionUnavailable });
                 return false;
             }
         },
@@ -1480,7 +1481,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             } catch (e) {
                 console.error('Failed to edit postponed event', e);
                 set({
-                    actionError: `Unable to update event. Is the API running at ${API_URL}?`,
+                    actionError: getAppText().updateEventUnavailable,
                     postponedEvents: previousPostponedEvents
                 });
                 return false;

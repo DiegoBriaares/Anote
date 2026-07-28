@@ -3,16 +3,18 @@
 ## Project Structure & Module Organization
 - `src/` contains the React + TypeScript app. UI components live under `components/` (calendar grids, auth views, inputs), shared state in `store/` (Zustand), helpers in `utils/`, and entry points in `main.tsx`/`App.tsx`. Global styles are split between `index.css` (base/tokens) and `App.css` (layout accents).
 - `public/` holds static assets served by Vite; `index.html` wires the client bundle.
-- `server/` is an Express + SQLite API (`index.js`, `calendar.db`). Install dependencies with `cd server && npm install`; start with `node index.js`.
+- `server/` is an Express + SQLite API. Development data lives beside the server; production data is mounted from the managed Anote production home.
+- `docker/` and `compose.production.yaml` own the production gateway/API topology. The browser reaches one origin and uses `/api`; API port `3001` is internal only.
 - Tooling/config: `vite.config.ts`, `tsconfig*.json`, `tailwind.config.js`, `eslint.config.js`, and `postcss.config.js` define build, type-check, styling, and lint settings.
 
 ## Build, Test, and Development Commands
 - `npm install` (root) installs client deps. Run `cd server && npm install` once for the API.
-- `npm run dev` starts the Vite dev server (default http://localhost:5173). Pair with the development API at http://localhost:3002.
+- `npm run dev` starts both development services under Node 20: Vite at http://127.0.0.1:5174 and the API at http://127.0.0.1:3002. Vite proxies `/api` to the API.
 - `npm run build` runs `tsc -b` then `vite build` to emit a production bundle.
 - `npm run preview` serves the built client locally for verification.
-- `npm run lint` runs ESLint across the workspace; fix warnings before merging.
-- `node server/index.js` runs the API (expects `calendar.db` beside it; update ports/paths in `server/index.js` if needed).
+- `npm run verify` selects Node 20, then runs lint, the production build, and all tests. Existing legacy lint debt remains visible as warnings; do not add new warnings.
+- `npm run prod:deploy` builds immutable production images, creates a consistent data backup, and health-checks the replacement stack.
+- `npm run prod:backup` and `npm run prod:rollback -- <backup-id>` own production recovery. Do not copy a live SQLite/WAL set manually.
 
 ## Coding Style & Naming Conventions
 - TypeScript, React function components, and Zustand stores; prefer typed props/state and early returns for clarity.
@@ -29,4 +31,4 @@
 
 ## Security & Configuration Tips
 - Do not commit secrets or local databases; move `SECRET_KEY` and DB paths into environment variables before productionizing.
-- Keep client/server URLs centralized (`API_URL` in `src/utils/api.ts` and port definitions in `server/index.js`) and update both sides together.
+- Browser API requests must stay same-origin under `/api`. Internal ports belong to Vite/Nginx/Compose configuration, never browser hostname logic.

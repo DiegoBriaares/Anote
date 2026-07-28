@@ -1,9 +1,15 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
-const DEFAULT_PROD_DIR = process.env.PROD_DIR || '/Users/digogonz/Desktop/Calendario/cal-ap';
+const defaultStateRoot = process.platform === 'darwin'
+    ? path.join(os.homedir(), 'Library', 'Application Support')
+    : process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
+const DEFAULT_PROD_DIR = process.env.ANOTE_PRODUCTION_HOME
+    || process.env.PROD_DIR
+    || path.join(defaultStateRoot, 'Anote', 'production');
 const DEFAULT_CONFIG_PATH = process.env.PROD_USER_OPS_CONFIG
     ? path.resolve(process.cwd(), process.env.PROD_USER_OPS_CONFIG)
     : path.join(__dirname, 'prod_user_ops.local.json');
@@ -110,7 +116,7 @@ const writeLocalConfig = (config) => {
 const resolveRequestedTargetDir = (args) => {
     const localConfig = readLocalConfig();
     const requestedDir = getArgValue(args, 'target-dir', 'dir');
-    const envDir = process.env.PROD_DIR;
+    const envDir = process.env.ANOTE_PRODUCTION_HOME || process.env.PROD_DIR;
     const configuredDir = localConfig.defaultProdDir;
     const source = requestedDir
         ? 'cli'
@@ -154,7 +160,7 @@ const resolveTargetContext = (command, args) => {
     const targetDir = resolvedDir.targetDir;
     const dbPath = dbArg
         ? path.resolve(process.cwd(), dbArg)
-        : path.join(targetDir, 'server', 'calendar.db');
+        : path.join(targetDir, 'data', 'calendar.db');
     const repoRoot = path.resolve(__dirname, '..');
     const isShowCommand = command === 'show-default-dir';
     const requiresDatabase = command !== 'show-default-dir' && command !== 'set-default-dir';
