@@ -14,7 +14,7 @@ suggestion: Review the Today tab and transfer selectors in the PR, then verify p
 
 ---
 
-prompt: Very good, run /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Very good, run <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Archived the feature prompt, added enhancement and changelog notes, prepared the branch for a new PR, and ran the deploy/snapshot workflow.
 

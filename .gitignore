@@ -8,10 +8,17 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.venv
 dist
 dist-ssr
 *.local
 server/calendar.db*
+server/uploads/*
+!server/uploads/.gitkeep
+production.env
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*

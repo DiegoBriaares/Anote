@@ -1,4 +1,4 @@
-prompt: Run /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/Share events/first
+prompt: Run <local-reference-root>/Features/Events Distributions/Share events/first
 
 answer: Started the selected-day Share Events distribution feature from the referenced prompt and prepared to mirror the existing Add Events and Read Events flows.
 
@@ -6,7 +6,7 @@ sugestion: Provide an updated prompt if the Share Events requirements changed be
 
 ---
 
-prompt: Sorry, prompt is updated /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/Share events/first
+prompt: Sorry, prompt is updated <local-reference-root>/Features/Events Distributions/Share events/first
 
 answer: Implemented Share Events for marked calendar days, including a top-level Share Events step, a friend checkbox panel, a backend friend-validated share endpoint, focused tests, README updates, terminology updates, and a changelog.
 
@@ -22,7 +22,7 @@ sugestion: Test the Share Events flow locally before merging or deploying broadl
 
 ---
 
-prompt: Run /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Run <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Archived the Share Events prompts, documented the solved enhancement, refreshed the changelog, backed up production, deployed the production copy, and prepared the GitHub pull request workflow.
 
@@ -30,7 +30,7 @@ sugestion: Review the generated pull request and verify the production copy afte
 
 ---
 
-prompt: /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/Share events/second with this *
+prompt: <local-reference-root>/Features/Events Distributions/Share events/second with this *
 
 answer: Improved Share Events with an optional Select Events section, event-level checkboxes grouped by selected day, quick selection actions, and an API payload that only shares checked events when filtering is enabled.
 

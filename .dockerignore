@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+server/node_modules
+dist
+server/calendar.db
+server/calendar.db-*
+server/uploads
+*.log
+.DS_Store
+VersionesPasadas

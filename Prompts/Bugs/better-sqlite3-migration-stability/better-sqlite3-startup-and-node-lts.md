@@ -30,7 +30,7 @@ suggestion: Start the server under Node 20 (LTS) and redeploy once validated.
 
 ---
 
-prompt: cd /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server && npm start
+prompt: cd <repository-root>/server && npm start
 
 answer: Identified a TDZ crash from synchronous DB initialization and fixed the init order in the DB wrapper.
 
@@ -46,7 +46,7 @@ suggestion: Start server again to confirm initialization succeeds.
 
 ---
 
-prompt: analyze and what i i sayed cd /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server && npm start
+prompt: analyze and what i i sayed cd <repository-root>/server && npm start
 
 answer: Identified a second TDZ involving db usage during init and made the open callback async to ensure db is assigned.
 

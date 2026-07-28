@@ -1,6 +1,9 @@
-Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/ChangeLog/
+Resolve the repository root with `git rev-parse --show-toplevel`. Create a precise `ChangeLog/` entry and keep unrelated worktree changes out of the commit.
 
-Push the latest changes into the repo https://github.com/DiegoBriaares/Self-Administration-Calendar as a NEW Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
-Deploy the changes to /Users/digogonz/Desktop/Calendario/cal-ap using /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/scripts/deploy_to_prod.sh   
+Audit the intended diff for credentials, personal paths, machine names, hostnames, tailnet identifiers, IP addresses, databases, uploads, environment files, and other private data. Sanitize or exclude every finding before publishing.
 
-Then run scripts/archive_prod_snapshot.sh to backup this new version.
+Run `npm run verify`. Commit only the intended files, push a new branch to the configured `origin`, and open a new draft pull request targeting `main`. Give the pull request a precise title and description based on the actual change, tests, API/data considerations, and deployment impact.
+
+Never deploy an open or unmerged pull request. If the pull request is not merged, stop after providing its URL and verification result.
+
+After the pull request is merged, fast-forward local `main`, confirm the worktree is clean and exactly matches `origin/main`, then run `npm run prod:deploy` from the repository root. The deploy command owns backup, build, cutover, readiness, release recording, and rollback; do not copy source to another checkout or run a separate snapshot step.

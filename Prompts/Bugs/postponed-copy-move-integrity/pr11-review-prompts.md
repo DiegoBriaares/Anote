@@ -14,7 +14,7 @@ suggestion: Provide the PR URL.
 
 ---
 
-prompt: https://github.com/DiegoBriaares/Self-Administration-Calendar/pull/11
+prompt: <pull-request-url>
 
 answer: Pulled PR #11 review comments and fixed the move/copy data-loss risk plus preserved wasPostponed in copy payloads.
 

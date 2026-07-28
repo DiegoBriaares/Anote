@@ -1,4 +1,4 @@
-prompt: You just ran /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/first, now please run /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/second
+prompt: You just ran <local-reference-root>/Features/Events Distributions/first, now please run <local-reference-root>/Features/Events Distributions/second
 
 answer: Read the referenced `second` task, fixed the group event publishing flow so a filled active draft is published instead of being silently ignored, added focused coverage, and restarted the local API and Vite dev servers for verification.
 

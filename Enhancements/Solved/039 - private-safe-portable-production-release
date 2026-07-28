@@ -1,0 +1,6 @@
+Anote's release actions and scripts must be reusable without embedding a
+developer's identity, filesystem layout, tailnet, or user data. Atomic actions,
+compiled prompts, documentation, backup/deploy/rollback scripts, and production
+user operations now share portable configuration. The publish workflow audits
+privacy, verifies the project, opens a new PR against `main`, and refuses to
+deploy until the change is merged and local `main` exactly matches the remote.

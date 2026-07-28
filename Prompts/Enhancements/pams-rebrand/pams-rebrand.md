@@ -22,7 +22,7 @@ sugestion: Provide the GitHub repository URL.
 
 ---
 
-prompt: Sorry for interrumpting., here is the repo url https://github.com/DiegoBriaares/Self-Administration-Calendar
+prompt: Sorry for interrumpting., here is the repo url <repository-origin>
 
 answer: Renamed the local folder and updated in-repo references, then adjusted the remote to the new slug while flagging the GitHub rename.
 
@@ -38,7 +38,7 @@ sugestion: Call out any files that should always use the full formal name.
 
 ---
 
-prompt: If updated readmes me and evrything run this prompt /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: If updated readmes me and evrything run this prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Opened the compiled prompt and proceeded with its required steps (prompt archive, enhancement note, changelog, and release actions).
 

@@ -1,15 +1,15 @@
 prompt: Couldn't initiate: Last login: Mon Jan 12 02:29:21 on ttys000
-cd /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server && npm start
-digogonz@Diegos-MacBook-Pro ~ % cd /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server && npm start
+cd <repository-root>/server && npm start
+developer@workstation ~ % cd <repository-root>/server && npm start
 
 > server@1.0.0 start
 > node index.js
 
-/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/bindings/bindings.js:121
+<repository-root>/server/node_modules/bindings/bindings.js:121
         throw e;
         ^
 
-Error: dlopen(/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/build/Release/node_sqlite3.node, 0x0001): tried: '/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/build/Release/node_sqlite3.node' (code signature in <DFB61DC4-0D6B-3B10-BE39-1944935AB942> '/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/build/Release/node_sqlite3.node' not valid for use in process: library load disallowed by system policy), '/System/Volumes/Preboot/Cryptexes/OS/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/build/Release/node_sqlite3.node' (no such file), '/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/build/Release/node_sqlite3.node' (code signature in <DFB61DC4-0D6B-3B10-BE39-1944935AB942> '/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/build/Release/node_sqlite3.node' not valid for use in process: library load disallowed by system policy)
+Error: dlopen(<repository-root>/server/node_modules/sqlite3/build/Release/node_sqlite3.node, 0x0001): tried: '<repository-root>/server/node_modules/sqlite3/build/Release/node_sqlite3.node' (code signature in <DFB61DC4-0D6B-3B10-BE39-1944935AB942> '<repository-root>/server/node_modules/sqlite3/build/Release/node_sqlite3.node' not valid for use in process: library load disallowed by system policy), '/System/Volumes/Preboot/Cryptexes/OS<repository-root>/server/node_modules/sqlite3/build/Release/node_sqlite3.node' (no such file), '<repository-root>/server/node_modules/sqlite3/build/Release/node_sqlite3.node' (code signature in <DFB61DC4-0D6B-3B10-BE39-1944935AB942> '<repository-root>/server/node_modules/sqlite3/build/Release/node_sqlite3.node' not valid for use in process: library load disallowed by system policy)
     at Object..node (node:internal/modules/cjs/loader:1919:18)
     at Module.load (node:internal/modules/cjs/loader:1480:32)
     at Module._load (node:internal/modules/cjs/loader:1299:12)
@@ -17,8 +17,8 @@ Error: dlopen(/Users/digogonz/Desktop/Desarrollo/administration-management-plan-
     at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
     at Module.require (node:internal/modules/cjs/loader:1503:12)
     at require (node:internal/modules/helpers:152:16)
-    at bindings (/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/bindings/bindings.js:112:48)
-    at Object.<anonymous> (/Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/server/node_modules/sqlite3/lib/sqlite3-binding.js:1:37)
+    at bindings (<repository-root>/server/node_modules/bindings/bindings.js:112:48)
+    at Object.<anonymous> (<repository-root>/server/node_modules/sqlite3/lib/sqlite3-binding.js:1:37)
     at Module._compile (node:internal/modules/cjs/loader:1760:14) {
   code: 'ERR_DLOPEN_FAILED'
 }

@@ -1,4 +1,4 @@
-prompt: Thnaks! Lets do this, run the prompt: /Users/digogonz/Desktop/Desarrollo/Resolutions/Anote/Features/Events Distributions/Read events/first
+prompt: Thnaks! Lets do this, run the prompt: <local-reference-root>/Features/Events Distributions/Read events/first
 
 answer: Added a Read Events flow for selected days, showing a responsive event distribution panel with one wrapped column per marked day, plus tests and terminology updates.
 

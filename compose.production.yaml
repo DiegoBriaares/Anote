@@ -1,0 +1,44 @@
+name: anote-production
+
+services:
+  api:
+    image: anote-api:${ANOTE_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: docker/api.Containerfile
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
+      ANOTE_DATABASE_PATH: /data/calendar.db
+      ANOTE_UPLOAD_DIR: /data/uploads
+    volumes:
+      - ${ANOTE_DATA_DIR:?ANOTE_DATA_DIR must be set}:/data
+    expose:
+      - "3001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health/ready').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+
+  web:
+    image: anote-web:${ANOTE_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: docker/web.Containerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${ANOTE_BIND_ADDRESS:-0.0.0.0}:${ANOTE_PUBLIC_PORT:-15173}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s

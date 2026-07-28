@@ -3,8 +3,8 @@ prompt: Excellent then Please make a list of the prompts I have gave you in this
   would end in a same folder (ill clarify next), and group prompts related to a same issue into a same file,in such
   file the prompts would be seppared by a blank line and then a line with --- and the another blank line, sorted by
   order of appeareance (first prompt wrote appears first).Now let me clarify srchitecutre; For each bug/enhacmenet
-  create a folder with a good descriptive practical name, which you will put either in /Users/digogonz/Desktop/
-  Desarrollo/administration-management-plan-system/Prompts/Enhancements or in /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Bugs
+  create a folder with a good descriptive practical name, which you will put either in <home-directory>/Desktop/
+  Desarrollo/administration-management-plan-system/Prompts/Enhancements or in <repository-root>/Prompts/Bugs
   accordingly, and inside that folder a descriptive name for enhancement/bug, inside that folder put the files with a
   descriptive name of the issue the group of prompts addreses.
 
@@ -20,10 +20,10 @@ leave a blank line between prompt:<>, answer: <>, sugestion:<> in the files with
 
 Also from the bug/enhancements folder, infeer/deduce a natural language explanation of the enhacenment/bug, and add to administration-management-plan-system/Bugs or administration-management-plan-system/Enhancements (acordingly) a file named xxx - y, where xxx is the next prefix number of bug/enhacenment (accordingly to the greatest numnber in the directory (including inside /Solved) and y is the folder name, the content of the file is the explanation.
 
-Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/ChangeLog/
+Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in <repository-root>/ChangeLog/
 
-Push the latest changes into the repo https://github.com/DiegoBriaares/Self-Administration-Calendar as a Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
-Deploy the changes to /Users/digogonz/Desktop/Calendario/cal-ap using /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/scripts/deploy_to_prod.sh   
+Push the latest changes into the repo <repository-origin> as a Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
+Deploy the changes to <legacy-production-directory> using <repository-root>/scripts/deploy_to_prod.sh
 
 Then run scripts/archive_prod_snapshot.sh to backup this new version.
 
@@ -38,8 +38,8 @@ prompt: run now Please make a list of the prompts I have gave you in this conver
   would end in a same folder (ill clarify next), and group prompts related to a same issue into a same file,in such
   file the prompts would be seppared by a blank line and then a line with --- and the another blank line, sorted by
   order of appeareance (first prompt wrote appears first).Now let me clarify srchitecutre; For each bug/enhacmenet
-  create a folder with a good descriptive practical name, which you will put either in /Users/digogonz/Desktop/
-  Desarrollo/administration-management-plan-system/Prompts/Enhancements or in /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Prompts/Bugs
+  create a folder with a good descriptive practical name, which you will put either in <home-directory>/Desktop/
+  Desarrollo/administration-management-plan-system/Prompts/Enhancements or in <repository-root>/Prompts/Bugs
   accordingly, and inside that folder a descriptive name for enhancement/bug, inside that folder put the files with a
   descriptive name of the issue the group of prompts addreses.
 
@@ -55,10 +55,10 @@ leave a blank line between prompt:<>, answer: <>, sugestion:<> in the files with
 
 Also from the bug/enhancements folder, infeer/deduce a natural language explanation of the enhacenment/bug, and add to administration-management-plan-system/Bugs or administration-management-plan-system/Enhancements (acordingly) a file named xxx - y, where xxx is the next prefix number of bug/enhacenment (accordingly to the greatest numnber in the directory (including inside /Solved) and y is the folder name, the content of the file is the explanation.
 
-Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/ChangeLog/
+Give a name to a file and a description inside it consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description. Store such file in <repository-root>/ChangeLog/
 
-Push the latest changes into the repo https://github.com/DiegoBriaares/Self-Administration-Calendar as a Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
-Deploy the changes to /Users/digogonz/Desktop/Calendario/cal-ap using /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/scripts/deploy_to_prod.sh   
+Push the latest changes into the repo <repository-origin> as a Pull Request. Give a name and description consistent to the changes based on the provided prompt, the Bug/Enhacenment resolved, and the actual changes. Choose an excellent and precise name and description.
+Deploy the changes to <legacy-production-directory> using <repository-root>/scripts/deploy_to_prod.sh
 
 Then run scripts/archive_prod_snapshot.sh to backup this new version.
 

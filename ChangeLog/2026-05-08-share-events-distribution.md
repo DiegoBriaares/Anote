@@ -14,7 +14,7 @@ Validation:
 - `npx vitest run src/components/Calendar/CalendarView.selection.test.tsx src/store/calendarStore.share.test.ts src/App.test.ts src/store/calendarStore.profile.test.ts`
 - `npm run build`
 - `node --check server/index.js`
-- `bash scripts/archive_prod_snapshot.sh` archived production to `/Users/digogonz/Desktop/Calendario/VersionesPasadas/30`, `/Users/digogonz/Desktop/Calendario/VersionesPasadas/31`, and `/Users/digogonz/Desktop/Calendario/VersionesPasadas/32`
+- `bash scripts/archive_prod_snapshot.sh` archived production to `<legacy-backup-directory>/30`, `<legacy-backup-directory>/31`, and `<legacy-backup-directory>/32`
 - `bash scripts/deploy_to_prod.sh`
 
 Known check status:

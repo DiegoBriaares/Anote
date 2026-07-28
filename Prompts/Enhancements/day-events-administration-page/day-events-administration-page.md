@@ -15,7 +15,7 @@ sugestion: Use the new modal icon to open the dedicated page and verify range-ba
 
 ---
 
-prompt: Very good. Run this prompt /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Very good. Run this prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Archived the conversation prompts, added issue/changelog records, prepared the work for a new pull request, and ran the requested deployment and production snapshot workflow.
 

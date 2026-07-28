@@ -1,4 +1,4 @@
-prompt: Run this prompt /Users/digogonz/Desktop/Desarrollo/plan-administration-management-system/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
+prompt: Run this prompt <repository-root>/Prompts/Actions/CompiledPrompts/FetchAndStorePromptsAndGlobalPushAndDeploy/Prompt.agcomp
 
 answer: Archived the conversation prompts into bug/enhancement prompt folders, added solved summary records, created a changelog entry, and prepared the repository for snapshot, deploy, push, and PR publication.
 

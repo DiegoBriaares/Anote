@@ -7,7 +7,7 @@ Saving profile preferences also refreshes the local appearance cache with the ba
 Validation:
 - `npx vitest run src/App.test.ts src/store/calendarStore.profile.test.ts`
 - `npm run build`
-- `bash scripts/archive_prod_snapshot.sh` archived production to `/Users/digogonz/Desktop/Calendario/VersionesPasadas/29`
+- `bash scripts/archive_prod_snapshot.sh` archived production to `<legacy-backup-directory>/29`
 - `bash scripts/deploy_to_prod.sh`
 
 Known check status:

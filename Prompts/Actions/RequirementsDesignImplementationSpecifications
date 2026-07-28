@@ -1,26 +1,26 @@
 Please based on this, as excellence allows it (i.e no noise just for perfection in all points that ill later describe, but if not including a point, brtiefly write a justification, so at the end all of the points should be convered), abstract requirements (business requirements, functional requirements), design (logical design and technical design) the new feature and implement. 
 
 
-The business requirements should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/[x]/BusinessRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The business requirements should output in `Enhancements/[x]/BusinessRequirements.md` under the repository root, with concrete content below each corresponding point:
 	•	Business goals (increase X, reduce Y)
 	•	Product scope
 	•	High-level constraints (legal, budget, time)
 	•	Success metrics (KPIs)
 
-The functional requirements should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/[x]/FunctionalRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The functional requirements should output in `Enhancements/[x]/FunctionalRequirements.md` under the repository root, with concrete content below each corresponding point:
 	•	Use cases / user stories
 	•	Functional specs
 	•	State transitions
 	•	Business rules
 
-The non-functional requirements should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/[x]/Non-FunctionalRequirements.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The non-functional requirements should output in `Enhancements/[x]/Non-FunctionalRequirements.md` under the repository root, with concrete content below each corresponding point:
 	•	Performance SLAs
 	•	Availability targets
 	•	Security requirements
 	•	Scalability limits
 	•	Compliance rules
 
-The logical design should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/[x]/LogicalDesign.md the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The logical design should output in `Enhancements/[x]/LogicalDesign.md` under the repository root, with concrete content below each corresponding point:
 	•	System structure (components, modules, domains)
 	•	Responsibilities and interfaces
 	•	Data & behavior models
@@ -28,7 +28,7 @@ The logical design should output in new file /Users/digogonz/Desktop/Desarrollo/
 	•	Invariants & constraints
 
 
-The technical design should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/[x]/TechnicalDesign.md  the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The technical design should output in `Enhancements/[x]/TechnicalDesign.md` under the repository root, with concrete content below each corresponding point:
 	•	Concrete technologies
 	•	Deployment topology
 	•	Data storage choices
@@ -36,7 +36,7 @@ The technical design should output in new file /Users/digogonz/Desktop/Desarroll
 	•	Resource sizing
 	•	Failure & recovery mechanisms
 
-The implementation should output in new file /Users/digogonz/Desktop/Desarrollo/administration-management-plan-system/Enhancements/[x]/Implementation.md  the following in concrete and write that concrete content (each concrete content below the abstract title which is simply the corresponding point of the following ones):
+The implementation should output in `Enhancements/[x]/Implementation.md` under the repository root, with concrete content below each corresponding point:
 	•	Plan
 	•	Running code artifacts (binaries, services, packages)
 	•	Source code aligned with design
