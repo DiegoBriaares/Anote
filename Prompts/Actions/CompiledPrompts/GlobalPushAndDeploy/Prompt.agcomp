@@ -4,6 +4,6 @@ Audit the intended diff for credentials, personal paths, machine names, hostname
 
 Run `npm run verify`. Commit only the intended files, push a new branch to the configured `origin`, and open a new draft pull request targeting `main`. Give the pull request a precise title and description based on the actual change, tests, API/data considerations, and deployment impact.
 
-Never deploy an open or unmerged pull request. If the pull request is not merged, stop after providing its URL and verification result.
+After the branch is pushed and the draft pull request exists, deploy that exact remote commit immediately by running `npm run prod:deploy:pushed` from the pushed local branch. Do not wait for the pull request to merge.
 
-After the pull request is merged, fast-forward local `main`, confirm the worktree is clean and exactly matches `origin/main`, then run `npm run prod:deploy` from the repository root. The deploy command owns backup, build, cutover, readiness, release recording, and rollback; do not copy source to another checkout or run a separate snapshot step.
+The pushed-release command must confirm that local `HEAD` exactly matches `origin/<current-branch>`, create an isolated clean worktree at that remote commit, and delegate to the production deploy command. The deploy command owns backup, build, Compose replacement, readiness, release recording, and rollback. Do not run a Docker reset, copy source or live data manually, or run a separate snapshot step. Stop only after providing the pull request URL, verification result, and successful production release result.

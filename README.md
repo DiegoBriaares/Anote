@@ -204,6 +204,18 @@ From a clean `main` commit that is present on `origin/main`, deploy with:
 npm run prod:deploy
 ```
 
+The compiled publish-and-deploy actions deploy their current verified branch
+before merge with:
+
+```bash
+npm run prod:deploy:pushed
+```
+
+That command requires local `HEAD` to exactly match the current branch on
+`origin`, creates an isolated clean checkout of that commit, and then invokes
+the same production deployment. Unrelated local worktree changes are never
+included in the release.
+
 The deploy command builds commit-tagged images first, creates an SQLite-safe
 pre-deploy backup, starts the replacement, waits for `/api/health/ready`, and
 writes a release manifest. It automatically restores the prior data/runtime if
@@ -217,7 +229,8 @@ npm run prod:rollback -- <backup-id>
 ```
 
 `ALLOW_DIRTY=1` exists only for the one-time architecture bootstrap. Routine
-production deployments must never use it.
+production deployments must use either a clean `main` or the isolated exact
+pushed-branch workflow; they must never use the dirty override.
 
 Production user operations run from the development repo:
 

@@ -29,13 +29,14 @@ managed gateway. Port `3001` is never a Tailscale, LAN, or host interface.
 | API host, port, secret, database, and uploads | `server/config.js` | startup/config checks |
 | API/database/upload readiness | `/health/ready` | API and Compose health checks |
 | Persistent production state | managed production home | backup integrity and manifests |
+| Pushed-commit selection and isolated checkout | `deploy_pushed_release.sh` | release workflow contract test |
 | Build, backup, cutover, readiness, rollback | deployment scripts | isolated deployment rehearsal |
 
 ## Deployment Transition
 
 | State | Guard | Action | Result |
 | --- | --- | --- | --- |
-| Source ready | clean commit on `origin/main`; verification passed | build images | immutable commit-tagged images |
+| Source ready | verified `HEAD` exactly matches its selected `origin/*` ref | isolated checkout and image build | immutable release-tagged images from the pushed commit |
 | Images ready | production DB integrity is `ok` | backup | self-contained DB/uploads backup and manifest |
 | Backup ready | candidate config and images exist | Compose replacement | internal API and gateway start |
 | Starting | API/database/uploads ready | gateway health succeeds | release manifest records ready state |

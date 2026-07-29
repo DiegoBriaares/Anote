@@ -17,5 +17,6 @@ ordering.
 
 Verification covers status normalization, schema migration, store persistence,
 program eligibility, localized controls, visual state hooks, and the production
-recovery contract. Deployment remains gated on a merged pull request and a clean
-local `main` that exactly matches `origin/main`.
+recovery contract. The publish-and-deploy action can release the exact verified
+and pushed branch commit before merge through an isolated clean worktree; direct
+deployments still default to `origin/main`.

@@ -40,18 +40,18 @@ if [[ -n "$(git status --porcelain)" ]]; then
   fi
   ANOTE_IMAGE_TAG="worktree-${ANOTE_SHORT_SHA}-${ANOTE_DEPLOY_ID}"
 else
-  ANOTE_BRANCH="$(git branch --show-current)"
-  if [[ "$ANOTE_BRANCH" != "main" ]]; then
-    echo "Refusing to deploy branch '$ANOTE_BRANCH'. Deploy production from main." >&2
+  ANOTE_DEPLOY_REMOTE_REF="${ANOTE_DEPLOY_REMOTE_REF:-origin/main}"
+  if [[ "$ANOTE_DEPLOY_REMOTE_REF" != origin/* ]]; then
+    echo "Refusing to deploy a release that is not owned by an origin remote-tracking ref." >&2
     exit 1
   fi
-  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
-    echo "Refusing to deploy without an origin/main reference. Fetch the remote first." >&2
+  if ! git show-ref --verify --quiet "refs/remotes/$ANOTE_DEPLOY_REMOTE_REF"; then
+    echo "Refusing to deploy without the remote release ref '$ANOTE_DEPLOY_REMOTE_REF'. Push or fetch it first." >&2
     exit 1
   fi
-  ANOTE_ORIGIN_MAIN_SHA="$(git rev-parse origin/main)"
-  if [[ "$ANOTE_GIT_SHA" != "$ANOTE_ORIGIN_MAIN_SHA" ]]; then
-    echo "Refusing to deploy: local main does not exactly match origin/main." >&2
+  ANOTE_REMOTE_RELEASE_SHA="$(git rev-parse "$ANOTE_DEPLOY_REMOTE_REF")"
+  if [[ "$ANOTE_GIT_SHA" != "$ANOTE_REMOTE_RELEASE_SHA" ]]; then
+    echo "Refusing to deploy: HEAD does not exactly match '$ANOTE_DEPLOY_REMOTE_REF'." >&2
     exit 1
   fi
   # A release-specific tag keeps the currently running images addressable by

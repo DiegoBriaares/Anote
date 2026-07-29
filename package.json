@@ -16,6 +16,7 @@
     "release": "npm run prod:deploy",
     "prod:patch": "bash scripts/patch_to_prod.sh",
     "prod:deploy": "bash scripts/deploy_to_prod.sh",
+    "prod:deploy:pushed": "bash scripts/deploy_pushed_release.sh",
     "prod:backup": "bash scripts/backup_production.sh",
     "prod:rollback": "bash scripts/rollback_production.sh",
     "prod:user:make-admin": "node scripts/prod_user_ops.cjs make-admin",
