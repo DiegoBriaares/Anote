@@ -61,6 +61,29 @@ describe('calendarStore completed events', () => {
         expect(storedEvent?.completed).toBe(true);
     });
 
+    it('maps failed flags from the events API response', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+            message: 'success',
+            data: [{
+                id: 'event-1',
+                title: 'Failed deployment',
+                date: '2026-04-23',
+                completed: 0,
+                failed: 1,
+                resources: null
+            }]
+        }));
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+        useCalendarStore.setState({ token: 'token-123', viewMode: 'self' } as never);
+
+        await useCalendarStore.getState().fetchEvents();
+
+        expect(useCalendarStore.getState().events['2026-04-23']?.[0]).toMatchObject({
+            completed: false,
+            failed: true
+        });
+    });
+
     it('sends completed when editing an event and keeps the refreshed state', async () => {
         const editedEvent: CalendarEvent = {
             id: 'event-1',
@@ -136,9 +159,10 @@ describe('calendarStore completed events', () => {
         const completionPromise = useCalendarStore.getState().setEventCompleted(event, true);
 
         expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.completed).toBe(false);
-        expect(fetchMock).toHaveBeenCalledWith(`${API_URL}/events/event-1/completed`, expect.objectContaining({
+        expect(fetchMock).toHaveBeenCalledWith(`${API_URL}/events/event-1/status`, expect.objectContaining({
             method: 'PATCH'
         }));
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ status: 'completed' });
 
         resolveFetch(jsonResponse({
             message: 'success',
@@ -225,15 +249,48 @@ describe('calendarStore completed events', () => {
 
         expect(didUpdate).toBe(true);
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/events/event-1/completed`);
+        expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/events/event-1/status`);
         expect(fetchMock.mock.calls[0][1]?.method).toBe('PATCH');
         expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/events/event-1`);
         expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT');
         const fallbackBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
         expect(fallbackBody.completed).toBe(true);
+        expect(fallbackBody.failed).toBe(false);
         expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.completed).toBe(true);
         expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.version).toBe(250);
         expect(useCalendarStore.getState().actionError).toBeNull();
+    });
+
+    it('marks an event failed and clears completion after the status request succeeds', async () => {
+        const event: CalendarEvent = {
+            id: 'event-1',
+            title: 'Production rollout',
+            date: '2026-04-23',
+            completed: true,
+            failed: false,
+            version: 100
+        };
+        const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+            message: 'success',
+            data: { id: event.id, completed: 0, failed: 1, version: 300 }
+        }));
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+        useCalendarStore.setState({
+            token: 'token-123',
+            viewMode: 'self',
+            events: { '2026-04-23': [event] },
+            compareEvents: { '2026-04-23': [event] }
+        } as never);
+
+        const didUpdate = await useCalendarStore.getState().setEventStatus(event, 'failed');
+
+        expect(didUpdate).toBe(true);
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ status: 'failed' });
+        expect(useCalendarStore.getState().events['2026-04-23']?.[0]).toMatchObject({
+            completed: false,
+            failed: true,
+            version: 300
+        });
     });
 
     it('does not let an older events refresh overwrite a newer completion save', async () => {

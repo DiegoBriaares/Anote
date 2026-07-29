@@ -1,0 +1,5 @@
+Production deployment must preserve a recoverable copy of the version that is
+running before cutover. The deployment already snapshots the database, uploads,
+and active runtime environment. Each candidate release now also receives a
+unique immutable image tag, preventing a redeploy of the same Git commit from
+overwriting the image tag referenced by the saved rollback environment.

@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
-import { CalendarRange } from 'lucide-react';
+import { getAppText } from '../../i18n/appText';
+import { CalendarRange, CheckCircle2, CircleX } from 'lucide-react';
+import clsx from 'clsx';
 import {
     FALLBACK_POSTPONED_EVENT_DOMAIN,
     POSTPONED_EVENT_DOMAINS,
@@ -15,6 +17,7 @@ interface PostponedRangeBoardProps {
 
 export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postponedView }) => {
     const { postponedEvents, viewMode, addEventsBulk, addPostponedEventsBulk, deletePostponedEvent } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const [sortOrderByView, setSortOrderByView] = React.useState<Record<PostponedEventDomain, 'time' | 'priority'>>({
         today: 'time',
         week: 'time',
@@ -131,6 +134,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                 link: event.link ?? null,
                 note: event.note ?? null,
                 completed: event.completed ? true : false,
+                failed: event.failed ? true : false,
                 originDates: chain.length > 0 ? chain : null,
                 wasPostponed: true
             };
@@ -156,6 +160,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
             link: event.link ?? null,
             note: event.note ?? null,
             completed: event.completed ? true : false,
+            failed: event.failed ? true : false,
             originDates: event.originDates && event.originDates.length > 0 ? event.originDates : null,
             postponedView: targetPostponedView
         }));
@@ -222,7 +227,12 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                         sourceEvents.map((event) => (
                             <label
                                 key={event.id}
-                                className="flex items-center gap-3 border border-orange-100 rounded-lg px-3 py-2 hover:border-orange-300 bg-white transition-colors"
+                                className={clsx(
+                                    'board-card flex items-center gap-3 px-3 py-2 transition-colors',
+                                    event.completed && 'board-card-completed',
+                                    event.failed && 'board-card-failed',
+                                    !event.completed && !event.failed && 'hover:border-orange-300'
+                                )}
                             >
                                 <input
                                     type="checkbox"
@@ -237,6 +247,16 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                                         {(event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--')} · {event.priority !== null && event.priority !== undefined ? `P${event.priority}` : '--'}
                                     </div>
                                 </div>
+                                {event.completed && (
+                                    <span className="pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                        <CheckCircle2 className="w-3 h-3" /> {statusText.completed}
+                                    </span>
+                                )}
+                                {event.failed && (
+                                    <span className="pill-soft status-pill-failed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                        <CircleX className="w-3 h-3" /> {statusText.failed}
+                                    </span>
+                                )}
                             </label>
                         ))
                     )}

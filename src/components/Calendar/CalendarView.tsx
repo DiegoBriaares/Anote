@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
+import { isEventPending } from '../../utils/eventStatus';
 import { addDays, eachDayOfInterval } from 'date-fns';
 import { BookOpenText, CalendarCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Compass, ListChecks, Send, Share2, X } from 'lucide-react';
 import { DayModal } from './DayModal';
@@ -251,7 +252,7 @@ export const CalendarView: React.FC = () => {
         setSelectedShareEventIds(
             markedDateKeys
                 .flatMap((dateKey) => events[dateKey] || [])
-                .filter((event) => !event.completed)
+                .filter(isEventPending)
                 .map((event) => event.id)
         );
     };

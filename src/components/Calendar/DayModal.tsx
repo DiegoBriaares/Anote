@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useCalendarStore, type Role, type Subrole } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
 import { formatFullDate } from '../../utils/dateUtils';
-import { X, Clock, StickyNote, Link as LinkIcon, Settings, CheckCircle2 } from 'lucide-react';
+import { X, Clock, StickyNote, Link as LinkIcon, Settings, CheckCircle2, CircleX } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
 import { RolesModal } from './RolesModal';
 import { SubrolesModal } from './SubrolesModal';
@@ -40,6 +41,7 @@ const DayEventsAdministrationIcon: React.FC<{ className?: string }> = ({ classNa
 
 export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onConfigure, onAdminister }) => {
     const { viewMode, subroles, fetchSubroles } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const [sortOrder, setSortOrder] = useState<'time' | 'priority'>('time');
 
     // State for Note/Roles Flow
@@ -171,6 +173,7 @@ export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onCon
                                 className={clsx(
                                     'board-card flex flex-col gap-2',
                                     ev.completed && 'board-card-completed',
+                                    ev.failed && 'board-card-failed',
                                     viewMode !== 'friend' && 'cursor-pointer hover:border-orange-300 hover:shadow-md transition-all'
                                 )}
                                 onClick={() => handleEventClick(ev)}
@@ -179,19 +182,30 @@ export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onCon
                                     <div
                                         className={clsx(
                                             'text-sm font-medium',
-                                            ev.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800 dark:text-slate-100',
-                                            ev.completed && 'opacity-90'
+                                            ev.failed
+                                                ? 'text-red-700 dark:text-red-300'
+                                                : ev.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800 dark:text-slate-100',
+                                            (ev.completed || ev.failed) && 'opacity-90'
                                         )}
                                     >
                                         {ev.title}
                                     </div>
                                     <div className="flex items-center gap-2 text-[11px] text-stone-500">
-                                        <span className={clsx('pill-soft flex items-center gap-1', ev.completed && 'text-emerald-700/80 dark:text-emerald-300/80')}>
+                                        <span className={clsx(
+                                            'pill-soft flex items-center gap-1',
+                                            ev.completed && 'text-emerald-700/80 dark:text-emerald-300/80',
+                                            ev.failed && 'text-red-700/80 dark:text-red-300/80'
+                                        )}>
                                             <Clock className="w-3 h-3 text-orange-600" /> {getMetaLabel(ev)}
                                         </span>
                                         {ev.completed && (
                                             <span className="pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
-                                                <CheckCircle2 className="w-3 h-3" /> Completed
+                                                <CheckCircle2 className="w-3 h-3" /> {statusText.completed}
+                                            </span>
+                                        )}
+                                        {ev.failed && (
+                                            <span className="pill-soft status-pill-failed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                                <CircleX className="w-3 h-3" /> {statusText.failed}
                                             </span>
                                         )}
                                         {viewMode === 'friend' && (

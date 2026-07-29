@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
 import { formatDate } from '../../utils/dateUtils';
 import { Clock, History } from 'lucide-react';
 import clsx from 'clsx';
@@ -10,6 +11,7 @@ interface DayEventsInformationProps {
 
 export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ activeDate }) => {
     const { events } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
     const dateStr = formatDate(activeDate);
@@ -66,27 +68,39 @@ export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ acti
                                 key={event.id}
                                 className={clsx(
                                     'board-card flex flex-col gap-2',
-                                    event.completed && 'board-card-completed'
+                                    event.completed && 'board-card-completed',
+                                    event.failed && 'board-card-failed'
                                 )}
                             >
                                 <div className="flex items-center justify-between">
                                     <div
                                         className={clsx(
                                             'text-sm font-mono truncate',
-                                            event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800',
-                                            event.completed && 'opacity-90'
+                                            event.failed
+                                                ? 'text-red-700 dark:text-red-300'
+                                                : event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800',
+                                            (event.completed || event.failed) && 'opacity-90'
                                         )}
                                     >
                                         {event.title}
                                     </div>
                                     <div className="flex items-center gap-2 text-[11px] text-stone-500">
-                                        <span className={clsx('flex items-center gap-1', event.completed && 'text-emerald-700/80 dark:text-emerald-300/80')}>
+                                        <span className={clsx(
+                                            'flex items-center gap-1',
+                                            event.completed && 'text-emerald-700/80 dark:text-emerald-300/80',
+                                            event.failed && 'text-red-700/80 dark:text-red-300/80'
+                                        )}>
                                             <Clock className="w-3 h-3" />
                                             {event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--'}
                                         </span>
                                         {event.completed && (
                                             <span className="pill-soft status-pill-completed text-[10px] uppercase tracking-[0.2em]">
-                                                Completed
+                                                {statusText.completed}
+                                            </span>
+                                        )}
+                                        {event.failed && (
+                                            <span className="pill-soft status-pill-failed text-[10px] uppercase tracking-[0.2em]">
+                                                {statusText.failed}
                                             </span>
                                         )}
                                         <button

@@ -1,0 +1,4 @@
+Events need a failed outcome alongside pending and completed. A failed event is
+shown with a red status mark, persists across reloads and shared/postponed event
+flows, and is terminal for automatic programs. Programs therefore move only
+pending events to another day; completed and failed events remain in place.

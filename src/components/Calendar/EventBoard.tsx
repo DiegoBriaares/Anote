@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore, type CalendarEvent } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
+import { type EventStatus } from '../../utils/eventStatus';
 import { formatDate } from '../../utils/dateUtils';
-import { CheckCircle2, Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
+import { CheckCircle2, CircleX, Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
 import clsx from 'clsx';
 
 interface EventBoardProps {
@@ -9,7 +11,8 @@ interface EventBoardProps {
 }
 
 export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
-    const { events, viewMode, addEvent, deleteEvent, editEvent, setEventCompleted, actionError, clearActionError } = useCalendarStore();
+    const { events, viewMode, addEvent, deleteEvent, editEvent, setEventStatus, actionError, clearActionError } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const [draft, setDraft] = useState({ title: '', time: '', link: '', note: '', priority: '' });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -78,6 +81,16 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
         return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
     };
 
+    const handleStatusChange = async (event: CalendarEvent, status: EventStatus) => {
+        clearActionError();
+        setPendingEventId(event.id);
+        try {
+            await setEventStatus(event, status);
+        } finally {
+            setPendingEventId(null);
+        }
+    };
+
     if (!selectedDate) return null;
 
     return (
@@ -119,72 +132,85 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                             key={event.id}
                             className={clsx(
                                 'board-card flex flex-col gap-2',
-                                event.completed && 'board-card-completed'
+                                event.completed && 'board-card-completed',
+                                event.failed && 'board-card-failed'
                             )}
                         >
                             <div className="flex items-center justify-between">
                                 <div
                                     className={clsx(
                                         'text-sm font-mono',
-                                        event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800',
-                                        event.completed && 'opacity-90'
+                                        event.failed
+                                            ? 'text-red-700 dark:text-red-300'
+                                            : event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-800',
+                                        (event.completed || event.failed) && 'opacity-90'
                                     )}
                                 >
                                     {event.title}
                                 </div>
                                 <div className="flex items-center gap-2 text-[11px] text-stone-500">
-                                    <span className={clsx('flex items-center gap-1', event.completed && 'text-emerald-700/80 dark:text-emerald-300/80')}>
+                                    <span className={clsx(
+                                        'flex items-center gap-1',
+                                        event.completed && 'text-emerald-700/80 dark:text-emerald-300/80',
+                                        event.failed && 'text-red-700/80 dark:text-red-300/80'
+                                    )}>
                                         <Clock className="w-3 h-3" /> {getMetaLabel(event)}
                                     </span>
                                     {viewMode !== 'friend' && (
                                         <>
-                                            {event.completed ? (
+                                            {event.completed || event.failed ? (
                                                 <>
                                                     <span className={clsx(
-                                                        'pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]',
+                                                        'pill-soft flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]',
+                                                        event.failed ? 'status-pill-failed' : 'status-pill-completed',
                                                         pendingEventId === event.id && 'opacity-80'
                                                     )}>
-                                                        <CheckCircle2 className="w-3 h-3" /> {pendingEventId === event.id ? 'Saving...' : 'Completed'}
+                                                        {event.failed
+                                                            ? <CircleX className="w-3 h-3" />
+                                                            : <CheckCircle2 className="w-3 h-3" />}
+                                                        {pendingEventId === event.id
+                                                            ? statusText.saving
+                                                            : event.failed ? statusText.failed : statusText.completed}
                                                     </span>
                                                     {pendingEventId !== event.id && (
                                                         <button
                                                             type="button"
-                                                            onClick={async () => {
-                                                                clearActionError();
-                                                                setPendingEventId(event.id);
-                                                                try {
-                                                                    await setEventCompleted(event, false);
-                                                                } finally {
-                                                                    setPendingEventId(null);
-                                                                }
-                                                            }}
+                                                            onClick={() => handleStatusChange(event, 'pending')}
                                                             disabled={isSubmitting}
                                                             className="flex items-center gap-1 text-[11px] text-amber-600 hover:text-amber-700"
                                                         >
-                                                            <CheckCircle2 className="w-3 h-3" /> Unmark
+                                                            {event.failed
+                                                                ? <CircleX className="w-3 h-3" />
+                                                                : <CheckCircle2 className="w-3 h-3" />}
+                                                            {statusText.unmark}
                                                         </button>
                                                     )}
                                                 </>
                                             ) : (
-                                                <button
-                                                    type="button"
-                                                    onClick={async () => {
-                                                        clearActionError();
-                                                        setPendingEventId(event.id);
-                                                        try {
-                                                            await setEventCompleted(event, true);
-                                                        } finally {
-                                                            setPendingEventId(null);
-                                                        }
-                                                    }}
-                                                    disabled={pendingEventId === event.id || isSubmitting}
-                                                    className={clsx(
-                                                        'flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700',
-                                                        (pendingEventId === event.id || isSubmitting) && 'cursor-not-allowed opacity-60'
-                                                    )}
-                                                >
-                                                    <CheckCircle2 className="w-3 h-3" /> {pendingEventId === event.id ? 'Saving...' : 'Mark complete'}
-                                                </button>
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStatusChange(event, 'completed')}
+                                                        disabled={pendingEventId === event.id || isSubmitting}
+                                                        className={clsx(
+                                                            'flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700',
+                                                            (pendingEventId === event.id || isSubmitting) && 'cursor-not-allowed opacity-60'
+                                                        )}
+                                                    >
+                                                        <CheckCircle2 className="w-3 h-3" /> {pendingEventId === event.id ? statusText.saving : statusText.markComplete}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleStatusChange(event, 'failed')}
+                                                        disabled={pendingEventId === event.id || isSubmitting}
+                                                        className={clsx(
+                                                            'flex items-center gap-1 text-[11px] text-red-600 hover:text-red-700',
+                                                            (pendingEventId === event.id || isSubmitting) && 'cursor-not-allowed opacity-60'
+                                                        )}
+                                                    >
+                                                        <CircleX className="w-3 h-3" /> {pendingEventId === event.id ? statusText.saving : statusText.markFailed}
+                                                    </button>
+                                                </>
                                             )}
                                             <button
                                                 type="button"
@@ -321,6 +347,7 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                                             link: draft.link,
                                             note: draft.note,
                                             completed: editingEvent?.completed ?? false,
+                                            failed: editingEvent?.failed ?? false,
                                             version: editingEvent?.version ?? null,
                                             unlockDate: editingEvent?.unlockDate ?? null,
                                             originDates: editingEvent?.originDates || null,
