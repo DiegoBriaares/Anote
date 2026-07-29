@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
 import { Clock, History } from 'lucide-react';
+import clsx from 'clsx';
 import { FALLBACK_POSTPONED_EVENT_DOMAIN, normalizePostponedEventDomain, type PostponedEventDomain } from '../../utils/postponedDomains';
 
 interface PostponedEventsInformationProps {
@@ -9,6 +11,7 @@ interface PostponedEventsInformationProps {
 
 export const PostponedEventsInformation: React.FC<PostponedEventsInformationProps> = ({ postponedView }) => {
     const { postponedEvents } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const [expandedIds, setExpandedIds] = useState<string[]>([]);
     const activeView = postponedView ?? FALLBACK_POSTPONED_EVENT_DOMAIN;
     const expandedByViewRef = useRef<Record<PostponedEventDomain, string[]>>({
@@ -60,7 +63,14 @@ export const PostponedEventsInformation: React.FC<PostponedEventsInformationProp
                             ? event.originDates
                             : [];
                         return (
-                            <div key={event.id} className="board-card flex flex-col gap-2">
+                            <div
+                                key={event.id}
+                                className={clsx(
+                                    'board-card flex flex-col gap-2',
+                                    event.completed && 'board-card-completed',
+                                    event.failed && 'board-card-failed'
+                                )}
+                            >
                                 <div className="flex items-center justify-between">
                                     <div className="text-sm text-stone-800 font-mono truncate">{event.title}</div>
                                     <div className="flex items-center gap-2 text-[11px] text-stone-500">
@@ -68,6 +78,16 @@ export const PostponedEventsInformation: React.FC<PostponedEventsInformationProp
                                             <Clock className="w-3 h-3" />
                                             {event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--'}
                                         </span>
+                                        {event.completed && (
+                                            <span className="pill-soft status-pill-completed text-[10px] uppercase tracking-[0.2em]">
+                                                {statusText.completed}
+                                            </span>
+                                        )}
+                                        {event.failed && (
+                                            <span className="pill-soft status-pill-failed text-[10px] uppercase tracking-[0.2em]">
+                                                {statusText.failed}
+                                            </span>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => toggleExpanded(event.id)}

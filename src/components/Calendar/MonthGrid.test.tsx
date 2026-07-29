@@ -59,6 +59,38 @@ describe('MonthGrid', () => {
         expect(timeChip.closest('.event-chip-completed')).not.toBeNull();
     });
 
+    it('renders failed events with red calendar chip styling', () => {
+        const failedDate = new Date(2026, 3, 23);
+        const dateKey = formatDate(failedDate);
+        useCalendarStore.setState({
+            events: {
+                [dateKey]: [{
+                    id: 'event-1',
+                    title: 'Failed rollout',
+                    date: dateKey,
+                    startTime: '09:00',
+                    priority: 2,
+                    completed: false,
+                    failed: true
+                }]
+            }
+        } as never);
+
+        render(
+            <MonthGrid
+                year={2026}
+                month={3}
+                onDateClick={() => {}}
+                onDateEnter={() => {}}
+                isSelecting={false}
+            />
+        );
+
+        const timeChip = screen.getByText('09:00 · P2');
+        expect(timeChip.closest('.time-pill-failed')).not.toBeNull();
+        expect(timeChip.closest('.event-chip-failed')).not.toBeNull();
+    });
+
     it('marks explicitly selected group-event days outside the drag range selection', () => {
         const markedDate = new Date(2026, 3, 23);
         const dateKey = formatDate(markedDate);

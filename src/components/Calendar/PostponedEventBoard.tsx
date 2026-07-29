@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore, type CalendarEvent } from '../../store/calendarStore';
-import { Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
+import { getAppText } from '../../i18n/appText';
+import { CheckCircle2, CircleX, Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
+import clsx from 'clsx';
 import { FALLBACK_POSTPONED_EVENT_DOMAIN, POSTPONED_EVENT_DOMAINS, normalizePostponedEventDomain, type PostponedEventDomain } from '../../utils/postponedDomains';
 
 interface PostponedEventBoardProps {
@@ -10,6 +12,7 @@ interface PostponedEventBoardProps {
 
 export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postponedView, onViewChange }) => {
     const { postponedEvents, viewMode, addPostponedEvent, deletePostponedEvent, editPostponedEvent, actionError, clearActionError } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const [draft, setDraft] = useState({ title: '', time: '', link: '', note: '', priority: '' });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -129,11 +132,28 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
             ) : (
                 <div className="flex flex-col gap-3">
                     {dayEvents.map((event: CalendarEvent) => (
-                        <div key={event.id} className="board-card flex flex-col gap-2">
+                        <div
+                            key={event.id}
+                            className={clsx(
+                                'board-card flex flex-col gap-2',
+                                event.completed && 'board-card-completed',
+                                event.failed && 'board-card-failed'
+                            )}
+                        >
                             <div className="flex items-center justify-between">
                                 <div className="text-sm text-stone-800 font-mono">{event.title}</div>
                                 <div className="flex items-center gap-2 text-[11px] text-stone-500">
                                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {getMetaLabel(event)}</span>
+                                    {event.completed && (
+                                        <span className="pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                            <CheckCircle2 className="w-3 h-3" /> {statusText.completed}
+                                        </span>
+                                    )}
+                                    {event.failed && (
+                                        <span className="pill-soft status-pill-failed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                            <CircleX className="w-3 h-3" /> {statusText.failed}
+                                        </span>
+                                    )}
                                     {viewMode !== 'friend' && (
                                         <>
                                             <button
@@ -269,6 +289,7 @@ export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postpo
                                             link: draft.link,
                                             note: draft.note,
                                             completed: editingEvent?.completed ?? false,
+                                            failed: editingEvent?.failed ?? false,
                                             originDates: editingEvent?.originDates || null,
                                             wasPostponed: null,
                                             postponedView: editingEvent?.postponedView ?? activeView

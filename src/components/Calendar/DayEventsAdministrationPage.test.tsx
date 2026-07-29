@@ -42,7 +42,7 @@ const buildState = (overrides: Record<string, unknown> = {}) => ({
     addEvent: vi.fn().mockResolvedValue(undefined),
     deleteEvent: vi.fn().mockResolvedValue(undefined),
     editEvent: vi.fn().mockResolvedValue(true),
-    setEventCompleted: vi.fn().mockResolvedValue(true),
+    setEventStatus: vi.fn().mockResolvedValue(true),
     addEventsBulk: vi.fn().mockResolvedValue(true),
     addPostponedEventsBulk: vi.fn().mockResolvedValue(true),
     actionError: null,

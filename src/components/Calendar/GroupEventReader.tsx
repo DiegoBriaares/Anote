@@ -1,6 +1,7 @@
 import React from 'react';
-import { CalendarRange, CheckCircle2, Clock, ExternalLink } from 'lucide-react';
+import { CalendarRange, CheckCircle2, CircleX, Clock, ExternalLink } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
 import clsx from 'clsx';
 
 interface GroupEventReaderProps {
@@ -23,6 +24,7 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
     selectedDateKeys,
     eventsByDate
 }) => {
+    const statusText = getAppText().eventStatus;
     const totalEvents = selectedDateKeys.reduce((count, dateKey) => count + (eventsByDate[dateKey]?.length || 0), 0);
 
     return (
@@ -69,9 +71,11 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
                                             key={event.id}
                                             className={clsx(
                                                 'rounded-lg border px-3 py-2 transition-colors',
-                                                event.completed
-                                                    ? 'border-emerald-100 bg-emerald-50/70 text-stone-500'
-                                                    : 'border-stone-100 bg-white text-stone-700'
+                                                event.failed
+                                                    ? 'border-red-200 bg-red-50/80 text-red-800'
+                                                    : event.completed
+                                                        ? 'border-emerald-100 bg-emerald-50/70 text-stone-500'
+                                                        : 'border-stone-100 bg-white text-stone-700'
                                             )}
                                         >
                                             <div className="flex items-start justify-between gap-2">
@@ -87,7 +91,13 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
                                                         {event.completed && (
                                                             <span className="flex items-center gap-1 text-emerald-600">
                                                                 <CheckCircle2 className="h-3 w-3" />
-                                                                Done
+                                                                {statusText.done}
+                                                            </span>
+                                                        )}
+                                                        {event.failed && (
+                                                            <span className="flex items-center gap-1 text-red-600">
+                                                                <CircleX className="h-3 w-3" />
+                                                                {statusText.failed}
                                                             </span>
                                                         )}
                                                     </div>

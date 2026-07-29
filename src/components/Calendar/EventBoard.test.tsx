@@ -37,7 +37,7 @@ const buildState = (overrides: Record<string, unknown> = {}) => {
         addEvent: vi.fn().mockResolvedValue(undefined),
         deleteEvent: vi.fn().mockResolvedValue(undefined),
         editEvent: vi.fn().mockResolvedValue(true),
-        setEventCompleted: vi.fn().mockResolvedValue(true),
+        setEventStatus: vi.fn().mockResolvedValue(true),
         actionError: null,
         clearActionError: vi.fn(),
         ...overrides
@@ -54,16 +54,28 @@ afterEach(() => {
 
 describe('EventBoard', () => {
     it('marks a selected-day event as completed', async () => {
-        const setEventCompleted = vi.fn().mockResolvedValue(true);
-        mockedUseCalendarStore.mockReturnValue(buildState({ setEventCompleted }));
+        const setEventStatus = vi.fn().mockResolvedValue(true);
+        mockedUseCalendarStore.mockReturnValue(buildState({ setEventStatus }));
 
         const user = userEvent.setup();
         render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
         await user.click(screen.getByRole('button', { name: 'Mark complete' }));
 
-        expect(setEventCompleted).toHaveBeenCalledTimes(1);
-        expect(setEventCompleted).toHaveBeenCalledWith(expect.objectContaining({ id: 'event-1' }), true);
+        expect(setEventStatus).toHaveBeenCalledTimes(1);
+        expect(setEventStatus).toHaveBeenCalledWith(expect.objectContaining({ id: 'event-1' }), 'completed');
+    });
+
+    it('marks a selected-day event as failed', async () => {
+        const setEventStatus = vi.fn().mockResolvedValue(true);
+        mockedUseCalendarStore.mockReturnValue(buildState({ setEventStatus }));
+
+        const user = userEvent.setup();
+        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+
+        await user.click(screen.getByRole('button', { name: 'Mark failed' }));
+
+        expect(setEventStatus).toHaveBeenCalledWith(expect.objectContaining({ id: 'event-1' }), 'failed');
     });
 
     it('renders the action error when the update fails', () => {
@@ -116,5 +128,25 @@ describe('EventBoard', () => {
 
         expect(addEvent).toHaveBeenCalledTimes(1);
         expect((titleInput as HTMLInputElement).value).toBe('New planning block');
+    });
+
+    it('renders failed events with the red failed styling', () => {
+        mockedUseCalendarStore.mockReturnValue(buildState({
+            events: {
+                [formatDate(new Date(2026, 3, 23))]: [{
+                    id: 'event-1',
+                    title: 'Production rollout',
+                    date: formatDate(new Date(2026, 3, 23)),
+                    failed: true,
+                    completed: false
+                }]
+            }
+        }));
+
+        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+
+        expect(screen.getByText('Production rollout').closest('.board-card-failed')).not.toBeNull();
+        expect(screen.getByText('Failed').closest('.status-pill-failed')).not.toBeNull();
+        expect(screen.getByRole('button', { name: 'Unmark' })).toBeTruthy();
     });
 });

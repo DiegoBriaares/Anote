@@ -13,6 +13,17 @@ describe('user-facing connection messages', () => {
         expect(getAppText('fr-FR').serviceUnavailable).toContain('Check your connection');
     });
 
+    it('provides complete and failed event actions in both languages', () => {
+        expect(getAppText('en').eventStatus).toMatchObject({
+            markComplete: 'Mark complete',
+            markFailed: 'Mark failed'
+        });
+        expect(getAppText('es-MX').eventStatus).toMatchObject({
+            markComplete: 'Marcar como completado',
+            markFailed: 'Marcar como fallido'
+        });
+    });
+
     it('does not expose internal API or port instructions', () => {
         for (const language of ['en', 'es']) {
             const text = Object.values(getAppText(language)).join(' ');

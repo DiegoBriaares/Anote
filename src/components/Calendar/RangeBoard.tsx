@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
 import { formatDate } from '../../utils/dateUtils';
 import { eachDayOfInterval } from 'date-fns';
-import { CalendarRange, CheckCircle2 } from 'lucide-react';
+import { CalendarRange, CheckCircle2, CircleX } from 'lucide-react';
 import clsx from 'clsx';
 import { DEFAULT_POSTPONED_EVENT_DOMAIN, POSTPONED_EVENT_DOMAINS, type PostponedEventDomain } from '../../utils/postponedDomains';
 
@@ -12,6 +13,7 @@ interface RangeBoardProps {
 
 export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
     const { selection, events, viewMode, addEventsBulk, editEvent, addPostponedEventsBulk, deleteEvent } = useCalendarStore();
+    const statusText = getAppText().eventStatus;
     const hasSelection = selection.start && selection.end;
     const [sortOrder, setSortOrder] = React.useState<'time' | 'priority'>('time');
     const [copySourceDate, setCopySourceDate] = useState('');
@@ -214,6 +216,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                     link: event.link ?? null,
                     note: event.note ?? null,
                     completed: event.completed ? true : false,
+                    failed: event.failed ? true : false,
                     originDates: chain.length > 0 ? chain : null,
                     wasPostponed: event.wasPostponed ? true : null
                 };
@@ -245,6 +248,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                 link: event.link ?? null,
                 note: event.note ?? null,
                 completed: event.completed ? true : false,
+                failed: event.failed ? true : false,
                 originDates: chain.length > 0 ? chain : null,
                 postponedView
             };
@@ -343,7 +347,8 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                                 className={clsx(
                                     'board-card flex items-center gap-3 px-3 py-2 rounded-xl transition-colors',
                                     event.completed && 'board-card-completed',
-                                    !event.completed && 'hover:border-orange-300'
+                                    event.failed && 'board-card-failed',
+                                    !event.completed && !event.failed && 'hover:border-orange-300'
                                 )}
                             >
                                 <input
@@ -357,8 +362,10 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                                     <div
                                         className={clsx(
                                             'text-sm font-medium truncate',
-                                            event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-700',
-                                            event.completed && 'opacity-90'
+                                            event.failed
+                                                ? 'text-red-700 dark:text-red-300'
+                                                : event.completed ? 'text-emerald-700 dark:text-emerald-300' : 'text-stone-700',
+                                            (event.completed || event.failed) && 'opacity-90'
                                         )}
                                     >
                                         {event.title}
@@ -366,7 +373,9 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                                     <div
                                         className={clsx(
                                             'text-[11px] font-mono truncate',
-                                            event.completed ? 'text-emerald-700/80 dark:text-emerald-300/80' : 'text-stone-500'
+                                            event.failed
+                                                ? 'text-red-700/80 dark:text-red-300/80'
+                                                : event.completed ? 'text-emerald-700/80 dark:text-emerald-300/80' : 'text-stone-500'
                                         )}
                                     >
                                         {(event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--')} · {event.priority !== null && event.priority !== undefined ? `P${event.priority}` : '--'}
@@ -374,7 +383,12 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                                 </div>
                                 {event.completed && (
                                     <span className="pill-soft status-pill-completed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
-                                        <CheckCircle2 className="w-3 h-3" /> Completed
+                                        <CheckCircle2 className="w-3 h-3" /> {statusText.completed}
+                                    </span>
+                                )}
+                                {event.failed && (
+                                    <span className="pill-soft status-pill-failed flex items-center gap-1 text-[10px] uppercase tracking-[0.2em]">
+                                        <CircleX className="w-3 h-3" /> {statusText.failed}
                                     </span>
                                 )}
                             </label>

@@ -6,14 +6,32 @@ const messages = {
         shareUnavailable: 'Events could not be shared. Check your connection and try again.',
         addEventUnavailable: 'The event could not be added. Check your connection and try again.',
         updateEventUnavailable: 'The event could not be updated. Check your connection and try again.',
-        completionUnavailable: 'The event status could not be updated. Check your connection and try again.'
+        completionUnavailable: 'The event status could not be updated. Check your connection and try again.',
+        eventStatus: {
+            saving: 'Saving...',
+            completed: 'Completed',
+            done: 'Done',
+            failed: 'Failed',
+            unmark: 'Unmark',
+            markComplete: 'Mark complete',
+            markFailed: 'Mark failed'
+        }
     },
     es: {
         serviceUnavailable: 'Anote no está disponible en este momento. Revisa tu conexión e inténtalo de nuevo.',
         shareUnavailable: 'No se pudieron compartir los eventos. Revisa tu conexión e inténtalo de nuevo.',
         addEventUnavailable: 'No se pudo agregar el evento. Revisa tu conexión e inténtalo de nuevo.',
         updateEventUnavailable: 'No se pudo actualizar el evento. Revisa tu conexión e inténtalo de nuevo.',
-        completionUnavailable: 'No se pudo actualizar el estado del evento. Revisa tu conexión e inténtalo de nuevo.'
+        completionUnavailable: 'No se pudo actualizar el estado del evento. Revisa tu conexión e inténtalo de nuevo.',
+        eventStatus: {
+            saving: 'Guardando...',
+            completed: 'Completado',
+            done: 'Hecho',
+            failed: 'Fallido',
+            unmark: 'Quitar marca',
+            markComplete: 'Marcar como completado',
+            markFailed: 'Marcar como fallido'
+        }
     }
 } as const;
 

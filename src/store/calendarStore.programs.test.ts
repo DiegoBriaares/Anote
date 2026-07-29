@@ -51,6 +51,15 @@ describe('calendarStore programs', () => {
             completed: true,
             originDates: null
         };
+        const failedEvent: CalendarEvent = {
+            id: 'event-5',
+            title: 'Failed work',
+            date: '2026-06-04',
+            startTime: '10:30',
+            completed: false,
+            failed: true,
+            originDates: null
+        };
         const tomorrowEvent: CalendarEvent = {
             id: 'event-3',
             title: 'Already tomorrow',
@@ -70,12 +79,12 @@ describe('calendarStore programs', () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(jsonResponse({
                 message: 'success',
-                data: [todayEvent, completedEvent, tomorrowEvent, pastEvent]
+                data: [todayEvent, completedEvent, failedEvent, tomorrowEvent, pastEvent]
             }))
             .mockResolvedValueOnce(jsonResponse({ message: 'success', version: 200 }))
             .mockResolvedValueOnce(jsonResponse({
                 message: 'success',
-                data: [{ ...todayEvent, date: '2026-06-05', version: 200 }, completedEvent, tomorrowEvent, pastEvent]
+                data: [{ ...todayEvent, date: '2026-06-05', version: 200 }, completedEvent, failedEvent, tomorrowEvent, pastEvent]
             }));
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
@@ -91,6 +100,7 @@ describe('calendarStore programs', () => {
         expect(fetchMock).toHaveBeenCalledTimes(3);
         expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/events/event-1`);
         expect(fetchMock.mock.calls.some((call) => call[0] === `${API_URL}/events/event-4`)).toBe(false);
+        expect(fetchMock.mock.calls.some((call) => call[0] === `${API_URL}/events/event-5`)).toBe(false);
         const requestBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
         expect(requestBody.date).toBe('2026-06-05');
         expect(requestBody.resources).toEqual({ originDates: ['2026-06-04'] });

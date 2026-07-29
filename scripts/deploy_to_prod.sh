@@ -32,28 +32,32 @@ fi
 cd "$ANOTE_SOURCE_DIR"
 ANOTE_GIT_SHA="$(git rev-parse HEAD)"
 ANOTE_SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+ANOTE_DEPLOY_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 if [[ -n "$(git status --porcelain)" ]]; then
   if [[ "${ALLOW_DIRTY:-0}" != "1" ]]; then
     echo "Refusing to deploy an uncommitted worktree. Commit the intended release first." >&2
     exit 1
   fi
-  ANOTE_IMAGE_TAG="worktree-${ANOTE_SHORT_SHA}-$(date -u +%Y%m%d%H%M%S)"
+  ANOTE_IMAGE_TAG="worktree-${ANOTE_SHORT_SHA}-${ANOTE_DEPLOY_ID}"
 else
-  ANOTE_BRANCH="$(git branch --show-current)"
-  if [[ "$ANOTE_BRANCH" != "main" ]]; then
-    echo "Refusing to deploy branch '$ANOTE_BRANCH'. Deploy production from main." >&2
+  ANOTE_DEPLOY_REMOTE_REF="${ANOTE_DEPLOY_REMOTE_REF:-origin/main}"
+  if [[ "$ANOTE_DEPLOY_REMOTE_REF" != origin/* ]]; then
+    echo "Refusing to deploy a release that is not owned by an origin remote-tracking ref." >&2
     exit 1
   fi
-  if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
-    echo "Refusing to deploy without an origin/main reference. Fetch the remote first." >&2
+  if ! git show-ref --verify --quiet "refs/remotes/$ANOTE_DEPLOY_REMOTE_REF"; then
+    echo "Refusing to deploy without the remote release ref '$ANOTE_DEPLOY_REMOTE_REF'. Push or fetch it first." >&2
     exit 1
   fi
-  ANOTE_ORIGIN_MAIN_SHA="$(git rev-parse origin/main)"
-  if [[ "$ANOTE_GIT_SHA" != "$ANOTE_ORIGIN_MAIN_SHA" ]]; then
-    echo "Refusing to deploy: local main does not exactly match origin/main." >&2
+  ANOTE_REMOTE_RELEASE_SHA="$(git rev-parse "$ANOTE_DEPLOY_REMOTE_REF")"
+  if [[ "$ANOTE_GIT_SHA" != "$ANOTE_REMOTE_RELEASE_SHA" ]]; then
+    echo "Refusing to deploy: HEAD does not exactly match '$ANOTE_DEPLOY_REMOTE_REF'." >&2
     exit 1
   fi
-  ANOTE_IMAGE_TAG="$ANOTE_SHORT_SHA"
+  # A release-specific tag keeps the currently running images addressable by
+  # the production.env copied into the pre-deploy backup. Reusing only the Git
+  # SHA could overwrite that rollback target when the same commit is redeployed.
+  ANOTE_IMAGE_TAG="${ANOTE_SHORT_SHA}-${ANOTE_DEPLOY_ID}"
 fi
 
 ANOTE_SECRET=""
@@ -72,7 +76,7 @@ printf 'SECRET_KEY=%s\nANOTE_DATA_DIR=%s\nANOTE_IMAGE_TAG=%s\nANOTE_BIND_ADDRESS
 echo "Building immutable Anote images for $ANOTE_IMAGE_TAG."
 docker compose --env-file "$ANOTE_CANDIDATE_ENV" -f "$ANOTE_COMPOSE_FILE" build
 
-ANOTE_BACKUP_ID="predeploy-$(date -u +%Y%m%dT%H%M%SZ)-$ANOTE_SHORT_SHA"
+ANOTE_BACKUP_ID="predeploy-${ANOTE_DEPLOY_ID}-${ANOTE_SHORT_SHA}"
 ANOTE_BACKUP_DIR="$(ANOTE_PRODUCTION_HOME="$ANOTE_PRODUCTION_HOME" "$ANOTE_SOURCE_DIR/scripts/backup_production.sh" "$ANOTE_BACKUP_ID")"
 if [[ -f "$ANOTE_ENV_FILE" ]]; then
   cp "$ANOTE_ENV_FILE" "$ANOTE_BACKUP_DIR/production.env"

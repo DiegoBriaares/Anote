@@ -1,0 +1,6 @@
+The compiled publish-and-deploy workflow must update production during the same
+run instead of waiting for pull-request merge. It now deploys only after local
+verification, commit, push, and draft PR creation. The release owner confirms
+that `HEAD` exactly matches the current branch on `origin`, creates an isolated
+clean worktree at that commit, and delegates to the existing backup-first,
+health-checked production deployment and rollback lifecycle.

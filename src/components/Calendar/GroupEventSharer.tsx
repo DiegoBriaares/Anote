@@ -1,6 +1,7 @@
 import React from 'react';
-import { CalendarRange, CheckCircle2, Clock, Send, Users } from 'lucide-react';
+import { CalendarRange, CheckCircle2, CircleX, Clock, Send, Users } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
+import { getAppText } from '../../i18n/appText';
 import clsx from 'clsx';
 
 interface ShareFriend {
@@ -53,6 +54,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
     onSelectIncompleteEvents,
     onShare
 }) => {
+    const statusText = getAppText().eventStatus;
     const shareableEvents = sortShareableEvents(selectedDateKeys.flatMap((dateKey) => eventsByDate[dateKey] || []));
     const totalEvents = shareableEvents.length;
     const canShare = selectedFriendIds.length > 0
@@ -230,7 +232,13 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                                                                     {event.completed && (
                                                                         <span className="flex items-center gap-1 text-emerald-600">
                                                                             <CheckCircle2 className="h-3 w-3" />
-                                                                            Done
+                                                                            {statusText.done}
+                                                                        </span>
+                                                                    )}
+                                                                    {event.failed && (
+                                                                        <span className="flex items-center gap-1 text-red-600">
+                                                                            <CircleX className="h-3 w-3" />
+                                                                            {statusText.failed}
                                                                         </span>
                                                                     )}
                                                                 </span>
