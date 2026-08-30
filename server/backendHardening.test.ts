@@ -311,6 +311,42 @@ describe('fail-closed schema migrations', () => {
         closeDatabase(db);
     });
 
+    it('does not authorize legacy notes through cross-storage-class identity coercion', () => {
+        const directory = temporaryDirectory();
+        const db = createDatabase(path.join(directory, 'typed-note-identities.db'));
+        db.exec(`
+            CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL);
+            CREATE TABLE events (id TEXT PRIMARY KEY, title TEXT NOT NULL, date TEXT NOT NULL, user_id TEXT NOT NULL);
+            CREATE TABLE roles (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, label TEXT NOT NULL,
+                color TEXT, is_enabled INTEGER DEFAULT 1, order_index INTEGER DEFAULT 0
+            );
+            CREATE TABLE event_notes (event_id, role_id, content, updated_at);
+            INSERT INTO users VALUES ('u1', 'one', 'disabled');
+            INSERT INTO events VALUES ('event-1', 'Event', '2026-01-01', 'u1');
+            INSERT INTO roles VALUES ('role-1', 'u1', 'Role', NULL, 1, 0);
+            INSERT INTO event_notes VALUES ('event-1', 'role-1', 'proven text parents', 1);
+            INSERT INTO event_notes VALUES (CAST('event-1' AS BLOB), 'role-1', 'blob event collision', 2);
+            INSERT INTO event_notes VALUES ('event-1', CAST('role-1' AS BLOB), 'blob role collision', 3);
+        `);
+
+        expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
+        expect(db.prepare('SELECT content FROM event_notes').all())
+            .toEqual([{ content: 'proven text parents' }]);
+        expect(db.prepare(`
+            SELECT typeof(source_event_id) AS eventType,
+                   typeof(source_role_id) AS roleType,
+                   source_content AS content
+            FROM legacy_event_note_recovery
+            ORDER BY source_content
+        `).all()).toEqual([
+            { eventType: 'blob', roleType: 'text', content: 'blob event collision' },
+            { eventType: 'text', roleType: 'blob', content: 'blob role collision' }
+        ]);
+        expect(db.pragma('foreign_key_check')).toEqual([]);
+        closeDatabase(db);
+    });
+
     it('rolls back a failed migration phase and resumes after the corrupt row is repaired', () => {
         const directory = temporaryDirectory();
         const db = createDatabase(path.join(directory, 'migration-failure.db'));

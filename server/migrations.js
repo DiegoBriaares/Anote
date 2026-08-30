@@ -503,8 +503,6 @@ const normalizeEventNotesSchema = (db) => {
     if (stagedCount !== sourceCount) throw new Error('Legacy event note staging did not conserve every source row');
     const legacyRows = db.prepare(`
         SELECT migration_ordinal AS ordinal,
-               CAST(source_event_id AS TEXT) AS event_id,
-               CAST(source_role_id AS TEXT) AS role_id,
                typeof(source_event_id) AS event_id_type,
                quote(source_event_id) AS event_id_sql,
                typeof(source_role_id) AS role_id_type,
@@ -516,13 +514,20 @@ const normalizeEventNotesSchema = (db) => {
         FROM event_notes_legacy_migration
         ORDER BY migration_ordinal
     `).all();
-    const selectEvent = db.prepare('SELECT user_id FROM events WHERE id = ?');
-    const selectRole = db.prepare('SELECT user_id FROM roles WHERE id = ?');
-    const roleOwnerSnapshot = new Map(db.prepare('SELECT id, user_id FROM roles ORDER BY id').all()
-        .map((role) => [String(role.id), role.user_id]));
+    const selectTypedParents = db.prepare(`
+        SELECT e.user_id AS event_user_id, r.user_id AS role_user_id
+        FROM event_notes_legacy_migration staged
+        LEFT JOIN events e
+          ON typeof(e.id) = typeof(staged.source_event_id)
+         AND e.id = staged.source_event_id
+        LEFT JOIN roles r
+          ON typeof(r.id) = typeof(staged.source_role_id)
+         AND r.id = staged.source_role_id
+        WHERE staged.migration_ordinal = ?
+    `);
     const insertNoteFromLegacy = db.prepare(`
         INSERT INTO event_notes (event_id, role_id, owner_user_id, content, updated_at)
-        SELECT ?, ?, ?, source_content, COALESCE(source_updated_at, 0)
+        SELECT source_event_id, source_role_id, ?, source_content, COALESCE(source_updated_at, 0)
         FROM event_notes_legacy_migration WHERE migration_ordinal = ?
     `);
     const insertRecoveryNote = db.prepare(`
@@ -540,16 +545,17 @@ const normalizeEventNotesSchema = (db) => {
     let activeCount = 0;
     let recoveryCount = 0;
     for (const row of legacyRows) {
-        const event = selectEvent.get(row.event_id);
-        const role = row.role_id === null ? null : selectRole.get(row.role_id);
-        if (!event || !role || role.user_id !== event.user_id) {
-            const candidateOwnerId = role?.user_id ?? event?.user_id ?? null;
-            const ownershipBasis = role
+        const parents = selectTypedParents.get(row.ordinal);
+        const eventOwnerId = parents?.event_user_id ?? null;
+        const roleOwnerId = parents?.role_user_id ?? null;
+        if (!eventOwnerId || !roleOwnerId || roleOwnerId !== eventOwnerId) {
+            const candidateOwnerId = roleOwnerId ?? eventOwnerId;
+            const ownershipBasis = roleOwnerId
                 ? 'role_owner_hint'
-                : event
+                : eventOwnerId
                     ? 'event_owner_hint'
                     : 'none';
-            const reasonCode = event ? 'unproven_role_owner' : 'missing_event';
+            const reasonCode = eventOwnerId ? 'unproven_role_owner' : 'missing_event';
             const canonicalPayload = JSON.stringify({
                 ordinal: row.ordinal,
                 eventId: { type: row.event_id_type, sql: row.event_id_sql },
@@ -572,7 +578,7 @@ const normalizeEventNotesSchema = (db) => {
             recoveryCount += 1;
             continue;
         }
-        insertNoteFromLegacy.run(row.event_id, row.role_id, event.user_id, row.ordinal);
+        insertNoteFromLegacy.run(eventOwnerId, row.ordinal);
         activeCount += 1;
     }
     if (activeCount + recoveryCount !== legacyRows.length) {
