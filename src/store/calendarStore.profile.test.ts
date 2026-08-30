@@ -53,4 +53,23 @@ describe('calendarStore profile updates', () => {
         expect(storedUser.avatar_url).toBe(`${API_URL}/attachments/avatar-1`);
         expect(storedProfile.avatar_url).toBe(`${API_URL}/attachments/avatar-1`);
     });
+
+    it('reports a rejected profile update without claiming success', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            error: { code: 'USERNAME_UNAVAILABLE' },
+            requestId: 'profile-conflict'
+        }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' }
+        })));
+        useCalendarStore.setState({
+            user: { id: 'user-1', username: 'example-user', isAdmin: false },
+            actionError: null
+        });
+
+        const saved = await useCalendarStore.getState().updateProfile({ username: 'taken-user' });
+
+        expect(saved).toBe(false);
+        expect(useCalendarStore.getState().actionError).toBeTruthy();
+    });
 });

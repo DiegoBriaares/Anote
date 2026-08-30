@@ -83,7 +83,10 @@ const createAttachmentService = ({ db, uploadDir, now = () => new Date() }) => {
         }
     };
     const stagingDir = path.join(path.dirname(uploadDir), '.anote-upload-staging');
-    const retirementDir = path.join(path.dirname(uploadDir), '.anote-attachment-retirement');
+    // Pending retirements remain inside the canonical uploads snapshot boundary.
+    // If the process exits around the database commit, an offline backup/checkpoint
+    // therefore always carries the bytes needed by startup reconciliation.
+    const retirementDir = path.join(uploadDir, '.anote-attachment-retirement');
     for (const directory of [stagingDir, retirementDir]) {
         fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
         try {

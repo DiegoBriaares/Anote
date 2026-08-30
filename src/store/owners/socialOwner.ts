@@ -100,7 +100,7 @@ export const createSocialOwner = ({ set, get, logoutAndReset }: OwnerContext): S
 
     updateProfile: async (preferencesPatch) => {
         const { user } = get();
-        if (!user) return;
+        if (!user) return false;
         try {
             const { avatar_url, username, ...preferences } = preferencesPatch;
             await peopleApi.updateProfile({
@@ -109,6 +109,8 @@ export const createSocialOwner = ({ set, get, logoutAndReset }: OwnerContext): S
                 username: username ?? get().profile?.username ?? user.username
             });
             await get().fetchProfile();
+            set({ actionError: null });
+            return true;
         } catch (error) {
             if (error instanceof ApiError && error.status === 401) logoutAndReset();
             else set({
@@ -116,6 +118,7 @@ export const createSocialOwner = ({ set, get, logoutAndReset }: OwnerContext): S
                     ? getApiErrorText(error.code)
                     : getAppText().serviceUnavailable
             });
+            return false;
         }
     }
 });

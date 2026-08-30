@@ -39,22 +39,26 @@ export const createResourcesOwner = ({ set, get, logoutAndReset }: OwnerContext)
     },
 
     saveDailyFact: async (date, content) => {
-        if (!get().user) return;
+        if (!get().user) return false;
         try {
             await calendarResourcesApi.saveDailyFact(date, content);
-            set((state) => ({ dailyFacts: { ...state.dailyFacts, [date]: content } }));
+            set((state) => ({ dailyFacts: { ...state.dailyFacts, [date]: content }, actionError: null }));
+            return true;
         } catch (error) {
-            handleSessionError(error, logoutAndReset);
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
+            return false;
         }
     },
 
     saveDayBackground: async (date, imageUrl) => {
-        if (!get().user) return;
+        if (!get().user) return false;
         try {
             await calendarResourcesApi.saveDayBackground(date, imageUrl);
-            set((state) => ({ dayBackgrounds: { ...state.dayBackgrounds, [date]: imageUrl } }));
+            set((state) => ({ dayBackgrounds: { ...state.dayBackgrounds, [date]: imageUrl }, actionError: null }));
+            return true;
         } catch (error) {
-            handleSessionError(error, logoutAndReset);
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
+            return false;
         }
     },
 

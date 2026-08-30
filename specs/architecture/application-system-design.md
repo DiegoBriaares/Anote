@@ -157,7 +157,10 @@ Focused state owners may coordinate a user history but must not become a second
 server. In particular, authorization, optimistic-revision acceptance,
 automatic-program clocks, run ledgers and multi-row atomicity remain on the
 server. Server results replace or reconcile affected local values only after
-success. Failed mutations retain resumable non-secret edits.
+success. Mutation owners expose an explicit success result to interaction
+callers. Failed mutations retain resumable non-secret edits, surface the
+localized error, and never close or navigate away from the editing surface as
+though the command committed.
 
 All visible strings—including dialogs, statuses, errors, empty/loading states,
 generated labels, tooltips and accessibility names—exist in both English and
@@ -188,6 +191,7 @@ on deliberate invalidation/focus, not every three seconds.
 | APP-BOOT-001 | Process startup | composition/database owners | listener and scheduler exist only after migrations | initialization failure/success integration test |
 | APP-STOP-001 | SIGTERM/container stop | composition root | no new scheduled work; SQLite closes cleanly | controlled-shutdown owner test |
 | APP-I18N-001 | Language change | language provider | coherent EN or ES text and aria labels | catalog shape/parity plus representative render |
+| APP-WRITE-001 | Profile/day-setting mutation | focused state owner and editing surface | confirmed success applies/navigates; failure preserves draft and surface with localized recovery | owner failure-result tests plus representative profile/day dialog interactions |
 | APP-UI-001 | Guarded/destructive control | backend policy plus interaction owner | visible state agrees with effective result; refusal preserves edits/data | owner contract; browser evidence only for focus/routing risks |
 | APP-HEALTH-001 | Control Center validation | runtime identity and readiness owner | exact selected release and usable data/upload boundary | packaged gateway readiness check |
 

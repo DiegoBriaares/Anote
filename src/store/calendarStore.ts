@@ -140,7 +140,7 @@ export interface CalendarState {
     addFriend: (id: string) => Promise<void>;
     removeFriend: (id: string) => Promise<void>;
     fetchProfile: () => Promise<void>;
-    updateProfile: (prefs: Partial<UserPreferences> & { avatar_url?: string | null; username?: string }) => Promise<void>;
+    updateProfile: (prefs: Partial<UserPreferences> & { avatar_url?: string | null; username?: string }) => Promise<boolean>;
     fetchPrograms: () => Promise<void>;
     savePrograms: (programs: Program[]) => Promise<boolean>;
     createProgram: (program: ProgramInput) => Promise<Program | null>;
@@ -154,8 +154,8 @@ export interface CalendarState {
     dailyFacts: Record<string, string>;
     dayBackgrounds: Record<string, string>;
     fetchMonthVisuals: (start: string, end: string) => Promise<void>;
-    saveDailyFact: (date: string, content: string) => Promise<void>;
-    saveDayBackground: (date: string, imageUrl: string) => Promise<void>;
+    saveDailyFact: (date: string, content: string) => Promise<boolean>;
+    saveDayBackground: (date: string, imageUrl: string) => Promise<boolean>;
 
     // Roles & Notes
     roles: Role[];

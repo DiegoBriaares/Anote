@@ -1242,7 +1242,7 @@ describe('attachment authorization', () => {
         });
         const row = db.prepare('SELECT stored_name FROM attachments WHERE id = ?').get(avatar.id);
         const filePath = path.join(uploadDir, row.stored_name);
-        const retirementDir = path.join(directory, '.anote-attachment-retirement');
+        const retirementDir = path.join(uploadDir, '.anote-attachment-retirement');
         const retired = path.join(retirementDir, row.stored_name);
 
         fs.renameSync(filePath, retired);

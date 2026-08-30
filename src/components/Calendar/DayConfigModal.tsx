@@ -56,10 +56,11 @@ const DayConfigForm = ({ date, dateKey, initialFact, initialBackground, onClose 
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
-        if (factDraft !== initialFact) await saveDailyFact(dateKey, factDraft);
-        if (backgroundDraft !== initialBackground) await saveDayBackground(dateKey, backgroundDraft);
+        const factSaved = factDraft === initialFact || await saveDailyFact(dateKey, factDraft);
+        const backgroundSaved = backgroundDraft === initialBackground
+            || await saveDayBackground(dateKey, backgroundDraft);
         setIsSaving(false);
-        onClose();
+        if (factSaved && backgroundSaved) onClose();
     };
 
     return (

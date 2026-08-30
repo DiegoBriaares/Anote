@@ -90,6 +90,24 @@ def rewrite_checkpoint_database(source: Path, destination: Path, mutate: Callabl
 
 
 class CheckpointTests(unittest.TestCase):
+    def test_snapshot_preserves_pending_attachment_retirements_for_reconciliation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = ManagedPaths(Path(directory) / "state")
+            create_database(paths.database)
+            retirement = paths.uploads / ".anote-attachment-retirement"
+            retirement.mkdir(parents=True)
+            (retirement / "owned.png").write_bytes(b"pending-owned-bytes")
+
+            service = SnapshotService(paths, clock=lambda: 200)
+            backup = service.create("pending-retirement")
+            (retirement / "owned.png").unlink()
+            service.restore(backup)
+
+            self.assertEqual(
+                b"pending-owned-bytes",
+                (paths.uploads / ".anote-attachment-retirement" / "owned.png").read_bytes(),
+            )
+
     def test_checkpoint_refuses_a_runtime_that_is_not_proven_stopped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

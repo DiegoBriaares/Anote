@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Image as ImageIcon, Palette, RefreshCcw } from 'lucide-react';
 import { useTranslation } from '../../i18n/languageContext';
 import { useCalendarStore, type UserPreferences } from '../../store/calendarStore';
@@ -26,7 +26,12 @@ const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
     const { text } = useTranslation();
     const [draft, setDraft] = useState(initial);
     const [isSaving, setIsSaving] = useState(false);
+    const savedRef = useRef(false);
     const isDirty = JSON.stringify(draft) !== JSON.stringify(initial);
+
+    useEffect(() => () => {
+        if (!savedRef.current) applyAppearance(initial);
+    }, [initial]);
 
     const updateDraft = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
         setDraft((current) => ({ ...current, [key]: value }));
@@ -41,9 +46,14 @@ const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
             noiseOverlay: draft.noiseOverlay,
             theme: draft.theme
         };
-        await updateProfile({ ...nextPreferences, username: draft.username });
+        const saved = await updateProfile({ ...nextPreferences, username: draft.username });
+        if (!saved) {
+            setIsSaving(false);
+            return;
+        }
         setLocalPreferences({ ...nextPreferences, _updatedAt: Date.now() });
         applyAppearance(nextPreferences);
+        savedRef.current = true;
         setIsSaving(false);
         navigateToCalendar();
     };
@@ -94,19 +104,17 @@ const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
                             <label className="sr-only" htmlFor="profile-accent-picker">{text.profile.accent}</label>
                             <input id="profile-accent-picker" type="color" value={draft.accentColor} onChange={(event) => {
                                 updateDraft('accentColor', event.target.value);
-                                setLocalPreferences({ accentColor: event.target.value, _updatedAt: Date.now() });
                                 applyAppearance({ accentColor: event.target.value, theme: draft.theme });
                             }} className="w-12 h-12 border-2 border-orange-200 bg-white cursor-pointer rounded-xl" />
                             <label className="sr-only" htmlFor="profile-accent-text">{text.profile.accentText}</label>
                             <input id="profile-accent-text" type="text" value={draft.accentColor} onChange={(event) => {
                                 updateDraft('accentColor', event.target.value);
-                                setLocalPreferences({ accentColor: event.target.value });
+                                applyAppearance({ accentColor: event.target.value, theme: draft.theme });
                             }} className="flex-1 bg-white border-2 border-orange-200 text-sm text-stone-800 px-4 py-3 rounded-xl focus:outline-none focus:border-orange-400 hover:border-orange-300 transition-colors" />
                         </div>
                         <label className="inline-flex items-center gap-2 text-sm text-stone-600">
                             <input type="checkbox" checked={draft.noiseOverlay} onChange={(event) => {
                                 updateDraft('noiseOverlay', event.target.checked);
-                                setLocalPreferences({ noiseOverlay: event.target.checked });
                             }} className="accent-orange-500 w-4 h-4 rounded" />
                             {text.profile.noiseOverlay}
                         </label>
@@ -117,7 +125,6 @@ const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
                         <select id="profile-theme" value={draft.theme} onChange={(event) => {
                             const theme = event.target.value as ProfileDraft['theme'];
                             updateDraft('theme', theme);
-                            setLocalPreferences({ theme });
                             applyAppearance({ theme, accentColor: draft.accentColor });
                         }} className="w-full bg-white border-2 border-orange-200 text-sm text-stone-800 px-4 py-3 rounded-xl focus:outline-none focus:border-orange-400 hover:border-orange-300 transition-colors">
                             <option value="light">{text.profile.light}</option>
