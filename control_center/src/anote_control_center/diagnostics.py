@@ -7,6 +7,7 @@ import time
 
 from . import __version__
 from .docker_runtime import DockerRuntime
+from .errors import ControlCenterError
 from .platform_paths import ManagedPaths, PlatformIdentity
 from .releases import ReleaseCandidate
 from .storage import InstallationRegistry, OperationJournal
@@ -24,10 +25,15 @@ def build_diagnostics(
     installation = registry.load()
     pending = journal.load()
     docker_status = "ready"
+    docker_error_code = None
     try:
         runtime.require_ready()
+    except ControlCenterError as error:
+        docker_status = "unavailable"
+        docker_error_code = error.code
     except Exception:
         docker_status = "unavailable"
+        docker_error_code = "docker_command_failed"
     payload: dict[str, object] = {
         "schema": 1,
         "generated_at": int(time.time()),
@@ -35,6 +41,7 @@ def build_diagnostics(
         "platform": asdict(platform),
         "managed_root": "<ANOTE_ROOT>",
         "docker": docker_status,
+        "docker_error_code": docker_error_code,
         "installation": None,
         "pending_operation": None,
         "release_candidates": [

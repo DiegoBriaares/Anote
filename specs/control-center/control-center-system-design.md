@@ -59,6 +59,13 @@ ports and dialogs so owner tests can use deterministic fakes. There is no
 dependency-injection framework. Common-path command ordering, subprocess cost,
 timeouts, cleanup and recovery remain visible in each service.
 
+The installed-runtime process adapter resolves the Docker CLI independently of
+an interactive shell. It checks the process search path and the native Docker
+Desktop installation locations supported on each host, then invokes the
+resolved executable without changing the process or system `PATH`. A missing
+CLI and an installed CLI whose engine cannot answer are distinct safe failure
+codes in localized UI and redacted diagnostics.
+
 The operation lock's process adapter is observational: Windows uses process
 query access, never `os.kill`, while POSIX uses signal zero. Only a proven-dead
 owner is reclaimed; permission or probe ambiguity fails closed. Any staged

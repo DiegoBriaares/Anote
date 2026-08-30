@@ -4,13 +4,14 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+import platform as host_platform
 import re
 import shutil
 import subprocess
 import tempfile
 import time
-from typing import Callable, Protocol, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -38,7 +39,49 @@ class CommandExecutor(Protocol):
     ) -> CommandResult: ...
 
 
+def docker_executable_candidates(
+    *,
+    system_name: str | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Return supported Docker CLI locations without depending on a login shell."""
+    selected_system = system_name or host_platform.system()
+    selected_environment = environment if environment is not None else os.environ
+    candidates = ["docker.exe" if selected_system == "Windows" else "docker"]
+    if selected_system == "Darwin":
+        candidates.extend((
+            "/usr/local/bin/docker",
+            "/opt/homebrew/bin/docker",
+            "/Applications/Docker.app/Contents/Resources/bin/docker",
+        ))
+    elif selected_system == "Windows":
+        for variable in ("ProgramFiles", "ProgramW6432"):
+            root = selected_environment.get(variable)
+            if root:
+                candidates.append(str(PureWindowsPath(root) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe"))
+    return tuple(dict.fromkeys(candidates))
+
+
+def resolve_docker_executable(
+    *,
+    system_name: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str:
+    for candidate in docker_executable_candidates(system_name=system_name, environment=environment):
+        resolved = which(candidate)
+        if resolved:
+            return resolved
+    raise RuntimeCommandError(
+        "Docker Desktop command-line tools could not be found.",
+        code="docker_cli_missing",
+    )
+
+
 class SubprocessExecutor:
+    def __init__(self, *, docker_executable: str | None = None) -> None:
+        self._docker_executable = docker_executable
+
     def run(
         self,
         arguments: Sequence[str],
@@ -46,9 +89,14 @@ class SubprocessExecutor:
         input_bytes: bytes | None = None,
         timeout: int = 300,
     ) -> CommandResult:
+        command = list(arguments)
+        if command and command[0] == "docker":
+            if self._docker_executable is None:
+                self._docker_executable = resolve_docker_executable()
+            command[0] = self._docker_executable
         try:
             completed = subprocess.run(
-                list(arguments),
+                command,
                 input=input_bytes,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
