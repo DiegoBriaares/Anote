@@ -237,7 +237,8 @@ and stopped resume state. Start is unavailable until exact reinstall succeeds.
 
 Full erase is a separate command. It displays the canonical registry-owned
 targets in EN/ES, requires literal `ERASE ANOTE`, proves stopped state, acquires
-the lock and captures the immutable target set in the journal. It removes only
+the lock, validates every registry/operation/owned path, and captures the
+immutable target set in the journal before any Docker or filesystem effect. It removes only
 registered Anote Docker resources and paths, with registry last. It never
 follows from uninstall, a failed update/reinstall, deleting Control Center from
 the OS, a broad home directory, a glob, a symlink target or discovery labels.

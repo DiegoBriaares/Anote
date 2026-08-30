@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from anote_control_center.application import ControlCenterApplication, INTERACTION_IDS
 from anote_control_center.docker_runtime import HealthIdentity, LegacyContainer, LegacyRuntime, RuntimeConfiguration
@@ -422,6 +423,50 @@ class LifecycleApplicationTests(unittest.TestCase):
             service.erase_all(ERASE_CONFIRMATION)
             self.assertIsNone(registry.load())
             self.assertEqual("keep", unrelated.read_text(encoding="utf-8"))
+
+    def test_erase_validates_all_owned_paths_before_runtime_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _release, paths, registry, runtime, service = self.fresh(Path(directory))
+            before_events = list(runtime.events)
+            with patch.object(
+                ManagedPaths,
+                "owned_erase_paths",
+                side_effect=ContractError("unsafe target", code="unsafe_owned_path"),
+            ):
+                with self.assertRaisesRegex(ContractError, "unsafe target"):
+                    service.erase_all(ERASE_CONFIRMATION)
+            self.assertEqual(before_events, runtime.events)
+            self.assertIsNotNone(registry.load())
+            self.assertIsNone(service.journal.load())
+
+    def test_checkpoint_recovery_deletes_only_its_journaled_work_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _release, paths, registry, _runtime, service = self.fresh(root)
+            installation = registry.load()
+            assert installation is not None
+            work_name = "checkpoint.work-123456789abc"
+            owned_work = paths.root / work_name
+            unrelated = paths.root / "checkpoint.manually-retained"
+            owned_work.mkdir()
+            unrelated.mkdir()
+            service.journal.save(OperationRecord(
+                "checkpoint-recovery-test",
+                "create_checkpoint",
+                "snapshotting",
+                installation.installation_id,
+                100,
+                {
+                    "destination": str(root.resolve() / "not-published.anote-checkpoint"),
+                    "checkpoint_work_name": work_name,
+                },
+            ))
+
+            service.recover_interrupted()
+
+            self.assertFalse(owned_work.exists())
+            self.assertTrue(unrelated.exists())
+            self.assertIsNone(service.journal.load())
 
     def test_application_read_model_is_the_single_capability_owner(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

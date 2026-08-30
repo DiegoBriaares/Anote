@@ -12,7 +12,14 @@ import time
 from typing import Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .checkpoints import Backup, CheckpointService, SnapshotService, VerifiedCheckpoint, checkpoint_staging_path
+from .checkpoints import (
+    Backup,
+    CheckpointService,
+    SnapshotService,
+    VerifiedCheckpoint,
+    checkpoint_staging_path,
+    checkpoint_work_path,
+)
 from .docker_runtime import DockerRuntime, LegacyContainer, LegacyRuntime, RuntimeConfiguration
 from .errors import ContractError, RuntimeStillActiveError
 from .model import Installation
@@ -598,13 +605,14 @@ class LifecycleService:
                 self.paths.compose.exists() and self.runtime.is_running(installation)
             ):
                 raise ContractError("Stop Anote before erasing it.", code="stop_required")
+            erase_targets = self._validated_erase_targets()
             record = self._record("erase_all", "preflight", installation, {})
             self.journal.save(record)
             if self.paths.compose.exists() and self.paths.environment.exists():
                 self.runtime.down(installation)
             self.runtime.remove_registered_images(installation)
             self.journal.save(replace(record, phase="runtime_removed"))
-            for path in self.paths.owned_erase_paths():
+            for path in erase_targets:
                 if path.is_dir():
                     shutil.rmtree(path)
                 elif path.exists():
@@ -801,11 +809,12 @@ class LifecycleService:
                 return retained
 
             if record.kind == "erase_all":
+                erase_targets = self._validated_erase_targets()
                 if installation is not None and self.paths.compose.exists() and self.paths.environment.exists():
                     self.runtime.down(installation)
                 if installation is not None:
                     self.runtime.remove_registered_images(installation)
-                for path in self.paths.owned_erase_paths():
+                for path in erase_targets:
                     if path.is_dir() and not path.is_symlink():
                         shutil.rmtree(path)
                     elif path.exists() and not path.is_symlink():
@@ -815,8 +824,12 @@ class LifecycleService:
                 return None
 
             if record.kind == "create_checkpoint":
-                for candidate in self.paths.root.glob("checkpoint.*"):
-                    if candidate.is_dir() and not candidate.is_symlink():
+                work_name = record.details.get("checkpoint_work_name")
+                if work_name:
+                    candidate = checkpoint_work_path(self.paths, work_name)
+                    if candidate.exists():
+                        if not candidate.is_dir() or candidate.is_symlink():
+                            raise ContractError("Checkpoint recovery work path is unsafe.", code="recovery_failed")
                         shutil.rmtree(candidate)
                 return self.checkpoints.recover_create(record)
 
@@ -824,6 +837,12 @@ class LifecycleService:
 
     def inspect(self) -> Installation | None:
         return self.registry.load()
+
+    def _validated_erase_targets(self) -> tuple[Path, ...]:
+        """Freeze and validate every filesystem authority before Docker mutation."""
+        self.paths.assert_safe(self.paths.registry)
+        self.paths.assert_safe(self.paths.operations)
+        return self.paths.owned_erase_paths()
 
     def _candidate(
         self,

@@ -44,6 +44,7 @@ WINDOWS_RESERVED_NAMES = frozenset({
     *(f"LPT{index}" for index in range(1, 10)),
 })
 STAGED_CHECKPOINT_PATTERN = re.compile(r"checkpoint\.package-[0-9a-f]{12}\.anote-checkpoint")
+CHECKPOINT_WORK_PATTERN = re.compile(r"checkpoint\.work-[0-9a-f]{12}")
 
 
 def checkpoint_staging_path(paths: ManagedPaths, name: str) -> Path:
@@ -51,6 +52,13 @@ def checkpoint_staging_path(paths: ManagedPaths, name: str) -> Path:
     if not isinstance(name, str) or STAGED_CHECKPOINT_PATTERN.fullmatch(name) is None:
         raise ContractError("Checkpoint recovery staging identity is invalid.", code="recovery_failed")
     return paths.assert_safe(paths.production / name)
+
+
+def checkpoint_work_path(paths: ManagedPaths, name: str) -> Path:
+    """Resolve one journal-owned checkpoint work directory under the managed root."""
+    if not isinstance(name, str) or CHECKPOINT_WORK_PATTERN.fullmatch(name) is None:
+        raise ContractError("Checkpoint recovery work identity is invalid.", code="recovery_failed")
+    return paths.assert_safe(paths.root / name)
 
 
 def _validate_portable_upload_path(path: PurePosixPath) -> None:
@@ -595,6 +603,7 @@ class CheckpointService:
         ):
             raise ContractError("Choose a new .anote-checkpoint destination.", code="checkpoint_destination_invalid")
         destination = destination.parent.resolve(strict=True) / destination.name
+        work_name = f"checkpoint.work-{os.urandom(6).hex()}"
         operation = OperationRecord(
             os.urandom(12).hex(), "create_checkpoint", "snapshotting", installation.installation_id,
             self.clock(), {
@@ -607,11 +616,13 @@ class CheckpointService:
                 "dataset_id": installation.dataset_id or "",
                 "checkpoint_parent_id": installation.last_checkpoint_id or "",
                 "checkpoint_sequence": str(installation.checkpoint_sequence),
+                "checkpoint_work_name": work_name,
             },
         )
         self.journal.save(operation)
         ensure_private_directory(self.paths.root, managed_paths=self.paths)
-        staging = Path(tempfile.mkdtemp(prefix="checkpoint.", dir=self.paths.root))
+        staging = checkpoint_work_path(self.paths, work_name)
+        staging.mkdir(mode=0o700)
         temporary = destination.with_name(f".{destination.name}.{operation.operation_id}.tmp")
         published = False
         committed = False

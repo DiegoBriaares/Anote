@@ -260,6 +260,11 @@ only after its database digest, integrity, foreign keys, declared schema and
 empty-session invariant pass and its upload digest/inventory pass. Digest-valid
 garbage or a re-manifested database containing a session is invalid.
 
+Checkpoint creation generates and validates one owned work-directory name,
+journals that exact relative identity before creating the directory, and never
+uses a naming glob as recovery authority. Interrupted recovery removes only
+that journaled child; unrelated root directories remain untouched.
+
 Compatibility requires exact application release ID/version/commit and a
 supported data schema. Host platform and installation identity are not copied.
 Applying a checkpoint from the same installation as a standby transfer is
@@ -301,7 +306,7 @@ and instructs operators to protect the media.
 | PKG-REG-001 | Registry/journal writes are atomic and contradictory states fail | replace-failure, schema and replay owner tests |
 | PKG-PATH-001 | Destructive/archive scope cannot escape registry-owned roots | traversal, nested symlink/junction/reparse, alias and unrelated-sibling tests |
 | PKG-CHK-001 | One checkpoint independently restores all business data, including unresolved legacy rows and unreferenced uploads, across platforms | deterministic typed-row round-trip, empty-target apply and digest/inventory tests |
-| PKG-CHK-002 | Interrupted, running-writer or identity-raced apply cannot publish partial data as ready | stopped-state refusal, whole-package staging, payload rehash, phase injection and directory-swap recovery tests |
+| PKG-CHK-002 | Interrupted creation/apply, running-writer or identity-raced apply cannot publish partial data as ready or delete unrelated staging-like paths | exact journaled-work cleanup, stopped-state refusal, whole-package staging, payload rehash, phase injection and directory-swap recovery tests |
 | PKG-PRIV-001 | Release/checkpoint/log boundaries contain no secrets or recoverable session remnants | raw-byte session marker, nonempty-session verifier rejection and package/diagnostic privacy guard |
 
 Native Docker and platform package checks are independently runtime-owned;

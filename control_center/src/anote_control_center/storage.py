@@ -180,7 +180,7 @@ class OperationRecord:
 
     SAFE_DETAIL_KEYS = frozenset({
         "api_image_digest", "api_image_tag", "backup_id", "bind_address", "change",
-        "checkpoint_id", "checkpoint_package_sha256", "checkpoint_parent_id", "checkpoint_sequence", "checkpoint_staging_name", "container_architecture", "created_at",
+        "checkpoint_id", "checkpoint_package_sha256", "checkpoint_parent_id", "checkpoint_sequence", "checkpoint_staging_name", "checkpoint_work_name", "container_architecture", "created_at",
         "data_schema", "dataset_id", "destination", "host_architecture", "host_os",
         "legacy_api_env_digest", "legacy_api_id", "legacy_api_image", "legacy_api_ref",
         "legacy_containers", "legacy_project",
