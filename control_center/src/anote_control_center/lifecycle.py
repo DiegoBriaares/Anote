@@ -302,6 +302,10 @@ class LifecycleService:
                 api_image_digest=release.manifest.image_for_role("api").config_digest,
                 web_image_tag=release.manifest.image_for_role("web").tag,
                 web_image_digest=release.manifest.image_for_role("web").config_digest,
+                dataset_id=None,
+                last_checkpoint_id=None,
+                checkpoint_parent_id=None,
+                checkpoint_sequence=0,
             )
             try:
                 loaded = self.runtime.load_release_images(release)

@@ -195,7 +195,9 @@ Source update ordering is:
 5. Run application migration exactly once for the staged attempt.
 6. Start temporarily; validate database/upload readiness, gateway same-origin
    behavior and exact release identity.
-7. Stop; commit registry/release and `checkpoint_required`.
+7. Stop; commit registry/release and `checkpoint_required`, clearing the prior
+   dataset/checkpoint lineage so the updated release's next checkpoint is a new
+   sequence-1 baseline.
 
 No previous recovery input is deleted before commit. Failure after data/runtime
 mutation restores the exact prior data and runtime, validates it, stops it and

@@ -14,7 +14,7 @@ const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const { MAX_ATTACHMENT_BYTES, createAttachmentService } = require('./attachments');
 const { createAdminService } = require('./admin');
 const { createRuntime } = require('./app');
-const { createSessionService, tokenHash } = require('./auth');
+const { createAuth, createSessionService, tokenHash } = require('./auth');
 const { closeDatabase, createDatabase } = require('./db');
 const { createEventService } = require('./events');
 const { createCalendarMetadataService } = require('./calendar-metadata');
@@ -695,6 +695,44 @@ describe('credentials and opaque sessions', () => {
         current = new Date('2026-01-01T00:00:31.000Z');
         expect(absoluteSessions.read(absoluteToken)).toBeNull();
         expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(0);
+        closeDatabase(db);
+    });
+
+    it('commits registration and its initial session atomically', async () => {
+        const { db } = createTestDatabase();
+        db.prepare("UPDATE app_config SET value = 'true' WHERE key = 'registration_enabled'").run();
+        const auth = createAuth({
+            db,
+            config: {
+                sessionCookieName: 'anote_session',
+                sessionIdleSeconds: 3600,
+                sessionAbsoluteSeconds: 7200,
+                secureCookies: false
+            },
+            userService: createUserService({ db })
+        });
+        db.exec(`
+            CREATE TRIGGER fail_initial_session BEFORE INSERT ON sessions
+            BEGIN SELECT RAISE(ABORT, 'injected session failure'); END;
+        `);
+
+        await expect(auth.register({
+            username: 'retryable-user',
+            password: 'correct horse battery staple',
+            userAgent: 'test'
+        })).rejects.toThrow('injected session failure');
+        expect(db.prepare('SELECT COUNT(*) AS count FROM users').get().count).toBe(0);
+        expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(0);
+
+        db.exec('DROP TRIGGER fail_initial_session');
+        const registered = await auth.register({
+            username: 'retryable-user',
+            password: 'correct horse battery staple',
+            userAgent: 'test'
+        });
+        expect(registered.user.username).toBe('retryable-user');
+        expect(db.prepare('SELECT COUNT(*) AS count FROM users').get().count).toBe(1);
+        expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(1);
         closeDatabase(db);
     });
 });

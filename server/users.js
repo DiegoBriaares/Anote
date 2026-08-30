@@ -62,21 +62,38 @@ const createUserService = ({
         ORDER BY username COLLATE NOCASE
     `).all(id);
 
-    const create = async ({ username: rawUsername, password: rawPassword, isAdmin = false }) => {
+    const prepareCreate = async ({ username: rawUsername, password: rawPassword, isAdmin = false }) => {
         const username = validateUsername(rawUsername);
         const password = validatePassword(rawPassword);
         const hash = await bcrypt.hash(password, 12);
-        const id = crypto.randomUUID();
-        if (usernameIsUnavailable(username)) throw new ApiError(409, 'username_unavailable');
+        return { id: crypto.randomUUID(), username, passwordHash: hash, isAdmin: isAdmin === true };
+    };
+
+    const insertPrepared = (prepared) => {
+        if (usernameIsUnavailable(prepared.username)) throw new ApiError(409, 'username_unavailable');
         try {
             db.prepare('INSERT INTO users (id, username, password, is_admin, preferences) VALUES (?, ?, ?, ?, ?)')
-                .run(id, username, hash, isAdmin ? 1 : 0, '{}');
+                .run(
+                    prepared.id,
+                    prepared.username,
+                    prepared.passwordHash,
+                    prepared.isAdmin ? 1 : 0,
+                    '{}'
+                );
         } catch (error) {
             if (error.code?.startsWith('SQLITE_CONSTRAINT')) throw new ApiError(409, 'username_unavailable');
             throw error;
         }
-        return { id, username, isAdmin, avatarUrl: null, preferences: {} };
+        return {
+            id: prepared.id,
+            username: prepared.username,
+            isAdmin: prepared.isAdmin,
+            avatarUrl: null,
+            preferences: {}
+        };
     };
+
+    const create = async (input) => insertPrepared(await prepareCreate(input));
 
     const bootstrapAdministrator = async ({ username: rawUsername, password: rawPassword }) => {
         const username = validateUsername(rawUsername);
@@ -189,7 +206,16 @@ const createUserService = ({
         }
     };
 
-    return { bootstrapAdministrator, create, directory, profile, update, updateProfile };
+    return {
+        bootstrapAdministrator,
+        create,
+        directory,
+        insertPrepared,
+        prepareCreate,
+        profile,
+        update,
+        updateProfile
+    };
 };
 
 const createUsersRouter = ({ service, authenticate }) => {

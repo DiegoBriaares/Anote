@@ -182,18 +182,33 @@ const createAuth = ({ db, config, now, userService }) => {
             ? { count: 1, resetAt: current + 60 * 60 * 1000 }
             : { ...entry, count: entry.count + 1 });
     };
+    const registrationEnabled = () => db.prepare(`
+        SELECT 1 FROM app_config WHERE key = 'registration_enabled' AND value = 'true'
+    `).get() !== undefined;
+    const register = async ({ username, password, userAgent }) => {
+        if (!registrationEnabled()) throw new ApiError(403, 'registration_disabled');
+        const prepared = await users.prepareCreate({ username, password, isAdmin: false });
+        return db.transaction(() => {
+            if (!registrationEnabled()) throw new ApiError(403, 'registration_disabled');
+            const user = users.insertPrepared(prepared);
+            const token = sessions.create(user.id, userAgent);
+            return { token, user };
+        }).immediate();
+    };
     const router = express.Router();
 
     router.post('/register', async (req, res, next) => {
         try {
-            const registration = db.prepare("SELECT value FROM app_config WHERE key = 'registration_enabled'").get();
-            if (registration?.value !== 'true') throw new ApiError(403, 'registration_disabled');
+            if (!registrationEnabled()) throw new ApiError(403, 'registration_disabled');
             recordRegistrationAttempt(req);
             const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
             const password = req.body?.password;
             try {
-                const user = await users.create({ username, password, isAdmin: false });
-                const token = sessions.create(user.id, req.get('user-agent'));
+                const { token, user } = await register({
+                    username,
+                    password,
+                    userAgent: req.get('user-agent')
+                });
                 res.set('Set-Cookie', sessionCookie(config, req, token, config.sessionAbsoluteSeconds));
                 res.status(201).json({ message: 'success', user });
             } catch (error) {
@@ -244,7 +259,7 @@ const createAuth = ({ db, config, now, userService }) => {
         res.json({ message: 'success' });
     });
 
-    return { authenticate, expireSessionCookie, requireAdmin, router, sessions };
+    return { authenticate, expireSessionCookie, register, requireAdmin, router, sessions };
 };
 
 module.exports = { PASSWORD_MIN_LENGTH, createAuth, createSessionService, parseCookies, tokenHash, userDto };

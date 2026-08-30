@@ -294,6 +294,27 @@ class LifecycleApplicationTests(unittest.TestCase):
             self.assertIsNone(service.journal.load())
             self.assertFalse(runtime.running)
 
+    def test_successful_source_update_starts_a_new_checkpoint_lineage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _release, _paths, registry, _runtime, service = self.fresh(root)
+            previous_checkpoint = service.create_checkpoint(root / "before-update.anote-checkpoint")
+            selected = write_release(root / "release-2", version="1.1.0", commit="d" * 40)
+
+            updated = service.update(selected)
+
+            self.assertEqual("checkpoint_required", updated.state)
+            self.assertEqual((None, None, None, 0), (
+                updated.dataset_id,
+                updated.last_checkpoint_id,
+                updated.checkpoint_parent_id,
+                updated.checkpoint_sequence,
+            ))
+            baseline = service.create_checkpoint(root / "after-update.anote-checkpoint")
+            self.assertEqual((1, None), (baseline.manifest.sequence, baseline.manifest.parent_checkpoint_id))
+            self.assertNotEqual(previous_checkpoint.manifest.dataset_id, baseline.manifest.dataset_id)
+            self.assertEqual(baseline.manifest.checkpoint_id, registry.load().last_checkpoint_id)  # type: ignore[union-attr]
+
     def test_interrupted_update_uses_journaled_previous_identity_after_candidate_registry_commit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
