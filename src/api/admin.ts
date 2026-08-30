@@ -16,5 +16,5 @@ export const adminApi = {
     }),
     users: () => apiData<WireRecord[]>('/admin/users'),
     removeUsers: (ids: string[]) => apiRequest<{ message: string }>('/admin/users/bulk', { method: 'DELETE', body: jsonBody({ ids }) }),
-    table: (table: 'roles' | 'event_notes') => apiData<unknown[]>(`/admin/database/${table}`)
+    roles: () => apiData<WireRecord[]>('/admin/roles')
 };

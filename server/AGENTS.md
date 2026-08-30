@@ -26,6 +26,13 @@ Read, as applicable:
   production secret through an HTTP route or command argument.
 - Health readiness stays false until migrations complete and reports the exact
   non-secret release/data-schema identity expected by Control Center.
+- An inconsistent legacy row is conserved in a private migration-owned
+  recovery partition; do not fabricate parents, discard content, treat an
+  ownership hint as authority, or expose recovery content through HTTP,
+  administration, logs or diagnostics. Preserve SQLite value/storage types in
+  SQL-native staging, derive hints from a pre-repair snapshot, use canonical
+  typed identities, and assert source-row conservation before dropping a
+  legacy table.
 
 ## Evidence
 

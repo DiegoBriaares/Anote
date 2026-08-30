@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const childProcess = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -115,8 +116,8 @@ describe('fail-closed schema migrations', () => {
             language: 'es',
             timeZone: 'Europe/Madrid'
         });
-        db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run('u1', 'one', 'disabled', firstPreferences);
         db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run('u2', 'two', 'disabled', secondPreferences);
+        db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run('u1', 'one', 'disabled', firstPreferences);
         db.prepare('INSERT INTO events VALUES (?, ?, ?, ?)').run('e1', 'Keep me', '2026-01-01', 'u1');
         db.prepare('INSERT INTO event_notes VALUES (?, ?, ?, ?)').run('e1', 'role-legacy', 'note', 10);
 
@@ -128,10 +129,13 @@ describe('fail-closed schema migrations', () => {
         expect(version).toBe(SCHEMA_VERSION);
         expect(db.prepare('SELECT title, revision FROM events WHERE id = ?').get('e1')).toEqual({ title: 'Keep me', revision: 1 });
         expect(db.prepare('SELECT role_id, content FROM event_notes').get()).toEqual({ role_id: 'role-legacy', content: 'note' });
-        const programs = db.prepare('SELECT owner_user_id, time_zone FROM programs ORDER BY owner_user_id').all();
+        const programs = db.prepare('SELECT id, owner_user_id, time_zone FROM programs ORDER BY owner_user_id').all();
+        const importedId = `imported-${crypto.createHash('sha256')
+            .update(JSON.stringify(['u2', 'to-tomorrow-program', 0, 0]))
+            .digest('hex').slice(0, 32)}`;
         expect(programs).toEqual([
-            { owner_user_id: 'u1', time_zone: 'Asia/Tokyo' },
-            { owner_user_id: 'u2', time_zone: 'Europe/Madrid' }
+            { id: 'to-tomorrow-program', owner_user_id: 'u1', time_zone: 'Asia/Tokyo' },
+            { id: importedId, owner_user_id: 'u2', time_zone: 'Europe/Madrid' }
         ]);
         expect(JSON.parse(db.prepare('SELECT preferences FROM users WHERE id = ?').get('u1').preferences)).toEqual({
             language: 'es',
@@ -224,28 +228,120 @@ describe('fail-closed schema migrations', () => {
         closeDatabase(db);
     });
 
+    it('losslessly quarantines missing-parent notes without granting ownership', () => {
+        const directory = temporaryDirectory();
+        const db = createDatabase(path.join(directory, 'orphan-note-legacy.db'));
+        db.exec(`
+            CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL);
+            CREATE TABLE events (id TEXT PRIMARY KEY, title TEXT NOT NULL, date TEXT NOT NULL, user_id TEXT NOT NULL);
+            CREATE TABLE roles (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, label TEXT NOT NULL,
+                color TEXT, is_enabled INTEGER DEFAULT 1, order_index INTEGER DEFAULT 0
+            );
+            CREATE TABLE event_notes (event_id, role_id, content, updated_at);
+            INSERT INTO users VALUES ('u1', 'one', 'disabled');
+            INSERT INTO roles VALUES ('r1', 'u1', 'Owner role', NULL, 1, 0);
+            INSERT INTO events VALUES ('a-valid-event', 'Valid', '2026-01-01', 'u1');
+            INSERT INTO event_notes VALUES ('a-valid-event', 'ghost-role', 'active', 1);
+            INSERT INTO event_notes VALUES ('deleted-event', 'r1', 'must remain private', 1769735002013);
+            INSERT INTO event_notes VALUES ('other-deleted-event', 'deleted-role', 27, 1769735002014);
+            INSERT INTO event_notes VALUES ('real-event', NULL, CAST(1 AS REAL), NULL);
+            INSERT INTO event_notes VALUES ('integer-event', 'deleted-role', 9223372036854775807, 2);
+            INSERT INTO event_notes VALUES ('blob-event', 'deleted-role', X'00FF', 3);
+            INSERT INTO event_notes VALUES ('a:b', 'c', 'tuple one', 4);
+            INSERT INTO event_notes VALUES ('a', 'b:c', 'tuple two', 5);
+            INSERT INTO event_notes VALUES ('z-orphan-with-imported-role', 'ghost-role', 'hint stays absent', 6);
+        `);
+
+        expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
+        expect(db.prepare('SELECT event_id AS eventId, content FROM event_notes').get())
+            .toEqual({ eventId: 'a-valid-event', content: 'active' });
+        expect(db.prepare('SELECT COUNT(*) AS count FROM events').get().count).toBe(1);
+        const recoveryRows = db.prepare(`
+            SELECT source_event_id AS eventId, source_role_id AS roleId,
+                   typeof(source_content) AS contentType, quote(source_content) AS contentSql,
+                   typeof(source_updated_at) AS updatedType,
+                   quote(source_updated_at) AS updatedSql,
+                   candidate_owner_user_id AS candidateOwnerId,
+                   ownership_basis AS ownershipBasis
+            FROM legacy_event_note_recovery ORDER BY source_event_id
+        `).all();
+        const byEvent = new Map(recoveryRows.map((row: { eventId: string }) => [row.eventId, row]));
+        expect(byEvent.get('deleted-event')).toMatchObject({
+            roleId: 'r1', contentType: 'text', contentSql: "'must remain private'",
+            updatedType: 'integer', updatedSql: '1769735002013',
+            candidateOwnerId: 'u1', ownershipBasis: 'role_owner_hint'
+        });
+        expect(byEvent.get('real-event')).toMatchObject({
+            roleId: null, contentType: 'real', contentSql: '1.0',
+            updatedType: 'null', updatedSql: 'NULL',
+            candidateOwnerId: null, ownershipBasis: 'none'
+        });
+        expect(byEvent.get('integer-event')).toMatchObject({
+            contentType: 'integer', contentSql: '9223372036854775807'
+        });
+        expect(byEvent.get('blob-event')).toMatchObject({ contentType: 'blob', contentSql: "X'00FF'" });
+        expect(byEvent.get('z-orphan-with-imported-role')).toMatchObject({
+            roleId: 'ghost-role', candidateOwnerId: null, ownershipBasis: 'none'
+        });
+        const recoveryIdentities = db.prepare(`
+            SELECT id, payload_sha256 AS digest, migration_ordinal AS ordinal,
+                   reason_code AS reasonCode, state, revision
+            FROM legacy_event_note_recovery
+        `).all();
+        expect(recoveryIdentities).toHaveLength(8);
+        expect(new Set(recoveryIdentities.map((row: { id: string }) => row.id)).size).toBe(8);
+        expect(new Set(recoveryIdentities.map((row: { digest: string }) => row.digest)).size).toBe(8);
+        expect(new Set(recoveryIdentities.map((row: { ordinal: number }) => row.ordinal)).size).toBe(8);
+        expect(recoveryIdentities.every((row: {
+            id: string; digest: string; reasonCode: string; state: string; revision: number;
+        }) => row.id.length === 76 && row.digest.length === 64
+            && row.reasonCode === 'missing_event' && row.state === 'unresolved' && row.revision === 1)).toBe(true);
+        expect(db.pragma('foreign_key_check')).toEqual([]);
+        expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
+        expect(db.prepare(`
+            SELECT (SELECT COUNT(*) FROM event_notes)
+                 + (SELECT COUNT(*) FROM legacy_event_note_recovery) AS count
+        `).get().count).toBe(9);
+        closeDatabase(db);
+    });
+
     it('rolls back a failed migration phase and resumes after the corrupt row is repaired', () => {
         const directory = temporaryDirectory();
         const db = createDatabase(path.join(directory, 'migration-failure.db'));
         db.exec(`
             CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL);
             CREATE TABLE events (id TEXT PRIMARY KEY, title TEXT NOT NULL, date TEXT NOT NULL, user_id TEXT NOT NULL);
-            CREATE TABLE event_notes (event_id TEXT NOT NULL, option_id TEXT, content TEXT, updated_at INTEGER);
+            CREATE TABLE roles (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, label TEXT NOT NULL,
+                color TEXT, is_enabled INTEGER DEFAULT 1, order_index INTEGER DEFAULT 0
+            );
+            CREATE TABLE event_notes (event_id TEXT, option_id TEXT, content TEXT, updated_at INTEGER);
             INSERT INTO users VALUES ('u1', 'one', 'disabled');
-            INSERT INTO event_notes VALUES ('missing-event', 'missing-role', 'must not disappear', 1);
+            INSERT INTO events VALUES ('e1', 'valid parent', '2026-01-01', 'u1');
+            INSERT INTO roles VALUES ('r1', 'u1', 'First', NULL, 1, 0);
+            INSERT INTO roles VALUES ('r2', 'u1', 'Second', NULL, 1, 1);
+            INSERT INTO event_notes VALUES ('e1', 'r1', 'must not disappear', 1);
+            INSERT INTO event_notes VALUES ('e1', 'r1', 'also preserved', 2);
         `);
 
-        expect(() => migrateDatabase(db, { defaultTimeZone: 'UTC' })).toThrow('references missing event');
+        expect(() => migrateDatabase(db, { defaultTimeZone: 'UTC' })).toThrow();
         expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
             { version: 1 },
             { version: 2 }
         ]);
-        expect(db.prepare('SELECT content FROM event_notes').get().content).toBe('must not disappear');
+        expect(db.prepare('SELECT content FROM event_notes ORDER BY rowid').all())
+            .toEqual([{ content: 'must not disappear' }, { content: 'also preserved' }]);
         expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'attachments'").get())
             .toBeUndefined();
 
-        db.prepare("DELETE FROM event_notes WHERE event_id = 'missing-event'").run();
+        db.prepare(`
+            UPDATE event_notes SET option_id = 'r2'
+            WHERE rowid = (SELECT MAX(rowid) FROM event_notes)
+        `).run();
         expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
+        expect(db.prepare('SELECT content FROM event_notes ORDER BY content').all())
+            .toEqual([{ content: 'also preserved' }, { content: 'must not disappear' }]);
         closeDatabase(db);
     });
 });
@@ -663,15 +759,33 @@ describe('session and request boundary', () => {
         expect(cookie).toContain('SameSite=Strict');
         expect(cookie).toContain('Path=/api');
 
+        for (const rawTable of ['event_notes', 'app_config', 'roles']) {
+            const deniedRawTable = await fetch(`${baseUrl}/admin/database/${rawTable}`, { headers: { cookie } });
+            expect(deniedRawTable.status).toBe(404);
+            expect(await deniedRawTable.json()).toMatchObject({ error: { code: 'ROUTE_NOT_FOUND' } });
+        }
+
         const session = await fetch(`${baseUrl}/session`, { headers: { cookie } });
         expect(await session.json()).toMatchObject({ user: { id: 'admin', isAdmin: true } });
 
         const eventResponse = await fetch(`${baseUrl}/events`, {
             method: 'POST',
             headers: { cookie, 'content-type': 'application/json', origin: baseUrl },
-            body: JSON.stringify({ events: [{ id: 'private-event', title: 'Private', date: '2026-01-01' }] })
+            body: JSON.stringify({ events: [{
+                id: 'private-event', title: 'Private', date: '2026-01-01',
+                priority: 9, note: 'administrator must not read this',
+                link: 'https://private.example.test/token'
+            }] })
         });
         expect(eventResponse.status).toBe(201);
+        const adminEventsResponse = await fetch(`${baseUrl}/admin/events`, { headers: { cookie } });
+        expect(adminEventsResponse.status).toBe(200);
+        const adminEvent = (await adminEventsResponse.json()).data
+            .find((event: { id: string }) => event.id === 'private-event');
+        expect(adminEvent).toMatchObject({ id: 'private-event', title: 'Private', username: 'admin' });
+        expect(adminEvent).not.toHaveProperty('priority');
+        expect(adminEvent).not.toHaveProperty('note');
+        expect(adminEvent).not.toHaveProperty('link');
         db.exec(`
             CREATE TRIGGER redact_injected_failure BEFORE INSERT ON events
             WHEN NEW.id = 'redaction-probe'
@@ -707,6 +821,14 @@ describe('session and request boundary', () => {
             body: JSON.stringify({ label: 'Private role' })
         });
         const role = (await roleResponse.json()).data;
+        const adminRolesResponse = await fetch(`${baseUrl}/admin/roles`, { headers: { cookie } });
+        expect(adminRolesResponse.status).toBe(200);
+        const adminRole = (await adminRolesResponse.json()).data
+            .find((candidate: { id: string }) => candidate.id === role.id);
+        expect(Object.keys(adminRole).sort()).toEqual([
+            'color', 'id', 'isEnabled', 'label', 'orderIndex', 'username'
+        ]);
+        expect(adminRole).toMatchObject({ label: 'Private role', username: 'admin', isEnabled: true });
         const saveNote = await fetch(`${baseUrl}/events/private-event/notes`, {
             method: 'POST',
             headers: { cookie, 'content-type': 'application/json', origin: baseUrl },

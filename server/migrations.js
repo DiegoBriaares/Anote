@@ -223,6 +223,10 @@ const repairLegacySubroleOwners = (db) => {
         FROM subroles s LEFT JOIN roles r ON r.id = s.role_id AND r.user_id = s.user_id
         WHERE r.id IS NULL
     `).all();
+    // A partially initialized legacy schema may have just created the empty
+    // target subroles table while roles is still awaiting its composite key.
+    // Avoid preparing an UPDATE against that temporarily mismatched FK.
+    if (invalid.length === 0) return;
     const insertRole = db.prepare(`
         INSERT OR IGNORE INTO roles (id, user_id, label, color, is_enabled, order_index)
         VALUES (?, ?, 'Imported subrole parent', NULL, 1, ?)
@@ -348,19 +352,34 @@ const rebuildLegacyOwnedSchemas = (db) => {
 const normalizeEventNotesSchema = (db) => {
     const columns = tableColumns(db, 'event_notes');
     const roleExpression = columns.has('role_id')
-        ? "COALESCE(role_id, 'legacy')"
+        ? 'role_id'
         : columns.has('option_id')
-            ? "COALESCE(option_id, 'legacy')"
-            : "'legacy'";
-    const contentExpression = columns.has('content') ? 'content' : "''";
-    const updatedExpression = columns.has('updated_at') ? 'COALESCE(updated_at, 0)' : '0';
-    const legacyRows = db.prepare(`
-        SELECT event_id, ${roleExpression} AS role_id, ${contentExpression} AS content,
-               ${updatedExpression} AS updated_at
-        FROM event_notes
-    `).all();
+            ? 'option_id'
+            : 'NULL';
+    const contentExpression = columns.has('content') ? 'content' : 'NULL';
+    const updatedExpression = columns.has('updated_at') ? 'updated_at' : 'NULL';
+    const sourceCount = db.prepare('SELECT COUNT(*) AS count FROM event_notes').get().count;
     db.exec(`
-        ALTER TABLE event_notes RENAME TO event_notes_legacy_migration;
+        CREATE TABLE event_notes_legacy_migration (
+            migration_ordinal INTEGER PRIMARY KEY,
+            source_event_id,
+            source_role_id,
+            source_content,
+            source_updated_at
+        );
+        INSERT INTO event_notes_legacy_migration (
+            migration_ordinal, source_event_id, source_role_id,
+            source_content, source_updated_at
+        )
+        SELECT ROW_NUMBER() OVER (
+                   ORDER BY typeof(event_id), quote(event_id),
+                            typeof(${roleExpression}), quote(${roleExpression}),
+                            typeof(${contentExpression}), quote(${contentExpression}),
+                            typeof(${updatedExpression}), quote(${updatedExpression})
+               ),
+               event_id, ${roleExpression}, ${contentExpression}, ${updatedExpression}
+        FROM event_notes;
+        DROP TABLE event_notes;
         CREATE TABLE event_notes (
             event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
             role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
@@ -387,30 +406,94 @@ const normalizeEventNotesSchema = (db) => {
         )
         BEGIN SELECT RAISE(ABORT, 'event note ownership mismatch'); END;
     `);
+    const stagedCount = db.prepare('SELECT COUNT(*) AS count FROM event_notes_legacy_migration').get().count;
+    if (stagedCount !== sourceCount) throw new Error('Legacy event note staging did not conserve every source row');
+    const legacyRows = db.prepare(`
+        SELECT migration_ordinal AS ordinal,
+               CAST(source_event_id AS TEXT) AS event_id,
+               CAST(source_role_id AS TEXT) AS role_id,
+               typeof(source_event_id) AS event_id_type,
+               quote(source_event_id) AS event_id_sql,
+               typeof(source_role_id) AS role_id_type,
+               quote(source_role_id) AS role_id_sql,
+               typeof(source_content) AS content_type,
+               quote(source_content) AS content_sql,
+               typeof(source_updated_at) AS updated_at_type,
+               quote(source_updated_at) AS updated_at_sql
+        FROM event_notes_legacy_migration
+        ORDER BY migration_ordinal
+    `).all();
     const selectEvent = db.prepare('SELECT user_id FROM events WHERE id = ?');
     const selectRole = db.prepare('SELECT user_id FROM roles WHERE id = ?');
+    const roleOwnerSnapshot = new Map(db.prepare('SELECT id, user_id FROM roles ORDER BY id').all()
+        .map((role) => [String(role.id), role.user_id]));
     const maxRoleOrder = db.prepare('SELECT MAX(order_index) AS value FROM roles WHERE user_id = ?');
     const insertRole = db.prepare(`
         INSERT OR IGNORE INTO roles (id, user_id, label, color, is_enabled, order_index)
         VALUES (?, ?, ?, NULL, 1, ?)
     `);
-    const insertNote = db.prepare(`
+    const insertNoteFromLegacy = db.prepare(`
         INSERT INTO event_notes (event_id, role_id, owner_user_id, content, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        SELECT ?, ?, ?, source_content, COALESCE(source_updated_at, 0)
+        FROM event_notes_legacy_migration WHERE migration_ordinal = ?
     `);
+    const insertRecoveryNote = db.prepare(`
+        INSERT INTO legacy_event_note_recovery (
+            id, migration_ordinal, source_event_id, source_role_id, source_content,
+            source_updated_at, source_content_type, payload_sha256,
+            reason_code, candidate_owner_user_id, ownership_basis,
+            state, revision
+        )
+        SELECT ?, migration_ordinal, source_event_id, source_role_id, source_content,
+               source_updated_at, typeof(source_content), ?, 'missing_event',
+               ?, ?, 'unresolved', 1
+        FROM event_notes_legacy_migration WHERE migration_ordinal = ?
+    `);
+    let activeCount = 0;
+    let recoveryCount = 0;
     for (const row of legacyRows) {
         const event = selectEvent.get(row.event_id);
-        if (!event) throw new Error(`Legacy event note references missing event ${row.event_id}`);
-        let roleId = row.role_id;
+        if (!event) {
+            const candidateOwnerId = row.role_id === null
+                ? null
+                : roleOwnerSnapshot.get(row.role_id) ?? null;
+            const canonicalPayload = JSON.stringify({
+                ordinal: row.ordinal,
+                eventId: { type: row.event_id_type, sql: row.event_id_sql },
+                roleId: { type: row.role_id_type, sql: row.role_id_sql },
+                content: { type: row.content_type, sql: row.content_sql },
+                updatedAt: { type: row.updated_at_type, sql: row.updated_at_sql }
+            });
+            const recoveryId = `legacy-note-${crypto.createHash('sha256')
+                .update(canonicalPayload)
+                .digest('hex')}`;
+            const payloadSha256 = crypto.createHash('sha256').update(canonicalPayload).digest('hex');
+            insertRecoveryNote.run(
+                recoveryId,
+                payloadSha256,
+                candidateOwnerId,
+                candidateOwnerId ? 'role_owner_hint' : 'none',
+                row.ordinal
+            );
+            recoveryCount += 1;
+            continue;
+        }
+        let roleId = row.role_id ?? 'legacy';
         const role = selectRole.get(roleId);
         if (!role || role.user_id !== event.user_id) {
             if (role) {
-                roleId = `imported-${crypto.createHash('sha256').update(`${event.user_id}:${row.role_id}`).digest('hex').slice(0, 32)}`;
+                roleId = `imported-${crypto.createHash('sha256')
+                    .update(JSON.stringify([event.user_id, row.role_id]))
+                    .digest('hex')}`;
             }
             const order = (maxRoleOrder.get(event.user_id).value ?? -1) + 1;
             insertRole.run(roleId, event.user_id, 'Imported note role', order);
         }
-        insertNote.run(row.event_id, roleId, event.user_id, row.content, row.updated_at);
+        insertNoteFromLegacy.run(row.event_id, roleId, event.user_id, row.ordinal);
+        activeCount += 1;
+    }
+    if (activeCount + recoveryCount !== legacyRows.length) {
+        throw new Error('Legacy event note migration did not conserve every source row');
     }
     db.exec('DROP TABLE event_notes_legacy_migration');
 };
@@ -482,6 +565,29 @@ const ensureSecurityAndAutomationSchema = (db) => {
         );
         CREATE INDEX IF NOT EXISTS idx_attachments_owner ON attachments(owner_user_id, purpose);
         CREATE INDEX IF NOT EXISTS idx_attachments_event ON attachments(event_id);
+
+        CREATE TABLE IF NOT EXISTS legacy_event_note_recovery (
+            id TEXT PRIMARY KEY,
+            migration_ordinal INTEGER NOT NULL UNIQUE,
+            source_event_id,
+            source_role_id,
+            source_content,
+            source_updated_at,
+            source_content_type TEXT NOT NULL
+                CHECK (source_content_type IN ('null', 'text', 'blob', 'integer', 'real')),
+            payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64),
+            reason_code TEXT NOT NULL CHECK (reason_code = 'missing_event'),
+            candidate_owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+            ownership_basis TEXT NOT NULL CHECK (ownership_basis IN ('role_owner_hint', 'none')),
+            state TEXT NOT NULL DEFAULT 'unresolved' CHECK (state = 'unresolved'),
+            revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0)
+        );
+        CREATE INDEX IF NOT EXISTS idx_legacy_event_note_recovery_state
+        ON legacy_event_note_recovery(state, id);
+        CREATE INDEX IF NOT EXISTS idx_legacy_event_note_recovery_hint
+        ON legacy_event_note_recovery(candidate_owner_user_id, state, id);
+        CREATE INDEX IF NOT EXISTS idx_legacy_event_note_recovery_source
+        ON legacy_event_note_recovery(source_event_id, source_role_id);
 
         CREATE TABLE IF NOT EXISTS programs (
             id TEXT PRIMARY KEY,
@@ -563,7 +669,7 @@ const migratePreferencePrograms = (db, defaultTimeZone, now, isProduction) => {
         throw new Error('A valid installation IANA time zone is required to migrate automatic programs');
     }
     const fallbackTimeZone = isTimeZone(defaultTimeZone) ? defaultTimeZone : 'UTC';
-    const users = db.prepare('SELECT id, preferences FROM users WHERE preferences IS NOT NULL').all();
+    const users = db.prepare('SELECT id, preferences FROM users WHERE preferences IS NOT NULL ORDER BY id').all();
     const insert = db.prepare(`
         INSERT INTO programs (
             id, owner_user_id, name, enabled, activation_time, target_day_offset,
@@ -589,10 +695,18 @@ const migratePreferencePrograms = (db, defaultTimeZone, now, isProduction) => {
 
         for (const [index, raw] of preferences.programs.entries()) {
             if (!raw || typeof raw !== 'object') continue;
-            let id = typeof raw.id === 'string' && raw.id.trim()
+            const requestedId = typeof raw.id === 'string' && raw.id.trim()
                 ? raw.id.trim()
                 : `${user.id}-program-${index + 1}`;
-            if (db.prepare('SELECT 1 FROM programs WHERE id = ?').get(id)) id = crypto.randomUUID();
+            let id = requestedId;
+            let collision = 0;
+            while (db.prepare('SELECT 1 FROM programs WHERE id = ?').get(id)) {
+                id = `imported-${crypto.createHash('sha256')
+                    .update(JSON.stringify([user.id, requestedId, index, collision]))
+                    .digest('hex').slice(0, 32)}`;
+                collision += 1;
+                if (collision > 10_000) throw new Error('Legacy program identities cannot be normalized safely');
+            }
             const activationTime = isTime(raw.activationTime) ? raw.activationTime : '00:00';
             const timeZone = isTimeZone(raw.timeZone) ? raw.timeZone : profileTimeZone;
             const targetOffset = Number.isFinite(Number(raw.targetOffsetDays))

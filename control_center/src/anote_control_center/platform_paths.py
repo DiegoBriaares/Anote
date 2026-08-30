@@ -14,7 +14,7 @@ HostOS = Literal["windows", "macos"]
 HostArchitecture = Literal["x86_64", "arm64"]
 
 
-def _is_link_or_junction(path: Path) -> bool:
+def is_link_or_junction(path: Path) -> bool:
     if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
         return True
     if os.name == "nt" and (path.exists() or path.is_symlink()):
@@ -83,7 +83,7 @@ class ManagedPaths:
 
     def __post_init__(self) -> None:
         expanded = self.root.expanduser()
-        if _is_link_or_junction(expanded):
+        if is_link_or_junction(expanded):
             raise ContractError("The Anote state root must not be a link or junction.", code="unsafe_state_root")
         resolved = expanded.resolve(strict=False)
         if resolved == Path(resolved.anchor) or len(resolved.parts) < 3:
@@ -106,12 +106,12 @@ class ManagedPaths:
         except ValueError as error:
             raise ContractError("A managed Anote path escaped its state root.", code="unsafe_owned_path") from error
         current = self.root
-        if current.exists() and _is_link_or_junction(current):
+        if current.exists() and is_link_or_junction(current):
             raise ContractError("The Anote state root became unsafe.", code="unsafe_state_root")
         for component in relative.parts:
             current = current / component
             if current.exists() or current.is_symlink():
-                if _is_link_or_junction(current):
+                if is_link_or_junction(current):
                     raise ContractError("A managed Anote path contains a link or junction.", code="unsafe_owned_path")
             elif not allow_missing:
                 raise ContractError("A required managed Anote path is missing.", code="unsafe_owned_path")

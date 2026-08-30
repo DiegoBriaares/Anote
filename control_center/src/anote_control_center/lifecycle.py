@@ -519,6 +519,7 @@ class LifecycleService:
             return self.checkpoints.apply(
                 checkpoint,
                 release.manifest,
+                prove_stopped=lambda installation: not self.runtime.is_running(installation),
                 validate=validate,
                 confirm_full_replace=confirm_full_replace,
                 lock_held=True,

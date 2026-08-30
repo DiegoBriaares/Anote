@@ -50,7 +50,13 @@ class FakeRuntime:
         self.events.append("command:" + " ".join(command))
         if command == ("node", "migrate.js"):
             connection = sqlite3.connect(self.paths.database)
-            connection.execute("CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, title TEXT)")
+            connection.executescript(
+                "CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, title TEXT);"
+                "CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY);"
+                "CREATE TABLE IF NOT EXISTS schema_migrations("
+                "version INTEGER PRIMARY KEY, name TEXT, applied_at TEXT, checksum TEXT);"
+                "INSERT OR REPLACE INTO schema_migrations VALUES (1, 'test', 'now', 'digest');"
+            )
             connection.commit()
             connection.close()
         if command == ("node", "bootstrap-admin.js"):

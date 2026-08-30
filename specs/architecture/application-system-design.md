@@ -44,6 +44,7 @@ policy.
 | APP-OWN-007 | Auth/session, events, social, configuration, notes and programs client state | focused Zustand slices/actions | React screens through selectors and intent actions |
 | APP-OWN-008 | Current language and every person-visible string | runtime language provider and EN/ES catalogs | render boundaries and shared components through localized props |
 | APP-OWN-009 | Release ID, version, source commit and schema version reported by readiness | build/runtime configuration owner | health route and Control Center validator |
+| APP-OWN-010 | Lossless partition of inconsistent legacy rows and any future recovery authorization | versioned migration owner and an explicitly specified recovery service | no HTTP caller exists in schema 4; raw administration and diagnostics are forbidden |
 
 Dependency direction is:
 

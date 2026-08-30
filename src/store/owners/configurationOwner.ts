@@ -1,7 +1,6 @@
 import { adminApi, configurationApi } from '../../api/admin';
 import { ApiError } from '../../api/client';
 import { getApiErrorText, getAppText } from '../../i18n/appText';
-import { normalizePriority } from '../../utils/priorityUtils';
 
 import type { AppConfig, CalendarState } from '../calendarStore';
 import { normalizeBoolean } from '../eventModel';
@@ -9,7 +8,7 @@ import type { OwnerContext } from './types';
 
 type ConfigurationOwner = Pick<CalendarState,
     'fetchAppConfig' | 'updateAppConfig' | 'fetchAdminEvents' |
-    'adminDeleteEvents' | 'fetchAdminUsers' | 'adminDeleteUsers' | 'fetchTableData'
+    'adminDeleteEvents' | 'fetchAdminUsers' | 'adminDeleteUsers' | 'fetchAdminRoles'
 >;
 
 export const createConfigurationOwner = ({ set, get, logoutAndReset }: OwnerContext): ConfigurationOwner => ({
@@ -49,13 +48,6 @@ export const createConfigurationOwner = ({ set, get, logoutAndReset }: OwnerCont
                 startTime: typeof (raw.startTime ?? raw.start_time) === 'string'
                     ? String(raw.startTime ?? raw.start_time)
                     : null,
-                priority: normalizePriority(
-                    typeof raw.priority === 'number' || typeof raw.priority === 'string'
-                        ? raw.priority
-                        : null
-                ),
-                note: typeof raw.note === 'string' ? raw.note : null,
-                link: typeof raw.link === 'string' ? raw.link : null,
                 completed: normalizeBoolean(raw.completed),
                 failed: normalizeBoolean(raw.failed),
                 userId: typeof (raw.userId ?? raw.user_id) === 'string'
@@ -113,13 +105,20 @@ export const createConfigurationOwner = ({ set, get, logoutAndReset }: OwnerCont
         }
     },
 
-    fetchTableData: async (table) => {
-        if (!get().user) return [];
+    fetchAdminRoles: async () => {
+        if (!get().user) return;
         try {
-            return await adminApi.table(table);
+            const roles = await adminApi.roles();
+            set({ adminRoles: roles.map((raw) => ({
+                id: String(raw.id || ''),
+                label: String(raw.label || ''),
+                color: typeof raw.color === 'string' ? raw.color : null,
+                isEnabled: normalizeBoolean(raw.isEnabled ?? raw.is_enabled),
+                orderIndex: Number(raw.orderIndex ?? raw.order_index ?? 0),
+                username: String(raw.username || '')
+            })) });
         } catch (error) {
             if (error instanceof ApiError && error.status === 401) logoutAndReset();
-            return [];
         }
     }
 });

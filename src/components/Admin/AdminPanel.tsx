@@ -19,15 +19,11 @@ type ToastState = {
     message: string;
 };
 
-type AdminTab = 'config' | 'events' | 'users' | 'database';
-type AdminTable = 'roles' | 'event_notes';
+type AdminTab = 'config' | 'events' | 'users' | 'roles';
 type DeleteCandidate =
     | { kind: 'bulk'; count: number; itemType: 'events' | 'users' }
     | { kind: 'event'; id: string; label: string }
     | { kind: 'user'; id: string; label: string };
-
-const isDatabaseRow = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export const AdminPanel: React.FC = () => {
     const { text } = useTranslation();
@@ -35,7 +31,7 @@ export const AdminPanel: React.FC = () => {
         appConfig, updateAppConfig, fetchAppConfig, navigateToCalendar,
         adminEvents, fetchAdminEvents, adminDeleteEvents,
         adminUsers, fetchAdminUsers, adminDeleteUsers,
-        fetchTableData
+        adminRoles, fetchAdminRoles
     } = useCalendarStore();
 
     const [activeTab, setActiveTab] = useState<AdminTab>('config');
@@ -46,10 +42,6 @@ export const AdminPanel: React.FC = () => {
 
     // Filter Logic
     const [filterUserId, setFilterUserId] = useState<string>('');
-
-    // Database Tab State
-    const [dbTable, setDbTable] = useState<AdminTable>('roles');
-    const [dbData, setDbData] = useState<Record<string, unknown>[]>([]);
 
     // Selection State
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -73,10 +65,10 @@ export const AdminPanel: React.FC = () => {
             }
         } else if (activeTab === 'users') {
             fetchAdminUsers();
-        } else if (activeTab === 'database') {
-            fetchTableData(dbTable).then((rows) => setDbData(rows.filter(isDatabaseRow)));
+        } else if (activeTab === 'roles') {
+            fetchAdminRoles();
         }
-    }, [activeTab, adminUsers.length, fetchAdminEvents, fetchAdminUsers, fetchTableData, dbTable, filterUserId]);
+    }, [activeTab, adminUsers.length, fetchAdminEvents, fetchAdminRoles, fetchAdminUsers, filterUserId]);
 
     // Toast Logic
     useEffect(() => {
@@ -228,7 +220,7 @@ export const AdminPanel: React.FC = () => {
                         { id: 'config', label: text.admin.configuration, icon: Settings },
                         { id: 'events', label: text.common.events, icon: Calendar },
                         { id: 'users', label: text.common.users, icon: Users },
-                        { id: 'database', label: text.admin.rawData, icon: Tags }
+                        { id: 'roles', label: text.admin.roleRecords, icon: Tags }
                     ] satisfies { id: AdminTab; label: string; icon: typeof Settings }[]).map((tab) => (
                         <button
                             type="button"
@@ -249,7 +241,7 @@ export const AdminPanel: React.FC = () => {
             </div>
 
             {/* DATABASE TAB */}
-            {activeTab === 'database' && (
+            {activeTab === 'roles' && (
                 <div className="space-y-6">
                     <div className="flex items-center justify-between bg-white/80 backdrop-blur-xl p-6 rounded-2xl border border-orange-200 shadow-lg shadow-orange-100/50">
                         <div className="flex items-center gap-4">
@@ -257,22 +249,14 @@ export const AdminPanel: React.FC = () => {
                                 <Tags className="w-6 h-6 text-white" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-light text-stone-800 tracking-wide">{text.admin.rawData}</h2>
-                                <p className="text-stone-500 text-xs">{text.admin.rawDataDescription}</p>
+                                <h2 className="text-xl font-light text-stone-800 tracking-wide">{text.admin.roleRecords}</h2>
+                                <p className="text-stone-500 text-xs">{text.admin.roleRecordsDescription}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
-                            <select
-                                value={dbTable}
-                                aria-label={text.admin.rawData}
-                                onChange={(e) => setDbTable(e.target.value as AdminTable)}
-                                className="bg-white border text-stone-700 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block p-2.5 outline-none px-4"
-                            >
-                                <option value="roles">{text.admin.rolesTable}</option>
-                                <option value="event_notes">{text.admin.notesTable}</option>
-                            </select>
+                            <span className="rounded-lg border bg-white px-4 py-2.5 text-sm text-stone-700">{text.admin.rolesTable}</span>
                             <div className="text-xs font-mono text-stone-400">
-                                {dbData.length} {text.admin.records}
+                                {adminRoles.length} {text.admin.records}
                             </div>
                         </div>
                     </div>
@@ -282,25 +266,27 @@ export const AdminPanel: React.FC = () => {
                             <table className="w-full text-left text-sm text-stone-600">
                                 <thead className="bg-orange-50/50 text-xs uppercase text-orange-600 font-mono tracking-wider">
                                     <tr>
-                                        {dbData.length > 0 && Object.keys(dbData[0]).map(key => (
-                                            <th key={key} className="px-6 py-4 font-semibold">{key}</th>
-                                        ))}
+                                        <th className="px-6 py-4 font-semibold">{text.common.role}</th>
+                                        <th className="px-6 py-4 font-semibold">{text.common.user}</th>
+                                        <th className="px-6 py-4 font-semibold">{text.common.color}</th>
+                                        <th className="px-6 py-4 font-semibold">{text.common.enabled}</th>
+                                        <th className="px-6 py-4 font-semibold">{text.common.order}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-orange-100">
-                                    {dbData.map((row, i) => (
-                                        <tr key={i} className="hover:bg-orange-50/30 transition-colors">
-                                            {Object.values(row).map((val, j) => (
-                                                <td key={j} className="px-6 py-4 font-mono text-xs truncate max-w-[200px]" title={String(val)}>
-                                                    {String(val)}
-                                                </td>
-                                            ))}
+                                    {adminRoles.map((role) => (
+                                        <tr key={role.id} className="hover:bg-orange-50/30 transition-colors">
+                                            <td className="px-6 py-4 font-medium text-stone-800">{role.label}</td>
+                                            <td className="px-6 py-4 text-xs">{role.username}</td>
+                                            <td className="px-6 py-4 font-mono text-xs">{role.color || text.common.none}</td>
+                                            <td className="px-6 py-4 text-xs">{role.isEnabled ? text.common.enabled : text.common.disabled}</td>
+                                            <td className="px-6 py-4 font-mono text-xs">{role.orderIndex}</td>
                                         </tr>
                                     ))}
-                                    {dbData.length === 0 && (
+                                    {adminRoles.length === 0 && (
                                         <tr>
-                                            <td colSpan={10} className="px-6 py-12 text-center text-stone-400 italic">
-                                                {interpolateText(text.admin.noTableData, { table: dbTable === 'roles' ? text.admin.rolesTable : text.admin.notesTable })}
+                                            <td colSpan={5} className="px-6 py-12 text-center text-stone-400 italic">
+                                                {interpolateText(text.admin.noTableData, { table: text.admin.rolesTable })}
                                             </td>
                                         </tr>
                                     )}
@@ -428,14 +414,12 @@ export const AdminPanel: React.FC = () => {
                                     <th className="px-6 py-4 font-medium">{text.common.date}</th>
                                     <th className="px-6 py-4 font-medium">{text.common.time}</th>
                                     <th className="px-6 py-4 font-medium">{text.common.user}</th>
-                                    <th className="px-6 py-4 font-medium">{text.common.note}</th>
-                                    <th className="px-6 py-4 font-medium">{text.common.link}</th>
                                     <th className="px-6 py-4 font-medium text-right">{text.common.actions}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-orange-100">
                                 {adminEvents.length === 0 ? (
-                                    <tr><td colSpan={8} className="px-6 py-12 text-center text-stone-400 font-mono">{text.admin.noAdminEvents}</td></tr>
+                                    <tr><td colSpan={6} className="px-6 py-12 text-center text-stone-400 font-mono">{text.admin.noAdminEvents}</td></tr>
                                 ) : adminEvents.map((e) => {
                                     const isSelected = selectedIds.has(e.id);
                                     return (
@@ -451,8 +435,6 @@ export const AdminPanel: React.FC = () => {
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-2"><UserIcon className="w-3 h-3 text-orange-400" /><span className="text-xs font-medium">{e.username}</span></div>
                                             </td>
-                                            <td className="px-6 py-4 text-xs text-stone-500 truncate max-w-[150px]">{e.note || '-'}</td>
-                                            <td className="px-6 py-4 text-xs text-blue-500 truncate max-w-[150px]">{e.link ? <a href={e.link} target="_blank" rel="noreferrer" className="hover:underline">{e.link}</a> : '-'}</td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <button

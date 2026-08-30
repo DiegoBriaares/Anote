@@ -233,12 +233,26 @@ members, normalized non-semantic metadata and regular files/directories only.
 It contains no absolute paths, links, devices, sockets or traversal. The
 checkpoint excludes secrets, sessions, operation state, host paths, ports,
 Compose identity, release packages, Docker images, logs, backups and WAL/SHM.
+All logical database state is otherwise retained, including private unresolved
+legacy recovery rows and their original SQLite value types. Sanitization may
+delete only runtime session material named by this contract; it must not infer
+that an unreferenced or currently unreachable business row is disposable.
+Likewise, unreferenced regular files below the owned uploads root remain in the
+canonical archive even though the application does not expose them over HTTP.
+Session exclusion is physical as well as logical: the owned checkpoint copy
+enables SQLite secure deletion, removes session rows, switches to a single-file
+journal, vacuums the database, and rejects/removes WAL, SHM and journal
+sidecars. A deleted token marker must not remain recoverable in the packaged
+database bytes.
 
 Checkpoint verification applies archive checks equivalent to release checks,
 with a 256 KiB manifest, 1,000,000 upload entries, per-file and total sizes
 bounded by the manifest and available disk, and a hard expanded maximum of 1
 TiB. Bounds are checked before mutation and while streaming; declared size does
-not override local free-space refusal.
+not override local free-space refusal. A checkpoint becomes `VerifiedCheckpoint`
+only after its database digest, integrity, foreign keys, declared schema and
+empty-session invariant pass and its upload digest/inventory pass. Digest-valid
+garbage or a re-manifested database containing a session is invalid.
 
 Compatibility requires exact application release ID/version/commit and a
 supported data schema. Host platform and installation identity are not copied.
@@ -255,12 +269,16 @@ Lineage rules are:
 - tamper, identity change between preflight and import, insufficient disk,
   running state or dirty ambiguity refuses before target replacement.
 
-Apply streams and verifies into a staging directory on the production
-filesystem. After database integrity/schema and upload inventory validate, it
-journals destructive intent, atomically swaps the complete data directory, then
-records lineage. Failure before swap preserves old data; failure after swap
-restores the retained old directory or remains `recovery_required`. Success is
-always stopped.
+Apply rechecks actual Docker stopped state under the shared operation lock,
+then copies the selected package into owned staging while hashing every byte.
+Only that package identity is reopened. Both extracted database and uploads
+digests are rechecked before database integrity/schema/privacy and upload
+inventory validation. It then journals destructive intent, atomically swaps the
+complete data directory, and records lineage. A source-path replacement,
+nested upload link/junction/reparse point, or running writer refuses before
+replacement. Failure before swap preserves old data; failure after swap restores
+the retained old directory or remains `recovery_required`. Success is always
+stopped.
 
 Checkpoint files contain readable replaceable production data. EN/ES UI warns
 that hashes provide corruption detection, not confidentiality or authenticity,
@@ -273,10 +291,10 @@ and instructs operators to protect the media.
 | PKG-REL-001 | Only a complete compatible native package becomes `VerifiedRelease` | malicious archive corpus, digest/platform/identity tests and paired-package contract |
 | PKG-REL-002 | Exact archive images, not mutable tags, are loaded | fake/classic/containerd Docker identity tests plus native archive inspection |
 | PKG-REG-001 | Registry/journal writes are atomic and contradictory states fail | replace-failure, schema and replay owner tests |
-| PKG-PATH-001 | Destructive scope cannot escape registry-owned roots | traversal, symlink/reparse, alias and unrelated-sibling tests |
-| PKG-CHK-001 | One checkpoint independently restores all business data across platforms | deterministic round-trip, empty-target apply and digest/inventory tests |
-| PKG-CHK-002 | Interrupted apply cannot publish partial data as ready | phase injection and directory-swap recovery tests |
-| PKG-PRIV-001 | Release/checkpoint/log boundaries contain no secrets | package/diagnostic privacy guard |
+| PKG-PATH-001 | Destructive/archive scope cannot escape registry-owned roots | traversal, nested symlink/junction/reparse, alias and unrelated-sibling tests |
+| PKG-CHK-001 | One checkpoint independently restores all business data, including unresolved legacy rows and unreferenced uploads, across platforms | deterministic typed-row round-trip, empty-target apply and digest/inventory tests |
+| PKG-CHK-002 | Interrupted, running-writer or identity-raced apply cannot publish partial data as ready | stopped-state refusal, whole-package staging, payload rehash, phase injection and directory-swap recovery tests |
+| PKG-PRIV-001 | Release/checkpoint/log boundaries contain no secrets or recoverable session remnants | raw-byte session marker, nonempty-session verifier rejection and package/diagnostic privacy guard |
 
 Native Docker and platform package checks are independently runtime-owned;
 unit archive tests cannot substitute for them. Conversely, repeating every

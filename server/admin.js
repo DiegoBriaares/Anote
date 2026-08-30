@@ -1,6 +1,5 @@
 const express = require('express');
 
-const { safeEventLink } = require('./events');
 const { ApiError } = require('./http');
 
 const orderedFriendIds = (first, second) => first < second ? [first, second] : [second, first];
@@ -61,13 +60,20 @@ const createAdminService = ({ db, eventService, userService }) => {
     const listEvents = (userId) => {
         const where = userId ? 'WHERE e.user_id = ?' : '';
         return db.prepare(`
-            SELECT e.id, e.title, e.date, e.start_time AS startTime, e.priority,
-                   e.note, e.link, e.completed, e.failed, e.user_id AS userId,
+            SELECT e.id, e.title, e.date, e.start_time AS startTime,
+                   e.completed, e.failed, e.user_id AS userId,
                    e.revision, e.revision AS version, u.username
             FROM events e JOIN users u ON u.id = e.user_id ${where}
             ORDER BY e.date, e.start_time, e.title
-        `).all(...(userId ? [userId] : [])).map((row) => ({ ...row, link: safeEventLink(row.link) }));
+        `).all(...(userId ? [userId] : []));
     };
+
+    const listRoles = () => db.prepare(`
+        SELECT r.id, r.label, r.color, r.is_enabled AS isEnabled,
+               r.order_index AS orderIndex, u.username
+        FROM roles r JOIN users u ON u.id = r.user_id
+        ORDER BY u.username COLLATE NOCASE, r.order_index, r.id
+    `).all().map((row) => ({ ...row, isEnabled: row.isEnabled === 1 }));
 
     const createEvent = (input) => {
         if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(input?.userId)) {
@@ -141,23 +147,13 @@ const createAdminService = ({ db, eventService, userService }) => {
         if (result.changes !== 1) throw new ApiError(404, 'friendship_not_found');
     };
 
-    const inspectTable = (table) => {
-        const queries = {
-            roles: 'SELECT r.*, u.username FROM roles r LEFT JOIN users u ON u.id = r.user_id ORDER BY u.username, r.order_index',
-            event_notes: 'SELECT n.*, e.title AS event_title, e.date AS event_date, u.username FROM event_notes n LEFT JOIN events e ON e.id = n.event_id LEFT JOIN users u ON u.id = n.owner_user_id ORDER BY u.username, e.date',
-            app_config: 'SELECT * FROM app_config ORDER BY key'
-        };
-        if (!queries[table]) throw new ApiError(400, 'invalid_table');
-        return db.prepare(queries[table]).all();
-    };
-
     return {
         createEvent,
         createFriendship,
         createUser,
-        inspectTable,
         listEvents,
         listFriendships,
+        listRoles,
         listUsers,
         removeEvent,
         removeEvents,
@@ -255,13 +251,7 @@ const createAdminRouter = ({ service, authenticate, requireAdmin }) => {
             next(error);
         }
     });
-    router.get('/admin/database/:table', (req, res, next) => {
-        try {
-            res.json({ message: 'success', data: service.inspectTable(req.params.table) });
-        } catch (error) {
-            next(error);
-        }
-    });
+    router.get('/admin/roles', (_req, res) => res.json({ message: 'success', data: service.listRoles() }));
     return router;
 };
 

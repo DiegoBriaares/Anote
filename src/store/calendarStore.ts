@@ -41,9 +41,6 @@ export interface AdminEvent {
     title: string;
     date: string;
     startTime?: string | null;
-    priority?: number | null;
-    note?: string | null;
-    link?: string | null;
     completed?: boolean | null;
     failed?: boolean | null;
     userId?: string;
@@ -56,6 +53,15 @@ export interface AdminUser {
     isAdmin?: boolean;
     avatarUrl?: string | null;
     eventCount?: number;
+}
+
+export interface AdminRoleRecord {
+    id: string;
+    label: string;
+    color: string | null;
+    isEnabled: boolean;
+    orderIndex: number;
+    username: string;
 }
 
 interface Selection {
@@ -178,7 +184,8 @@ export interface CalendarState {
     adminUsers: AdminUser[];
     fetchAdminUsers: () => Promise<void>;
     adminDeleteUsers: (ids: string[]) => Promise<boolean>;
-    fetchTableData: (table: 'roles' | 'event_notes') => Promise<unknown[]>;
+    adminRoles: AdminRoleRecord[];
+    fetchAdminRoles: () => Promise<void>;
 }
 
 export const useCalendarStore = create<CalendarState>((set, get) => {
@@ -213,7 +220,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             compareEvents: {},
             appConfig: null,
             adminEvents: [],
-            adminUsers: []
+            adminUsers: [],
+            adminRoles: []
         });
     };
 
@@ -260,6 +268,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         appConfig: null,
         adminEvents: [],
         adminUsers: [],
+        adminRoles: [],
         ...createSessionOwner({ set, get, logoutAndReset }),
 
         setSelection: (start, end) => set({ selection: { start, end } }),

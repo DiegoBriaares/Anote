@@ -17,7 +17,7 @@ import zipfile
 
 from .errors import ContractError, RuntimeStillActiveError
 from .model import Installation, RELEASE_PATTERN, SHA256_PATTERN, VERSION_PATTERN
-from .platform_paths import ManagedPaths
+from .platform_paths import ManagedPaths, is_link_or_junction
 from .releases import ReleaseManifest, file_sha256
 from .storage import (
     InstallationRegistry,
@@ -97,17 +97,40 @@ def _validate_checkpoint_zip_layout(archive: zipfile.ZipFile, infos: list[zipfil
         raise ContractError("Checkpoint ZIP members overlap.", code="checkpoint_unsafe")
 
 
-def _integrity_check(path: Path) -> None:
+def _validate_checkpoint_database(
+    path: Path,
+    *,
+    expected_schema: int | None = None,
+    require_empty_sessions: bool = False,
+) -> None:
     try:
         connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
         try:
-            row = connection.execute("PRAGMA integrity_check").fetchone()
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()
+            foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
+            schema_row = connection.execute(
+                "SELECT MAX(version) FROM schema_migrations"
+            ).fetchone() if expected_schema is not None else None
+            sessions = None
+            if require_empty_sessions:
+                sessions_table = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'"
+                ).fetchone()
+                sessions = connection.execute("SELECT COUNT(*) FROM sessions").fetchone() if sessions_table else (0,)
         finally:
             connection.close()
     except sqlite3.Error as error:
         raise ContractError("The Anote database could not be validated.", code="database_invalid") from error
-    if row != ("ok",):
+    if integrity != ("ok",) or foreign_keys:
         raise ContractError("The Anote database failed its integrity check.", code="database_invalid")
+    if expected_schema is not None and schema_row != (expected_schema,):
+        raise ContractError("Checkpoint data schema does not match its manifest.", code="checkpoint_invalid")
+    if require_empty_sessions and sessions != (0,):
+        raise ContractError("Checkpoint contains local browser sessions.", code="checkpoint_private_data")
+
+
+def _integrity_check(path: Path) -> None:
+    _validate_checkpoint_database(path)
 
 
 def backup_database(source: Path, destination: Path) -> None:
@@ -132,25 +155,35 @@ def backup_database(source: Path, destination: Path) -> None:
 
 
 def sanitize_checkpoint_database(path: Path) -> None:
-    """Remove host-local sessions from the portable logical data copy."""
+    """Physically remove host-local sessions from the portable data copy."""
     try:
         connection = sqlite3.connect(path)
         try:
+            journal_mode = connection.execute("PRAGMA journal_mode = DELETE").fetchone()
+            secure_delete = connection.execute("PRAGMA secure_delete = ON").fetchone()
+            if not journal_mode or str(journal_mode[0]).lower() != "delete" or secure_delete != (1,):
+                raise ContractError("Portable session cleanup is unavailable.", code="checkpoint_invalid")
             exists = connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'"
             ).fetchone()
             if exists:
                 connection.execute("DELETE FROM sessions")
                 connection.commit()
+            connection.execute("VACUUM")
         finally:
             connection.close()
     except sqlite3.Error as error:
         raise ContractError("Portable session cleanup failed.", code="checkpoint_invalid") from error
-    _integrity_check(path)
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = Path(f"{path}{suffix}")
+        sidecar.unlink(missing_ok=True)
+        if sidecar.exists():
+            raise ContractError("Portable database sidecar cleanup failed.", code="checkpoint_invalid")
+    _validate_checkpoint_database(path, require_empty_sessions=True)
 
 
 def create_upload_archive(source: Path, destination: Path) -> tuple[int, int]:
-    if source.exists() and (source.is_symlink() or not source.is_dir()):
+    if source.exists() and (is_link_or_junction(source) or not source.is_dir()):
         raise ContractError("The uploads directory is unsafe.", code="uploads_unsafe")
     ensure_private_directory(destination.parent)
     file_count = 0
@@ -163,8 +196,8 @@ def create_upload_archive(source: Path, destination: Path) -> tuple[int, int]:
                     entry_count += 1
                     if entry_count > MAX_UPLOAD_ENTRIES:
                         raise ContractError("Uploads exceed the supported checkpoint bounds.", code="uploads_too_large")
-                    if path.is_symlink():
-                        raise ContractError("Upload symbolic links are forbidden.", code="uploads_unsafe")
+                    if is_link_or_junction(path):
+                        raise ContractError("Upload links and junctions are forbidden.", code="uploads_unsafe")
                     relative = path.relative_to(source).as_posix()
                     _validate_portable_upload_path(PurePosixPath(relative))
                     if path.is_dir():
@@ -493,9 +526,25 @@ class VerifiedCheckpoint:
     package_sha256: str
     manifest: CheckpointManifest
 
-    def assert_current(self) -> None:
-        if self.path.is_symlink() or not self.path.is_file() or file_sha256(self.path) != self.package_sha256:
-            raise ContractError("Selected checkpoint changed after verification.", code="checkpoint_changed")
+
+def stage_verified_checkpoint(checkpoint: VerifiedCheckpoint, destination: Path) -> None:
+    """Copy one selected package into owned storage while binding every byte."""
+    if is_link_or_junction(checkpoint.path) or not checkpoint.path.is_file():
+        raise ContractError("Selected checkpoint changed after verification.", code="checkpoint_changed")
+    digest = sha256()
+    try:
+        with checkpoint.path.open("rb") as source, destination.open("xb") as output:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+                output.write(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+    except OSError as error:
+        destination.unlink(missing_ok=True)
+        raise ContractError("Selected checkpoint could not be staged safely.", code="checkpoint_changed") from error
+    if digest.hexdigest() != checkpoint.package_sha256:
+        destination.unlink(missing_ok=True)
+        raise ContractError("Selected checkpoint changed after verification.", code="checkpoint_changed")
 
 
 class CheckpointService:
@@ -599,49 +648,71 @@ class CheckpointService:
         if resolved.is_symlink() or not resolved.is_file() or resolved.suffix != ".anote-checkpoint":
             raise ContractError("Select a regular .anote-checkpoint file.", code="checkpoint_invalid")
         try:
-            with zipfile.ZipFile(resolved) as archive:
-                infos = archive.infolist()
-                names = [info.filename for info in infos]
-                if set(names) != CHECKPOINT_MEMBERS or len(names) != len(CHECKPOINT_MEMBERS):
-                    raise ContractError("Checkpoint files are incomplete or duplicated.", code="checkpoint_invalid")
-                _validate_checkpoint_zip_layout(archive, infos)
-                for info in infos:
-                    mode = info.external_attr >> 16
-                    member = PurePosixPath(info.filename)
-                    if (
-                        info.is_dir() or info.flag_bits & ~0x800 or info.compress_type != zipfile.ZIP_STORED
-                        or stat.S_IFMT(mode) not in {0, stat.S_IFREG}
-                        or member.is_absolute() or any(part in {"", ".", ".."} for part in member.parts)
-                    ):
-                        raise ContractError("Checkpoint contains an unsafe member.", code="checkpoint_unsafe")
-                    limit = 256 * 1024 if info.filename == "manifest.json" else MAX_DATABASE_BYTES if info.filename == "calendar.db" else MAX_UPLOAD_ARCHIVE_BYTES
-                    if info.file_size > limit or (info.compress_size and info.file_size / info.compress_size > 200):
-                        raise ContractError("Checkpoint member exceeds supported bounds.", code="checkpoint_too_large")
-                manifest = CheckpointManifest.parse(archive.read("manifest.json"))
-                database_info = archive.getinfo("calendar.db")
-                uploads_info = archive.getinfo("uploads.tar")
-                if (database_info.file_size, uploads_info.file_size) != (manifest.database_size, manifest.uploads_size):
-                    raise ContractError("Checkpoint sizes do not match its manifest.", code="checkpoint_invalid")
-                for member, expected in (("calendar.db", manifest.database_sha256), ("uploads.tar", manifest.uploads_sha256)):
-                    digest = sha256()
-                    with archive.open(member) as stream:
+            with resolved.open("rb") as package_stream:
+                opened = os.fstat(package_stream.fileno())
+                if not stat.S_ISREG(opened.st_mode):
+                    raise ContractError("Select a regular .anote-checkpoint file.", code="checkpoint_invalid")
+                package_digest = sha256()
+                for chunk in iter(lambda: package_stream.read(1024 * 1024), b""):
+                    package_digest.update(chunk)
+                package_stream.seek(0)
+                with zipfile.ZipFile(package_stream) as archive:
+                    infos = archive.infolist()
+                    names = [info.filename for info in infos]
+                    if set(names) != CHECKPOINT_MEMBERS or len(names) != len(CHECKPOINT_MEMBERS):
+                        raise ContractError("Checkpoint files are incomplete or duplicated.", code="checkpoint_invalid")
+                    _validate_checkpoint_zip_layout(archive, infos)
+                    for info in infos:
+                        mode = info.external_attr >> 16
+                        member = PurePosixPath(info.filename)
+                        if (
+                            info.is_dir() or info.flag_bits & ~0x800 or info.compress_type != zipfile.ZIP_STORED
+                            or stat.S_IFMT(mode) not in {0, stat.S_IFREG}
+                            or member.is_absolute() or any(part in {"", ".", ".."} for part in member.parts)
+                        ):
+                            raise ContractError("Checkpoint contains an unsafe member.", code="checkpoint_unsafe")
+                        limit = 256 * 1024 if info.filename == "manifest.json" else MAX_DATABASE_BYTES if info.filename == "calendar.db" else MAX_UPLOAD_ARCHIVE_BYTES
+                        if info.file_size > limit or (info.compress_size and info.file_size / info.compress_size > 200):
+                            raise ContractError("Checkpoint member exceeds supported bounds.", code="checkpoint_too_large")
+                    manifest = CheckpointManifest.parse(archive.read("manifest.json"))
+                    database_info = archive.getinfo("calendar.db")
+                    uploads_info = archive.getinfo("uploads.tar")
+                    if (database_info.file_size, uploads_info.file_size) != (manifest.database_size, manifest.uploads_size):
+                        raise ContractError("Checkpoint sizes do not match its manifest.", code="checkpoint_invalid")
+                    with tempfile.TemporaryDirectory(prefix="anote-checkpoint-verify.") as directory:
+                        database_path = Path(directory) / "calendar.db"
+                        database_digest = sha256()
+                        with archive.open("calendar.db") as source, database_path.open("xb") as output:
+                            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                                database_digest.update(chunk)
+                                output.write(chunk)
+                        if database_digest.hexdigest() != manifest.database_sha256:
+                            raise ContractError("Checkpoint digest does not match its manifest.", code="checkpoint_invalid")
+                        _validate_checkpoint_database(
+                            database_path,
+                            expected_schema=manifest.data_schema,
+                            require_empty_sessions=True,
+                        )
+                    uploads_digest = sha256()
+                    with archive.open("uploads.tar") as stream:
                         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                            digest.update(chunk)
-                    if digest.hexdigest() != expected:
+                            uploads_digest.update(chunk)
+                    if uploads_digest.hexdigest() != manifest.uploads_sha256:
                         raise ContractError("Checkpoint digest does not match its manifest.", code="checkpoint_invalid")
-                with archive.open("uploads.tar") as stream:
-                    inventory = inspect_upload_archive_stream(stream)
-                if inventory != (manifest.upload_files, manifest.upload_bytes):
-                    raise ContractError("Checkpoint upload inventory does not match its manifest.", code="checkpoint_invalid")
+                    with archive.open("uploads.tar") as stream:
+                        inventory = inspect_upload_archive_stream(stream)
+                    if inventory != (manifest.upload_files, manifest.upload_bytes):
+                        raise ContractError("Checkpoint upload inventory does not match its manifest.", code="checkpoint_invalid")
         except (zipfile.BadZipFile, OSError) as error:
             raise ContractError("Checkpoint could not be read safely.", code="checkpoint_invalid") from error
-        return VerifiedCheckpoint(resolved, file_sha256(resolved), manifest)
+        return VerifiedCheckpoint(resolved, package_digest.hexdigest(), manifest)
 
     def apply(
         self,
         checkpoint: VerifiedCheckpoint,
         release: ReleaseManifest,
         *,
+        prove_stopped: Callable[[Installation], bool],
         validate: Callable[[Installation], int] | None = None,
         confirm_full_replace: bool = False,
         lock_held: bool = False,
@@ -651,14 +722,16 @@ class CheckpointService:
                 return self.apply(
                     checkpoint,
                     release,
+                    prove_stopped=prove_stopped,
                     validate=validate,
                     confirm_full_replace=confirm_full_replace,
                     lock_held=True,
                 )
         installation = self._installation()
-        checkpoint.assert_current()
         if installation.role != "standby" or installation.state not in {"awaiting_checkpoint", "ready_stopped"}:
             raise ContractError("Apply checkpoints only to a prepared or stopped standby computer.", code="checkpoint_standby_required")
+        if not prove_stopped(installation):
+            raise ContractError("Docker still reports Anote running; stop it before applying a checkpoint.", code="stop_required")
         if checkpoint.manifest.source_installation_id == installation.installation_id:
             raise ContractError("A computer cannot apply its own source checkpoint as standby data.", code="checkpoint_role_conflict")
         if (
@@ -681,19 +754,23 @@ class CheckpointService:
         required_space = checkpoint.manifest.database_size + checkpoint.manifest.uploads_size + checkpoint.manifest.upload_bytes
         if shutil.disk_usage(self.paths.production).free < required_space:
             raise ContractError("There is not enough free space to apply this checkpoint safely.", code="insufficient_disk_space")
+        package_copy = self.paths.production / f"checkpoint.package-{os.urandom(6).hex()}.anote-checkpoint"
+        stage_verified_checkpoint(checkpoint, package_copy)
         operation = OperationRecord(
             os.urandom(12).hex(), "apply_checkpoint", "extracting", installation.installation_id,
             self.clock(), {"checkpoint_id": checkpoint.manifest.checkpoint_id},
         )
-        self.journal.save(operation)
         staging = self.paths.production / f"data.checkpoint-{os.urandom(6).hex()}"
         previous = self.paths.production / f"data.previous-{os.urandom(6).hex()}"
         failed_candidate = self.paths.production / f"data.failed-{os.urandom(6).hex()}"
         swapped = False
         committed = False
-        ensure_private_directory(staging, managed_paths=self.paths)
+        journal_started = False
         try:
-            with zipfile.ZipFile(checkpoint.path) as archive:
+            self.journal.save(operation)
+            journal_started = True
+            ensure_private_directory(staging, managed_paths=self.paths)
+            with zipfile.ZipFile(package_copy) as archive:
                 with archive.open("calendar.db") as source, (staging / "calendar.db").open("xb") as output:
                     shutil.copyfileobj(source, output, length=1024 * 1024)
                 uploads_archive = staging / "uploads.tar"
@@ -701,7 +778,13 @@ class CheckpointService:
                     shutil.copyfileobj(source, output, length=1024 * 1024)
             if file_sha256(staging / "calendar.db") != checkpoint.manifest.database_sha256:
                 raise ContractError("Extracted checkpoint database digest is invalid.", code="checkpoint_invalid")
-            _integrity_check(staging / "calendar.db")
+            if file_sha256(uploads_archive) != checkpoint.manifest.uploads_sha256:
+                raise ContractError("Extracted checkpoint uploads digest is invalid.", code="checkpoint_invalid")
+            _validate_checkpoint_database(
+                staging / "calendar.db",
+                expected_schema=checkpoint.manifest.data_schema,
+                require_empty_sessions=True,
+            )
             extract_upload_archive(uploads_archive, staging / "uploads")
             uploads_archive.unlink()
             self.journal.save(replace(operation, phase="swapping"))
@@ -726,6 +809,9 @@ class CheckpointService:
             shutil.rmtree(previous, ignore_errors=True)
             return candidate
         except Exception as error:
+            if not journal_started:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
             if committed:
                 self.journal.save(replace(operation, phase="recovery_required"))
                 raise
@@ -741,6 +827,8 @@ class CheckpointService:
             shutil.rmtree(staging, ignore_errors=True)
             self.journal.save(replace(operation, phase="recovery_required"))
             raise
+        finally:
+            package_copy.unlink(missing_ok=True)
 
     def _installation(self) -> Installation:
         installation = self.registry.load()

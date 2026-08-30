@@ -22,6 +22,10 @@ completely before changing this directory.
   is stopped; only Orchestra starts production explicitly.
 - Destructive paths are canonical registry-owned children. Reject symlinks,
   reparse points, traversal, broad roots, globs and discovery-only targets.
+- Checkpoint verification opens the database and binds one owned package byte
+  identity through apply. Session exclusion includes free-page/raw-byte and
+  WAL/SHM remnants, not only logical rows; apply rechecks real Docker stopped
+  state under the operation lock.
 - Diagnostics redact secrets/content before bounding output. Worker threads
   never update Tk widgets directly.
 

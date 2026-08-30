@@ -67,6 +67,30 @@ Minimum relational rules include:
 - query paths for owner/date, owner/status, session hash/expiry, attachment
   owner/purpose and due programs have matching indexes.
 
+Legacy rows that cannot satisfy the new graph are never silently deleted and
+never made valid by invented business data. In particular, a legacy event-note
+row whose event no longer exists is moved, in the same migration transaction,
+to `legacy_event_note_recovery`. That private table preserves the source event
+and role IDs, SQLite content value and storage class, source timestamp, a stable
+source ordinal, canonical payload digest, reason, and revision. SQL-native
+staging preserves NULL, BLOB, integral REAL and full-width INTEGER values
+without JavaScript-number coercion; operational fallback values are derived
+separately. A role-owner snapshot taken before note repair may be recorded only
+as `role_owner_hint`; a role synthesized for another valid row can never become
+retroactive ownership evidence. The hint supports a future explicit recovery
+decision but is not an authorization fact. A missing or NULL role yields no
+owner hint and does not cause data loss.
+
+The migration asserts the conservation equation
+`valid event_notes + recovery rows = legacy event_notes` before dropping the
+legacy table. The recovery partition has no browser, ordinary API,
+administrator raw-table, log, or diagnostics surface. Future recovery requires
+a separately specified ownership-proof workflow; neither an administrator nor
+a guessed role relationship may read or assign private note content by default.
+Replay uses canonical typed tuples rather than delimiter-concatenated IDs, so
+ambiguous strings and identical duplicate payloads remain collision-safe and
+cannot duplicate a preserved row.
+
 ## 3. Transaction and revision invariants
 
 Every command that can affect more than one row has one service-owned
@@ -153,7 +177,7 @@ the current database principal for every request.
 | --- | --- | --- | --- |
 | Own profile, events, postponed events, roles/subroles, notes and programs | full domain operations | none | administration routes only; ordinary owner routes do not impersonate |
 | Friend calendar | read only after canonical friendship exists | read friend's event projection | may use explicit audited admin event surface |
-| Event notes and note attachments | read/write only when owning the parent event | none, even when the event projection is shared | explicit audited admin database tooling must not expose attachment bytes by default |
+| Event notes and note attachments | read/write only when owning the parent event | none, even when the event projection is shared | none for note content or bytes; administration may manage the owning event projection but cannot inspect role notes |
 | Avatar attachment | read/write own | any authenticated user may read an avatar referenced by a visible user/profile | same as authenticated user; account administration may clear reference |
 | Background attachment | read/write own | none; current friend projections do not expose day-background attachment IDs | account administration may clear reference but does not receive attachment bytes by default |
 | Application configuration | read allowed according to public config projection | same | write |
@@ -226,7 +250,7 @@ before applying a bounded head/tail limit.
 | SEC-ORG-001 | Cross-site form/fetch mutates cookie-authenticated state | mismatched/missing origin integration refusal and no-mutation assertion |
 | SEC-AUTHZ-001 | A friend or guessed ID reads/writes private notes/files | policy/service integration matrix |
 | SEC-UP-001 | Active content or traversal becomes same-origin executable content | upload/serve contract tests with malicious samples |
-| DATA-MIG-001 | Legacy schema/preferences/files are lost or partially advanced | migration on representative database/data copy plus injected failure |
+| DATA-MIG-001 | Legacy schema/preferences/files are lost, fabricated or partially advanced | migration on representative database/data copy, active-plus-recovery conservation, deterministic replay and injected failure |
 | DATA-TXN-001 | The nth row failure leaves earlier rows committed | service failure injection and post-state assertion |
 | DATA-REV-001 | Two equal/older client versions both commit | atomic predicate integration test |
 
