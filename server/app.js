@@ -61,25 +61,26 @@ const createRuntime = ({ config, database, now = () => new Date(), scheduler = t
         'http://localhost:5174'
     ]));
 
-    const userService = createUserService({ db });
-    const auth = createAuth({ db, config, now, userService });
-    const eventService = createEventService({ db, now });
-    const adminService = createAdminService({ db, eventService, userService });
-    const calendarMetadataService = createCalendarMetadataService({ db });
-    const configurationService = createConfigurationService({ db });
-    const noteService = createNoteService({ db, now });
-    const programService = createProgramService({ db, now });
-    const roleService = createRoleService({ db });
-    const socialService = createSocialService({ db, now });
-    const attachmentService = createAttachmentService({ db, uploadDir: config.uploadDir, now });
+    let attachmentService;
     try {
+        attachmentService = createAttachmentService({ db, uploadDir: config.uploadDir, now });
         attachmentService.migrateLegacyReferences();
         verifyUploads(config.uploadDir);
     } catch (error) {
         if (ownsDatabase) closeDatabase(db);
         throw error;
     }
-
+    const retireAttachments = attachmentService.retireAfterMutation;
+    const userService = createUserService({ db, retireAttachments });
+    const auth = createAuth({ db, config, now, userService });
+    const eventService = createEventService({ db, now, retireAttachments });
+    const adminService = createAdminService({ db, eventService, userService, retireAttachments });
+    const calendarMetadataService = createCalendarMetadataService({ db, retireAttachments });
+    const configurationService = createConfigurationService({ db });
+    const noteService = createNoteService({ db, now });
+    const programService = createProgramService({ db, now });
+    const roleService = createRoleService({ db });
+    const socialService = createSocialService({ db, now });
     app.use(createHealthRouter({
         db,
         uploadDir: config.uploadDir,

@@ -5,6 +5,7 @@ repository_root="$(cd "$(dirname "$0")/../.." && pwd)"
 control_center_root="$repository_root/control_center"
 product_name="Anote Control Center"
 pyinstaller_version="6.21.0"
+tzdata_version="2026.3"
 build_root="$control_center_root/build/macos-packaging"
 venv_root="$build_root/.venv"
 dist_root="$control_center_root/dist"
@@ -49,7 +50,8 @@ mkdir -p "$build_root" "$dist_root"
 if [[ ! -x "$venv_root/bin/python" ]]; then
     "$packaging_python" -m venv "$venv_root"
 fi
-"$venv_root/bin/python" -m pip install --disable-pip-version-check "pyinstaller==$pyinstaller_version"
+"$venv_root/bin/python" -m pip install --disable-pip-version-check \
+    "pyinstaller==$pyinstaller_version" "tzdata==$tzdata_version"
 "$venv_root/bin/python" -c 'import tkinter; assert tkinter.TkVersion >= 8.6'
 "$venv_root/bin/python" -m PyInstaller --noconfirm --clean --onedir --windowed \
     --name "$product_name" \

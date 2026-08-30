@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 import threading
 import time
+from types import SimpleNamespace
 from typing import Callable
 import unittest
+from unittest.mock import patch
 
 from anote_control_center.gui import ControlCenterWindow
 
@@ -132,6 +135,56 @@ class GuiOperationTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(window.status.value, "status.ready")  # type: ignore[attr-defined]
         self.assertEqual(window.progress.value, 100)  # type: ignore[attr-defined]
+
+    def test_checkpoint_verification_and_apply_run_off_the_tk_thread(self) -> None:
+        window, root, errors = _window()
+        main_thread = threading.get_ident()
+        verify_threads: list[int] = []
+        apply_threads: list[int] = []
+        dialog_threads: list[int] = []
+        checkpoint = SimpleNamespace(manifest=SimpleNamespace(
+            checkpoint_id="cp-1",
+            dataset_id="dataset-1",
+            parent_checkpoint_id=None,
+            sequence=1,
+        ))
+        release = object()
+
+        class _Checkpoints:
+            @staticmethod
+            def verify(_path: Path) -> object:
+                verify_threads.append(threading.get_ident())
+                return checkpoint
+
+        class _Lifecycle:
+            checkpoints = _Checkpoints()
+
+            @staticmethod
+            def apply_checkpoint(_checkpoint: object, _release: object, *, confirm_full_replace: bool) -> object:
+                apply_threads.append(threading.get_ident())
+                return confirm_full_replace
+
+        window.application = SimpleNamespace(
+            paths=SimpleNamespace(checkpoints=Path("/tmp/checkpoints")),
+            lifecycle=_Lifecycle(),
+            checkpoint_apply_intent=lambda *_args: SimpleNamespace(requires_full_replace_confirmation=False),
+        )
+        window._installed_release = lambda: release  # type: ignore[method-assign]
+
+        with (
+            patch("anote_control_center.gui.filedialog.askopenfilename", return_value="/tmp/input.anote-checkpoint"),
+            patch("anote_control_center.gui.messagebox.showwarning", side_effect=lambda *_args, **_kwargs: dialog_threads.append(threading.get_ident())),
+            patch("anote_control_center.gui.messagebox.showinfo"),
+        ):
+            window._apply_checkpoint()
+            root.drain_until(lambda: len(apply_threads) == 1 and not window.busy)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(verify_threads), 1)
+        self.assertNotEqual(verify_threads[0], main_thread)
+        self.assertEqual(len(apply_threads), 1)
+        self.assertNotEqual(apply_threads[0], main_thread)
+        self.assertEqual(dialog_threads, [main_thread])
 
 
 if __name__ == "__main__":

@@ -8,9 +8,10 @@ import subprocess
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from typing import Callable
+from typing import Callable, cast
 
-from .application import ControlCenterApplication, INTERACTION_IDS
+from .application import CheckpointApplyIntent, ControlCenterApplication, INTERACTION_IDS
+from .checkpoints import VerifiedCheckpoint
 from .errors import ControlCenterError
 from .i18n import Translator
 from .lifecycle import ERASE_CONFIRMATION
@@ -360,33 +361,48 @@ class ControlCenterWindow:
             filetypes=((self.translator.text("file.checkpoint"), "*.anote-checkpoint"),),
         )
         if selected:
-            checkpoint = self.application.lifecycle.checkpoints.verify(Path(selected))
-            release = self._installed_release()
-            intent = self.application.checkpoint_apply_intent(
-                checkpoint.manifest.checkpoint_id,
-                checkpoint.manifest.dataset_id,
-                checkpoint.manifest.parent_checkpoint_id,
-                checkpoint.manifest.sequence,
-            )
-            confirm = False
-            if intent.requires_full_replace_confirmation:
-                confirm = messagebox.askyesno(
-                    self.translator.text("checkpoint.replace_title"),
-                    self.translator.text("checkpoint.replace_body"),
+            def verify() -> tuple[VerifiedCheckpoint, VerifiedRelease, CheckpointApplyIntent]:
+                checkpoint = self.application.lifecycle.checkpoints.verify(Path(selected))
+                release = self._installed_release()
+                intent = self.application.checkpoint_apply_intent(
+                    checkpoint.manifest.checkpoint_id,
+                    checkpoint.manifest.dataset_id,
+                    checkpoint.manifest.parent_checkpoint_id,
+                    checkpoint.manifest.sequence,
+                )
+                return checkpoint, release, intent
+
+            def confirm_and_apply(result: object) -> None:
+                checkpoint, release, intent = cast(
+                    tuple[VerifiedCheckpoint, VerifiedRelease, CheckpointApplyIntent],
+                    result,
+                )
+                confirm = False
+                if intent.requires_full_replace_confirmation:
+                    confirm = messagebox.askyesno(
+                        self.translator.text("checkpoint.replace_title"),
+                        self.translator.text("checkpoint.replace_body"),
+                        parent=self.root,
+                    )
+                    if not confirm:
+                        return
+                messagebox.showwarning(
+                    self.translator.text("dialog.success_title"),
+                    self.translator.text("checkpoint.media_warning"),
                     parent=self.root,
                 )
-                if not confirm:
-                    return
-            messagebox.showwarning(
-                self.translator.text("dialog.success_title"),
-                self.translator.text("checkpoint.media_warning"),
-                parent=self.root,
+                self.root.after(0, lambda: self._run_async(lambda: self.application.lifecycle.apply_checkpoint(
+                    checkpoint,
+                    release,
+                    confirm_full_replace=confirm,
+                )))
+
+            self._run_async(
+                verify,
+                on_success=confirm_and_apply,
+                success_message=False,
+                cancellable=False,
             )
-            self._run_async(lambda: self.application.lifecycle.apply_checkpoint(
-                checkpoint,
-                release,
-                confirm_full_replace=confirm,
-            ))
 
     def _safe_uninstall(self) -> None:
         release: VerifiedRelease | None

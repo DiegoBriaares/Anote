@@ -241,6 +241,15 @@ The migration is replay-safe: a legacy stored name plus owner/purpose/parent
 has one metadata identity, and rewritten API URLs are not processed again.
 Filesystem bytes are not deleted during schema migration.
 
+Normal owner deletion is different from migration preservation. Event/account
+deletion and avatar/background replacement collect only their attachment
+metadata, perform the database mutation and move newly unreferenced managed
+files into a same-volume retirement directory inside one immediate transaction.
+Move failure rolls the database back and restores prior moves. After commit the
+retired bytes are deleted; restart reconciliation restores a retired file when
+its metadata still exists and deletes it when the committed metadata is absent.
+It never scans or deletes unrelated untracked legacy upload files.
+
 ## 7. Headers, logs and configuration
 
 The gateway and API provide `X-Content-Type-Options: nosniff`, a restrictive
@@ -263,6 +272,7 @@ before applying a bounded head/tail limit.
 | SEC-ORG-001 | Cross-site form/fetch mutates cookie-authenticated state | mismatched/missing origin integration refusal and no-mutation assertion |
 | SEC-AUTHZ-001 | A friend or guessed ID reads/writes private notes/files | policy/service integration matrix |
 | SEC-UP-001 | Active content or traversal becomes same-origin executable content | upload/serve contract tests with malicious samples |
+| SEC-UP-002 | Owner deletion/replacement leaks unreachable managed bytes or deletes bytes while metadata rolls back | event/account/avatar/background retirement, rename-failure rollback and restart reconciliation tests |
 | DATA-MIG-001 | Legacy schema/preferences/files are lost, fabricated or partially advanced | migration on representative database/data copy, active-plus-recovery conservation, deterministic replay and injected failure |
 | DATA-TXN-001 | The nth row failure leaves earlier rows committed | service failure injection and post-state assertion |
 | DATA-REV-001 | Two equal/older client versions both commit | atomic predicate integration test |

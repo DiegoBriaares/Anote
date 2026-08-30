@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +17,7 @@ const { createRuntime } = require('./app');
 const { createSessionService, tokenHash } = require('./auth');
 const { closeDatabase, createDatabase } = require('./db');
 const { createEventService } = require('./events');
+const { createCalendarMetadataService } = require('./calendar-metadata');
 const { ApiError } = require('./http');
 const { SCHEMA_VERSION, migrateDatabase } = require('./migrations');
 const { createProgramService, startProgramScheduler } = require('./programs');
@@ -1102,6 +1103,120 @@ describe('attachment authorization', () => {
             ) VALUES (?, ?, 'avatar', NULL, ?, ?, 'image/png', 1, ?, ?)
         `).run('unsafe-path', 'u1', 'unsafe.png', '../outside.png', '0'.repeat(64), new Date().toISOString());
         expect(() => service.read('u1', 'unsafe-path')).toThrowError(ApiError);
+        closeDatabase(db);
+    });
+
+    it('retires files with their event, account, avatar, and background owners', () => {
+        const { db, directory } = createTestDatabase();
+        insertUser(db, 'u1');
+        insertUser(db, 'u2');
+        insertUser(db, 'u3');
+        const uploadDir = path.join(directory, 'uploads');
+        fs.mkdirSync(uploadDir);
+        const attachments = createAttachmentService({ db, uploadDir });
+        const retireAttachments = attachments.retireAfterMutation;
+        const events = createEventService({ db, retireAttachments });
+        const users = createUserService({ db, retireAttachments });
+        const metadata = createCalendarMetadataService({ db, retireAttachments });
+        const admin = createAdminService({ db, eventService: events, userService: users, retireAttachments });
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const createImage = (ownerId: string, purpose: 'avatar' | 'background' | 'note', eventId?: string) => {
+            const attachment = attachments.create({
+                ownerId,
+                purpose,
+                eventId,
+                file: { buffer: png, mimetype: 'image/png', originalname: `${purpose}.png`, size: png.length }
+            });
+            const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attachment.id);
+            return { ...attachment, filePath: path.join(uploadDir, row.stored_name) };
+        };
+
+        events.createMany('u1', [{ id: 'retired-event', title: 'Retire', date: '2026-01-01' }]);
+        const note = createImage('u1', 'note', 'retired-event');
+        events.remove('u1', 'retired-event', 1);
+        expect(fs.existsSync(note.filePath)).toBe(false);
+        expect(db.prepare('SELECT 1 FROM attachments WHERE id = ?').get(note.id)).toBeUndefined();
+
+        const firstAvatar = createImage('u1', 'avatar');
+        const nextAvatar = createImage('u1', 'avatar');
+        users.updateProfile('u1', { avatar_url: firstAvatar.url });
+        users.updateProfile('u1', { avatar_url: nextAvatar.url });
+        expect(fs.existsSync(firstAvatar.filePath)).toBe(false);
+        expect(fs.existsSync(nextAvatar.filePath)).toBe(true);
+
+        const firstBackground = createImage('u1', 'background');
+        const nextBackground = createImage('u1', 'background');
+        metadata.saveDayBackground('u1', '2026-01-02', firstBackground.url);
+        metadata.saveDayBackground('u1', '2026-01-02', nextBackground.url);
+        expect(fs.existsSync(firstBackground.filePath)).toBe(false);
+        expect(fs.existsSync(nextBackground.filePath)).toBe(true);
+
+        const accountAvatar = createImage('u3', 'avatar');
+        users.updateProfile('u3', { avatar_url: accountAvatar.url });
+        expect(admin.removeUsers('u1', ['u3'])).toBe(1);
+        expect(fs.existsSync(accountAvatar.filePath)).toBe(false);
+        expect(db.prepare('SELECT 1 FROM users WHERE id = ?').get('u3')).toBeUndefined();
+        closeDatabase(db);
+    });
+
+    it('rolls the database back when an attachment cannot enter retirement', () => {
+        const { db, directory } = createTestDatabase();
+        insertUser(db, 'u1');
+        const uploadDir = path.join(directory, 'uploads');
+        fs.mkdirSync(uploadDir);
+        const attachments = createAttachmentService({ db, uploadDir });
+        const events = createEventService({ db, retireAttachments: attachments.retireAfterMutation });
+        events.createMany('u1', [{ id: 'protected-event', title: 'Protected', date: '2026-01-01' }]);
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const note = attachments.create({
+            ownerId: 'u1', purpose: 'note', eventId: 'protected-event',
+            file: { buffer: png, mimetype: 'image/png', originalname: 'note.png', size: png.length }
+        });
+        const row = db.prepare('SELECT stored_name FROM attachments WHERE id = ?').get(note.id);
+        const filePath = path.join(uploadDir, row.stored_name);
+        const originalRename = fs.renameSync;
+        const rename = vi.spyOn(fs, 'renameSync').mockImplementation((source, destination) => {
+            if (String(destination).includes('.anote-attachment-retirement')) {
+                throw new Error('injected retirement failure');
+            }
+            return originalRename(source, destination);
+        });
+
+        expect(() => events.remove('u1', 'protected-event', 1)).toThrow('injected retirement failure');
+        rename.mockRestore();
+
+        expect(db.prepare('SELECT 1 FROM events WHERE id = ?').get('protected-event')).toBeDefined();
+        expect(db.prepare('SELECT 1 FROM attachments WHERE id = ?').get(note.id)).toBeDefined();
+        expect(fs.existsSync(filePath)).toBe(true);
+        closeDatabase(db);
+    });
+
+    it('reconciles attachment retirements according to committed metadata', () => {
+        const { db, directory } = createTestDatabase();
+        insertUser(db, 'u1');
+        const uploadDir = path.join(directory, 'uploads');
+        fs.mkdirSync(uploadDir);
+        const attachments = createAttachmentService({ db, uploadDir });
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const avatar = attachments.create({
+            ownerId: 'u1', purpose: 'avatar',
+            file: { buffer: png, mimetype: 'image/png', originalname: 'avatar.png', size: png.length }
+        });
+        const row = db.prepare('SELECT stored_name FROM attachments WHERE id = ?').get(avatar.id);
+        const filePath = path.join(uploadDir, row.stored_name);
+        const retirementDir = path.join(directory, '.anote-attachment-retirement');
+        const retired = path.join(retirementDir, row.stored_name);
+
+        fs.renameSync(filePath, retired);
+        createAttachmentService({ db, uploadDir });
+        expect(fs.existsSync(filePath)).toBe(true);
+        expect(fs.existsSync(retired)).toBe(false);
+
+        fs.renameSync(filePath, retired);
+        db.prepare('DELETE FROM attachments WHERE id = ?').run(avatar.id);
+        createAttachmentService({ db, uploadDir });
+        expect(fs.existsSync(filePath)).toBe(false);
+        expect(fs.existsSync(retired)).toBe(false);
         closeDatabase(db);
     });
 });

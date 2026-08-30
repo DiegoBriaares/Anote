@@ -167,7 +167,11 @@ const addOriginDate = (resources, sourceDate) => {
     return JSON.stringify(parsed);
 };
 
-const createEventService = ({ db, now = () => new Date() }) => {
+const createEventService = ({
+    db,
+    now = () => new Date(),
+    retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate()
+}) => {
     const list = (ownerId, postponed = false) => {
         const table = postponed ? 'postponed_events' : 'events';
         const unlock = postponed ? '' : ', unlock_date';
@@ -259,9 +263,16 @@ const createEventService = ({ db, now = () => new Date() }) => {
     const remove = (ownerId, id, revision, postponed = false) => {
         assertRevision(revision);
         const table = postponed ? 'postponed_events' : 'events';
-        const result = db.prepare(`DELETE FROM ${table} WHERE id = ? AND user_id = ? AND revision = ?`)
-            .run(id, ownerId, revision);
-        if (result.changes !== 1) throw new ApiError(409, 'event_conflict_or_missing');
+        return retireAttachments(
+            () => postponed ? [] : db.prepare(`
+                SELECT * FROM attachments WHERE event_id = ? AND owner_user_id = ?
+            `).all(id, ownerId),
+            () => {
+                const result = db.prepare(`DELETE FROM ${table} WHERE id = ? AND user_id = ? AND revision = ?`)
+                    .run(id, ownerId, revision);
+                if (result.changes !== 1) throw new ApiError(409, 'event_conflict_or_missing');
+            },
+        );
     };
 
     const moveIncomplete = (ownerId, sourceDateKeys, targetDateKey) => {

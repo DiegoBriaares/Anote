@@ -40,7 +40,10 @@ const profileDto = (row) => ({
     isAdmin: row.is_admin === 1
 });
 
-const createUserService = ({ db }) => {
+const createUserService = ({
+    db,
+    retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate()
+}) => {
     const usernameIsUnavailable = (username, exceptId = null) => db.prepare(`
         SELECT 1 FROM users
         WHERE username = ? COLLATE NOCASE AND (? IS NULL OR id != ?)
@@ -153,13 +156,32 @@ const createUserService = ({ db }) => {
         }
         delete preferences.programs;
         if (JSON.stringify(preferences).length > 100_000) throw new ApiError(400, 'preferences_too_large');
+        const nextAvatarUrl = avatarUrl === undefined ? current.avatar_url : avatarUrl;
+        const currentPreferences = parsePreferences(current.preferences);
+        const candidateIds = [];
+        if (current.avatar_url?.startsWith('/attachments/') && current.avatar_url !== nextAvatarUrl) {
+            candidateIds.push(current.avatar_url.slice('/attachments/'.length));
+        }
+        if (typeof currentPreferences.backgroundUrl === 'string'
+            && currentPreferences.backgroundUrl.startsWith('/attachments/')
+            && currentPreferences.backgroundUrl !== preferences.backgroundUrl) {
+            candidateIds.push(currentPreferences.backgroundUrl.slice('/attachments/'.length));
+        }
         try {
-            if (usernameIsUnavailable(username, id)) throw new ApiError(409, 'username_unavailable');
-            db.prepare('UPDATE users SET username = ?, avatar_url = ?, preferences = ? WHERE id = ?').run(
-                username,
-                avatarUrl === undefined ? current.avatar_url : avatarUrl,
-                JSON.stringify(preferences),
-                id
+            retireAttachments(
+                () => candidateIds.length === 0 ? [] : db.prepare(`
+                    SELECT * FROM attachments
+                    WHERE owner_user_id = ? AND id IN (${candidateIds.map(() => '?').join(',')})
+                `).all(id, ...candidateIds),
+                () => {
+                    if (usernameIsUnavailable(username, id)) throw new ApiError(409, 'username_unavailable');
+                    db.prepare('UPDATE users SET username = ?, avatar_url = ?, preferences = ? WHERE id = ?').run(
+                        username,
+                        nextAvatarUrl,
+                        JSON.stringify(preferences),
+                        id
+                    );
+                },
             );
         } catch (error) {
             if (error.code?.startsWith('SQLITE_CONSTRAINT')) throw new ApiError(409, 'username_unavailable');

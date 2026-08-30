@@ -71,6 +71,12 @@ phase that can mutate runtime/data; afterward the action becomes complete or
 recover, never abandon. Closing the window during a mutation cannot erase the
 journal.
 
+Package and checkpoint hashing, extraction, database integrity checks and
+inventory validation are worker work even though they are read-only. The
+worker returns a verified typed result; only the Tk thread derives the visible
+confirmation and then dispatches the protected mutation. No package size or
+removable-media latency may block the Tk event loop.
+
 ## 3. Lifecycle state model
 
 Durable states are:
@@ -105,6 +111,12 @@ captured target set is gone and the registry is removed last.
 | CC-SAFE-001 | any proven stopped installed state | uninstall and keep data | shared lock and exact owned set | retained state | journaled retry; business data not removed |
 | CC-ERASE-001 | proven stopped installed/retained | erase | exact `ERASE ANOTE`, safe immutable target set | not installed | wrong/unsafe/ambiguous target: no deletion |
 | CC-REC-001 | interrupted operation | recover | journal and captured identities | last proven stable result | `recovery_required`; start and unrelated mutation blocked |
+
+Every setup path validates the supplied IANA timezone against bundled pinned
+timezone data before taking the operation lock, writing runtime files, loading
+images or committing registry state. A merely nonempty timezone is not valid.
+The packaged self-check resolves a non-UTC IANA zone so Windows builds cannot
+silently omit the bundled timezone database.
 
 The operation lock removes concurrent lifecycle writers. A finite transition
 checker must enumerate all state/intent pairs and assert that unlisted pairs

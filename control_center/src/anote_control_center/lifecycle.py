@@ -10,6 +10,7 @@ import socket
 import tempfile
 import time
 from typing import Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .checkpoints import Backup, CheckpointService, SnapshotService, VerifiedCheckpoint, checkpoint_staging_path
 from .docker_runtime import DockerRuntime, LegacyContainer, LegacyRuntime, RuntimeConfiguration
@@ -39,13 +40,21 @@ def select_available_port(preferred: int = PREFERRED_PORT, last: int = LAST_FALL
     raise ContractError("No Anote port is available in the managed range.", code="port_unavailable")
 
 
+def validate_timezone(timezone: str) -> None:
+    if not timezone or len(timezone) > 128 or any(character in timezone for character in "\r\n\x00"):
+        raise ContractError("Time zone is invalid.", code="invalid_setup_input")
+    try:
+        ZoneInfo(timezone)
+    except (ValueError, ZoneInfoNotFoundError) as error:
+        raise ContractError("Time zone is invalid.", code="invalid_setup_input") from error
+
+
 def _validate_setup_input(username: str, password: str, timezone: str) -> None:
     if not username.strip() or len(username.strip()) > 80 or any(character in username for character in "\r\n\x00"):
         raise ContractError("Administrator username is invalid.", code="invalid_setup_input")
     if len(password) < 12 or len(password) > 1024 or "\x00" in password:
         raise ContractError("Administrator password must contain at least 12 characters.", code="invalid_setup_input")
-    if not timezone or len(timezone) > 128 or any(character in timezone for character in "\r\n\x00"):
-        raise ContractError("Time zone is invalid.", code="invalid_setup_input")
+    validate_timezone(timezone)
 
 
 class LifecycleService:
@@ -136,8 +145,7 @@ class LifecycleService:
         bind_address: str = "0.0.0.0",
     ) -> Installation:
         release.assert_current()
-        if not timezone or any(character in timezone for character in "\r\n\x00"):
-            raise ContractError("Time zone is invalid.", code="invalid_setup_input")
+        validate_timezone(timezone)
         with OperationLock(self.paths):
             self._require_no_installation_or_journal()
             if self.paths.database.exists() or (self.paths.data.exists() and any(self.paths.data.iterdir())):
@@ -172,6 +180,7 @@ class LifecycleService:
         project_name: str = "anote-production",
     ) -> Installation:
         release.assert_current()
+        validate_timezone(timezone)
         with OperationLock(self.paths):
             self._require_no_installation_or_journal()
             legacy = self.runtime.inspect_legacy(project_name)

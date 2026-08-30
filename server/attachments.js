@@ -74,18 +74,127 @@ const fileHasExpectedSignature = (filePath, mimeType) => {
 };
 
 const createAttachmentService = ({ db, uploadDir, now = () => new Date() }) => {
+    const lstatIfExists = (filePath) => {
+        try {
+            return fs.lstatSync(filePath);
+        } catch (error) {
+            if (error.code === 'ENOENT') return null;
+            throw error;
+        }
+    };
     const stagingDir = path.join(path.dirname(uploadDir), '.anote-upload-staging');
-    fs.mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
-    try {
-        fs.chmodSync(stagingDir, 0o700);
-    } catch (error) {
-        if (process.platform !== 'win32') throw error;
+    const retirementDir = path.join(path.dirname(uploadDir), '.anote-attachment-retirement');
+    for (const directory of [stagingDir, retirementDir]) {
+        fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+        try {
+            fs.chmodSync(directory, 0o700);
+        } catch (error) {
+            if (process.platform !== 'win32') throw error;
+        }
     }
     for (const entry of fs.readdirSync(stagingDir)) {
         const candidate = path.join(stagingDir, entry);
         const stats = fs.lstatSync(candidate);
         if (stats.isFile() || stats.isSymbolicLink()) fs.rmSync(candidate, { force: true });
     }
+
+    const reconcileRetirements = () => {
+        for (const storedName of fs.readdirSync(retirementDir)) {
+            if (!isSafeStoredName(storedName)) {
+                throw new Error('Attachment retirement storage contains an unsafe entry');
+            }
+            const retired = path.join(retirementDir, storedName);
+            const stats = fs.lstatSync(retired);
+            if (!stats.isFile() || stats.isSymbolicLink()) {
+                throw new Error('Attachment retirement storage contains a non-file entry');
+            }
+            const stillOwned = db.prepare('SELECT 1 FROM attachments WHERE stored_name = ? LIMIT 1').get(storedName);
+            if (!stillOwned) {
+                fs.rmSync(retired, { force: true });
+                continue;
+            }
+            const target = path.join(uploadDir, storedName);
+            if (lstatIfExists(target)) {
+                throw new Error('Attachment retirement recovery found an ambiguous file');
+            }
+            fs.renameSync(retired, target);
+        }
+    };
+    reconcileRetirements();
+
+    const isReferenced = (attachment) => {
+        const url = `/attachments/${attachment.id}`;
+        if (attachment.purpose === 'note') {
+            return db.prepare('SELECT 1 FROM events WHERE id = ? AND user_id = ?')
+                .get(attachment.event_id, attachment.owner_user_id) !== undefined;
+        }
+        if (attachment.purpose === 'avatar') {
+            return db.prepare('SELECT 1 FROM users WHERE id = ? AND avatar_url = ?')
+                .get(attachment.owner_user_id, url) !== undefined;
+        }
+        return db.prepare('SELECT 1 FROM day_backgrounds_v2 WHERE user_id = ? AND image_url = ? LIMIT 1')
+            .get(attachment.owner_user_id, url) !== undefined
+            || db.prepare(`
+                SELECT 1 FROM users
+                WHERE id = ?
+                  AND json_extract(
+                      CASE WHEN json_valid(preferences) THEN preferences ELSE '{}' END,
+                      '$.backgroundUrl'
+                  ) = ?
+            `).get(attachment.owner_user_id, url) !== undefined;
+    };
+
+    const retireAfterMutation = (collectCandidates, mutate) => {
+        const moved = [];
+        const write = db.transaction(() => {
+            const candidates = collectCandidates();
+            if (!Array.isArray(candidates)) throw new Error('Attachment retirement candidates are invalid');
+            const unique = [...new Map(candidates.map((attachment) => [attachment.id, attachment])).values()];
+            if (unique.some((attachment) => !isSafeStoredName(attachment.stored_name))) {
+                throw new ApiError(409, 'attachment_integrity_error');
+            }
+            const result = mutate();
+            for (const attachment of unique) {
+                const current = db.prepare('SELECT * FROM attachments WHERE id = ?').get(attachment.id);
+                if (current && isReferenced(current)) continue;
+                if (current) db.prepare('DELETE FROM attachments WHERE id = ?').run(current.id);
+            }
+            const storedNames = [...new Set(unique.map((attachment) => attachment.stored_name))];
+            for (const storedName of storedNames) {
+                if (db.prepare('SELECT 1 FROM attachments WHERE stored_name = ? LIMIT 1').get(storedName)) continue;
+                const source = path.join(uploadDir, storedName);
+                const stats = lstatIfExists(source);
+                if (!stats) continue;
+                if (!stats.isFile() || stats.isSymbolicLink()) {
+                    throw new ApiError(409, 'attachment_integrity_error');
+                }
+                const retired = path.join(retirementDir, storedName);
+                if (lstatIfExists(retired)) throw new ApiError(409, 'attachment_integrity_error');
+                fs.renameSync(source, retired);
+                moved.push({ source, retired });
+            }
+            return result;
+        });
+        let result;
+        try {
+            result = write.immediate();
+        } catch (error) {
+            for (const item of moved.reverse()) {
+                if (lstatIfExists(item.retired) && !lstatIfExists(item.source)) {
+                    fs.renameSync(item.retired, item.source);
+                }
+            }
+            throw error;
+        }
+        for (const item of moved) {
+            try {
+                fs.rmSync(item.retired, { force: true });
+            } catch {
+                // A committed retirement is completed by reconcileRetirements on restart.
+            }
+        }
+        return result;
+    };
 
     const stage = (file) => {
         if (typeof file?.path === 'string') {
@@ -270,7 +379,7 @@ const createAttachmentService = ({ db, uploadDir, now = () => new Date() }) => {
         }).immediate();
     };
 
-    return { create, migrateLegacyReferences, read, stagingDir };
+    return { create, migrateLegacyReferences, read, reconcileRetirements, retireAfterMutation, stagingDir };
 };
 
 const createAttachmentsRouter = ({ service, authenticate }) => {

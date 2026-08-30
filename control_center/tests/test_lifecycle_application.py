@@ -520,6 +520,19 @@ class LifecycleApplicationTests(unittest.TestCase):
                     timezone="UTC", public_port=15172,
                 )
 
+    def test_standby_rejects_invalid_iana_timezone_before_any_effect(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release = write_release(root / "release")
+            _paths, registry, runtime, service = self.environment(root)
+
+            with self.assertRaisesRegex(ContractError, "Time zone"):
+                service.prepare_standby(release, timezone="America/NotReal")
+
+            self.assertEqual([], runtime.events)
+            self.assertIsNone(registry.load())
+            self.assertIsNone(service.journal.load())
+
     def test_english_spanish_catalogs_have_exact_structural_parity(self) -> None:
         validate_catalogs()
         self.assertEqual(set(CATALOGS["en"]), set(CATALOGS["es"]))

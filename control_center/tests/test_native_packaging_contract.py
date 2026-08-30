@@ -49,6 +49,21 @@ class NativePackagingContractTests(unittest.TestCase):
         self.assertIn('bundle_build_version" != "$package_version"', build_script)
         self.assertIn('codesign --force --deep --sign - "$app_path"', build_script)
 
+    def test_native_packages_bundle_pinned_cross_platform_timezone_data(self) -> None:
+        project = tomllib.loads((CONTROL_CENTER_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        windows = (CONTROL_CENTER_ROOT / "release" / "build-windows.ps1").read_text(encoding="utf-8")
+        macos = (CONTROL_CENTER_ROOT / "release" / "build-macos.sh").read_text(encoding="utf-8")
+        verification = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "anote-control-center-verify.yml"
+        ).read_text(encoding="utf-8")
+        cli = (CONTROL_CENTER_ROOT / "src" / "anote_control_center" / "cli.py").read_text(encoding="utf-8")
+
+        self.assertIn("tzdata==2026.3", project["project"]["dependencies"])
+        for source in (windows, macos, verification):
+            self.assertIn("tzdata", source)
+            self.assertIn("2026.3", source)
+        self.assertIn('validate_timezone("America/Mexico_City")', cli)
+
     def test_tag_publication_is_exact_bounded_and_does_not_publish_validation_runs(self) -> None:
         application = (REPOSITORY_ROOT / ".github" / "workflows" / "anote-application-release.yml").read_text(
             encoding="utf-8"

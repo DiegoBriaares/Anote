@@ -10,6 +10,7 @@ from . import __version__
 from .application import load_application
 from .errors import ControlCenterError
 from .i18n import validate_catalogs
+from .lifecycle import validate_timezone
 from .platform_paths import PlatformIdentity
 
 
@@ -40,6 +41,7 @@ def main(arguments: list[str] | None = None) -> int:
         platform_identity = _platform(options.host_platform)
         if options.self_check:
             validate_catalogs()
+            validate_timezone("America/Mexico_City")
             compose = resources.files("anote_control_center").joinpath("runtime/compose.yaml")
             content = compose.read_text(encoding="utf-8")
             if "cap_drop:" not in content or "ANOTE_RELEASE_ID" not in content:

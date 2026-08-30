@@ -14,7 +14,12 @@ const validateIdList = (value, { maximum = 1000 } = {}) => {
     return ids;
 };
 
-const createAdminService = ({ db, eventService, userService }) => {
+const createAdminService = ({
+    db,
+    eventService,
+    userService,
+    retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate()
+}) => {
     const listUsers = () => db.prepare(`
         SELECT u.id, u.username, u.is_admin AS isAdmin, u.avatar_url AS avatarUrl,
                COUNT(e.id) AS eventCount
@@ -34,27 +39,30 @@ const createAdminService = ({ db, eventService, userService }) => {
         const ids = validateIdList(rawIds);
         if (ids.includes(actorId)) throw new ApiError(400, 'cannot_delete_current_user');
         const placeholders = ids.map(() => '?').join(',');
-        return db.transaction(() => {
-            const existing = db.prepare(`SELECT id, is_admin FROM users WHERE id IN (${placeholders})`).all(...ids);
-            if (existing.length !== ids.length) throw new ApiError(404, 'user_not_found');
-            const adminsRemoved = existing.filter((row) => row.is_admin === 1).length;
-            const adminsTotal = db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count;
-            if (adminsRemoved > 0 && adminsRemoved >= adminsTotal) throw new ApiError(409, 'last_admin_required');
+        return retireAttachments(
+            () => db.prepare(`SELECT * FROM attachments WHERE owner_user_id IN (${placeholders})`).all(...ids),
+            () => {
+                const existing = db.prepare(`SELECT id, is_admin FROM users WHERE id IN (${placeholders})`).all(...ids);
+                if (existing.length !== ids.length) throw new ApiError(404, 'user_not_found');
+                const adminsRemoved = existing.filter((row) => row.is_admin === 1).length;
+                const adminsTotal = db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count;
+                if (adminsRemoved > 0 && adminsRemoved >= adminsTotal) throw new ApiError(409, 'last_admin_required');
 
-            db.prepare(`DELETE FROM event_notes WHERE owner_user_id IN (${placeholders})`).run(...ids);
-            for (const table of [
-                'attachments', 'program_runs', 'programs', 'sessions', 'subroles', 'roles',
-                'daily_facts_v2', 'day_backgrounds_v2', 'postponed_events', 'events', 'user_role_events'
-            ]) {
-                const ownerColumn = ['attachments', 'programs', 'program_runs'].includes(table)
-                    ? 'owner_user_id'
-                    : 'user_id';
-                db.prepare(`DELETE FROM ${table} WHERE ${ownerColumn} IN (${placeholders})`).run(...ids);
-            }
-            db.prepare(`DELETE FROM friendships WHERE user_a IN (${placeholders}) OR user_b IN (${placeholders})`)
-                .run(...ids, ...ids);
-            return db.prepare(`DELETE FROM users WHERE id IN (${placeholders})`).run(...ids).changes;
-        }).immediate();
+                db.prepare(`DELETE FROM event_notes WHERE owner_user_id IN (${placeholders})`).run(...ids);
+                for (const table of [
+                    'attachments', 'program_runs', 'programs', 'sessions', 'subroles', 'roles',
+                    'daily_facts_v2', 'day_backgrounds_v2', 'postponed_events', 'events', 'user_role_events'
+                ]) {
+                    const ownerColumn = ['attachments', 'programs', 'program_runs'].includes(table)
+                        ? 'owner_user_id'
+                        : 'user_id';
+                    db.prepare(`DELETE FROM ${table} WHERE ${ownerColumn} IN (${placeholders})`).run(...ids);
+                }
+                db.prepare(`DELETE FROM friendships WHERE user_a IN (${placeholders}) OR user_b IN (${placeholders})`)
+                    .run(...ids, ...ids);
+                return db.prepare(`DELETE FROM users WHERE id IN (${placeholders})`).run(...ids).changes;
+            },
+        );
     };
 
     const listEvents = (userId) => {
@@ -105,18 +113,23 @@ const createAdminService = ({ db, eventService, userService }) => {
         }
         const select = db.prepare('SELECT user_id FROM events WHERE id = ?');
         const remove = db.prepare('DELETE FROM events WHERE id = ? AND user_id = ? AND revision = ?');
-        return db.transaction(() => {
-            let deleted = 0;
-            for (const event of events) {
-                const existing = select.get(event.id);
-                if (!existing
-                    || remove.run(event.id, existing.user_id, event.revision).changes !== 1) {
-                    throw new ApiError(409, 'event_conflict_or_missing');
+        const eventPlaceholders = events.map(() => '?').join(',');
+        return retireAttachments(
+            () => db.prepare(`SELECT * FROM attachments WHERE event_id IN (${eventPlaceholders})`)
+                .all(...events.map((event) => event.id)),
+            () => {
+                let deleted = 0;
+                for (const event of events) {
+                    const existing = select.get(event.id);
+                    if (!existing
+                        || remove.run(event.id, existing.user_id, event.revision).changes !== 1) {
+                        throw new ApiError(409, 'event_conflict_or_missing');
+                    }
+                    deleted += 1;
                 }
-                deleted += 1;
-            }
-            return deleted;
-        }).immediate();
+                return deleted;
+            },
+        );
     };
 
     const removeEvent = (id, revision) => {

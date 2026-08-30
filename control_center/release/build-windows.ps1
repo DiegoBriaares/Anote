@@ -7,6 +7,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $controlCenterRoot = Join-Path $repositoryRoot "control_center"
 $productName = "Anote Control Center"
 $pyInstallerVersion = "6.21.0"
+$tzdataVersion = "2026.3"
 $buildRoot = Join-Path $controlCenterRoot "build\windows-packaging"
 $venvPath = Join-Path $buildRoot ".venv"
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
@@ -38,7 +39,7 @@ if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
     & $bootstrapPython -m venv $venvPath
     if ($LASTEXITCODE -ne 0) { throw "Could not create the packaging environment." }
 }
-& $venvPython -m pip install --disable-pip-version-check "pyinstaller==$pyInstallerVersion"
+& $venvPython -m pip install --disable-pip-version-check "pyinstaller==$pyInstallerVersion" "tzdata==$tzdataVersion"
 if ($LASTEXITCODE -ne 0) { throw "Could not install pinned PyInstaller." }
 & $venvPython -c 'import tkinter; assert tkinter.TkVersion >= 8.6'
 if ($LASTEXITCODE -ne 0) { throw "Python does not provide Tk 8.6." }
