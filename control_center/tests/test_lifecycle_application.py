@@ -14,7 +14,7 @@ from anote_control_center.errors import ContractError, RuntimeCommandError
 from anote_control_center.i18n import CATALOGS, validate_catalogs
 from anote_control_center.lifecycle import ERASE_CONFIRMATION, LifecycleService
 from anote_control_center.platform_paths import ManagedPaths
-from anote_control_center.storage import InstallationRegistry, OperationRecord
+from anote_control_center.storage import InstallationRegistry, OperationRecord, atomic_file_copy
 
 from helpers import MAC, write_release
 
@@ -227,6 +227,73 @@ class LifecycleApplicationTests(unittest.TestCase):
             self.assertEqual(replace(installed, role="standby"), registry.load())
             self.assertIsNone(service.journal.load())
             del release
+
+    def test_standby_backup_copy_failure_never_overwrites_live_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _release, paths, registry, runtime, service = self.fresh(root)
+            service.create_checkpoint(root / "baseline.anote-checkpoint")
+            installed = registry.load()
+            assert installed is not None
+            standby = replace(installed, role="standby")
+            registry.save(standby)
+            replacement = write_release(root / "replacement", version="1.1.0", commit="b" * 40)
+            compose_before = paths.compose.read_bytes()
+            environment_before = paths.environment.read_bytes()
+            events_before = list(runtime.events)
+
+            def fail_second_copy(source: Path, destination: Path, **kwargs: object) -> None:
+                if destination.name == "production.env":
+                    destination.write_bytes(b"partial backup")
+                    raise OSError("injected backup capacity failure")
+                atomic_file_copy(source, destination, **kwargs)  # type: ignore[arg-type]
+
+            with patch("anote_control_center.lifecycle.atomic_file_copy", side_effect=fail_second_copy):
+                with self.assertRaisesRegex(OSError, "capacity"):
+                    service.update(replacement)
+
+            self.assertEqual(compose_before, paths.compose.read_bytes())
+            self.assertEqual(environment_before, paths.environment.read_bytes())
+            self.assertEqual(standby, registry.load())
+            self.assertEqual(events_before, runtime.events)
+            self.assertIsNone(service.journal.load())
+
+    def test_standby_recovery_rejects_escaping_or_incomplete_work_authority(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _release, paths, registry, _runtime, service = self.fresh(root)
+            installation = registry.load()
+            assert installation is not None
+            victim = paths.root / "must-remain"
+            victim.mkdir()
+            marker = victim / "marker"
+            marker.write_text("owned elsewhere", encoding="utf-8")
+            service.journal.save(OperationRecord(
+                "standby-path-test", "stage_standby_update", "preflight",
+                installation.installation_id, 100, {"work_dir": "../../must-remain"},
+            ))
+
+            with self.assertRaisesRegex(ContractError, "identity"):
+                service.recover_interrupted()
+            self.assertEqual("owned elsewhere", marker.read_text(encoding="utf-8"))
+            self.assertIsNotNone(service.journal.load())
+
+            service.journal.clear()
+            work_name = "standby-update.0123456789abcdef"
+            work = paths.release_work / work_name
+            work.mkdir(parents=True)
+            (work / "compose.yaml").write_bytes(b"partial backup")
+            live_before = (paths.compose.read_bytes(), paths.environment.read_bytes())
+            service.journal.save(OperationRecord(
+                "standby-receipt-test", "stage_standby_update", "runtime_backup_ready",
+                installation.installation_id, 100, {"work_dir": work_name},
+            ))
+
+            with self.assertRaises(ContractError):
+                service.recover_interrupted()
+            self.assertEqual(live_before, (paths.compose.read_bytes(), paths.environment.read_bytes()))
+            self.assertTrue(work.exists())
+            self.assertIsNotNone(service.journal.load())
 
     def test_checkpoint_apply_rebinds_selected_release_under_operation_lock(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

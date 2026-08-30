@@ -27,13 +27,31 @@ const createAdminService = ({
         GROUP BY u.id ORDER BY u.username COLLATE NOCASE
     `).all().map((row) => ({ ...row, isAdmin: row.isAdmin === 1 }));
 
-    const createUser = (input) => userService.create({
-        username: input?.username,
-        password: input?.password,
-        isAdmin: input?.isAdmin === true
-    });
+    const requireCurrentAdmin = (actorId) => {
+        if (!db.prepare('SELECT 1 FROM users WHERE id = ? AND is_admin = 1').get(actorId)) {
+            throw new ApiError(403, 'admin_required');
+        }
+    };
 
-    const updateUser = (id, input) => userService.update(id, input || {});
+    const createUser = async (actorId, input) => {
+        const prepared = await userService.prepareCreate({
+            username: input?.username,
+            password: input?.password,
+            isAdmin: input?.isAdmin === true
+        });
+        return db.transaction(() => {
+            requireCurrentAdmin(actorId);
+            return userService.insertPrepared(prepared);
+        }).immediate();
+    };
+
+    const updateUser = async (actorId, id, input) => {
+        const prepared = await userService.prepareUpdate(input || {});
+        return db.transaction(() => {
+            requireCurrentAdmin(actorId);
+            return userService.applyPreparedUpdate(id, prepared);
+        }).immediate();
+    };
 
     const removeUsers = (actorId, rawIds) => {
         const ids = validateIdList(rawIds);
@@ -184,14 +202,14 @@ const createAdminRouter = ({ service, authenticate, requireAdmin }) => {
     router.get('/admin/users', (_req, res) => res.json({ message: 'success', data: service.listUsers() }));
     router.post('/admin/users', async (req, res, next) => {
         try {
-            res.status(201).json({ message: 'success', data: await service.createUser(req.body) });
+            res.status(201).json({ message: 'success', data: await service.createUser(req.user.id, req.body) });
         } catch (error) {
             next(error);
         }
     });
     router.put('/admin/users/:id', async (req, res, next) => {
         try {
-            await service.updateUser(req.params.id, req.body);
+            await service.updateUser(req.user.id, req.params.id, req.body);
             res.json({ message: 'success' });
         } catch (error) {
             next(error);

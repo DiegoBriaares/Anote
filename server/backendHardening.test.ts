@@ -460,6 +460,38 @@ describe('event transaction and revision ownership', () => {
         closeDatabase(db);
     });
 
+    it('reauthorizes administrator user writes after password hashing', async () => {
+        const { db } = createTestDatabase();
+        insertUser(db, 'actor');
+        insertUser(db, 'target', 'target', 'original-hash');
+        db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run('actor');
+        const pendingHashes: Array<(hash: string) => void> = [];
+        const users = createUserService({
+            db,
+            hashPassword: () => new Promise<string>((resolve) => pendingHashes.push(resolve))
+        });
+        const admin = createAdminService({ db, eventService: createEventService({ db }), userService: users });
+
+        const creation = admin.createUser('actor', {
+            username: 'new-user',
+            password: 'correct horse battery staple'
+        });
+        db.prepare('UPDATE users SET is_admin = 0 WHERE id = ?').run('actor');
+        pendingHashes.shift()?.('$2b$12$prepared-create');
+        await expect(creation).rejects.toMatchObject({ code: 'ADMIN_REQUIRED' });
+        expect(db.prepare('SELECT 1 FROM users WHERE username = ?').get('new-user')).toBeUndefined();
+
+        db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run('actor');
+        const update = admin.updateUser('actor', 'target', {
+            password: 'another secure password'
+        });
+        db.prepare('UPDATE users SET is_admin = 0 WHERE id = ?').run('actor');
+        pendingHashes.shift()?.('$2b$12$prepared-update');
+        await expect(update).rejects.toMatchObject({ code: 'ADMIN_REQUIRED' });
+        expect(db.prepare('SELECT password FROM users WHERE id = ?').get('target').password).toBe('original-hash');
+        closeDatabase(db);
+    });
+
     it('rolls back an nth admin selection and keeps stale and foreign failures non-enumerating', () => {
         const { db } = createTestDatabase();
         insertUser(db, 'u1');
@@ -738,6 +770,33 @@ describe('credentials and opaque sessions', () => {
 });
 
 describe('session and request boundary', () => {
+    it('does not issue a session from a password hash superseded during comparison', async () => {
+        const { db } = createTestDatabase();
+        insertUser(db, 'u1', 'owner', 'compared-hash');
+        let finishComparison!: (matched: boolean) => void;
+        const comparison = new Promise<boolean>((resolve) => {
+            finishComparison = resolve;
+        });
+        const auth = createAuth({
+            db,
+            config: {
+                sessionCookieName: 'anote_session',
+                sessionIdleSeconds: 3600,
+                sessionAbsoluteSeconds: 7200,
+                secureCookies: false
+            },
+            comparePassword: () => comparison
+        });
+
+        const login = auth.login({ username: 'owner', password: 'old password', userAgent: 'test' });
+        db.prepare('UPDATE users SET password = ? WHERE id = ?').run('replacement-hash', 'u1');
+        finishComparison(true);
+
+        await expect(login).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+        expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(0);
+        closeDatabase(db);
+    });
+
     it('uses an opaque HttpOnly cookie, enforces origin, and exposes release identity', async () => {
         const directory = temporaryDirectory();
         const db = createDatabase(path.join(directory, 'api.db'));

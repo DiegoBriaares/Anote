@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import tempfile
 import time
 from typing import Any, Callable
@@ -64,6 +65,38 @@ def ensure_private_directory(path: Path, *, managed_paths: ManagedPaths | None =
         raise ContractError("A managed directory must not be a symbolic link.", code="unsafe_path")
     if os.name != "nt":
         path.chmod(0o700)
+
+
+def atomic_file_copy(
+    source: Path,
+    destination: Path,
+    *,
+    mode: int = 0o600,
+    managed_paths: ManagedPaths | None = None,
+) -> None:
+    """Publish a complete regular-file copy or leave the destination unchanged."""
+    if source.is_symlink() or not source.is_file():
+        raise ContractError("Copy source is not a regular file.", code="unsafe_path")
+    if managed_paths is not None:
+        managed_paths.assert_safe(destination)
+    ensure_private_directory(destination.parent, managed_paths=managed_paths)
+    temporary: Path | None = None
+    try:
+        descriptor, name = tempfile.mkstemp(
+            prefix=f"{destination.name}.", suffix=".tmp", dir=destination.parent,
+        )
+        temporary = Path(name)
+        with os.fdopen(descriptor, "wb") as output_stream, source.open("rb") as input_stream:
+            shutil.copyfileobj(input_stream, output_stream, length=1024 * 1024)
+            output_stream.flush()
+            os.fsync(output_stream.fileno())
+        if os.name != "nt":
+            temporary.chmod(mode)
+        os.replace(temporary, destination)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def atomic_json_write(

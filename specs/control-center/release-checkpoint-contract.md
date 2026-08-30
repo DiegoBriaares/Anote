@@ -204,6 +204,13 @@ recovery before any unrelated mutation. Registry commit happens only after the
 operation postcondition is observed. Ambiguity becomes `recovery_required`,
 never an inferred healthy state.
 
+Standby update work identities are exact `standby-update.<16 lowercase hex>`
+basenames under `releases/work`; a journal value is never joined or deleted
+until that codec proves it is a canonical child. Its runtime rollback authority
+exists only after both files are atomically published and one receipt binds
+their exact names, sizes and SHA-256 digests. Missing, partial or mismatched
+receipts preserve the live runtime and journal for diagnosis.
+
 ## 6. Backups
 
 An update/adoption safety backup is installation-local and not a transfer

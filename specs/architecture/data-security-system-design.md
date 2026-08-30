@@ -118,6 +118,7 @@ rolls back the complete command.
 | DATA-TXN-002 | Role/subrole, friendship, user deletion and note replacement preserve all foreign-key and ownership rules in one transaction. | corresponding domain service transaction |
 | DATA-TXN-003 | Registration hashes before the write lock, then rechecks policy and commits the user plus initial session in one immediate transaction. | authentication and user/session services |
 | DATA-TXN-004 | Saving a day's fact and background is one calendar-metadata command; both changed fields and any retired background attachment commit or roll back together. | calendar metadata and attachment retirement services |
+| DATA-TXN-005 | Password comparison/hashing outside the write lock is provisional evidence: login rechecks the exact current hash before session insertion, and administrator user commands recheck the actor's current database-backed privilege in the final immediate transaction. | authentication and administration services |
 | DATA-REV-001 | Mutable resource creation starts at revision 1. Every successful mutation increments exactly once. | resource service and schema constraint |
 | DATA-REV-002 | Revision acceptance is one SQL predicate over resource ID, owner ID and expected revision. A preliminary read cannot authorize a later write. | resource service |
 | DATA-REV-003 | Missing expected revision is invalid for an existing revisioned mutation; there is no legacy force-overwrite route. | route validator |
@@ -204,7 +205,8 @@ attachment identifiers not meant for the projection, and internal ownership
 metadata.
 
 Administrator routes validate that the caller remains an administrator from
-the database on each request. Static administration assets may be public, but
+the database on each request and again inside a mutating transaction after any
+awaited password hash. Static administration assets may be public, but
 every data command is authenticated and authorized; serving a static screen is
 not a privilege grant.
 
@@ -274,6 +276,7 @@ before applying a bounded head/tail limit.
 | ID | Counterexample to exclude | Smallest durable evidence |
 | --- | --- | --- |
 | SEC-SES-001 | Stolen browser-readable storage yields a reusable token | client static/storage scan plus login cookie integration |
+| SEC-SES-002 | A password change or administrator demotion completed during bcrypt work still permits the stale request to create a session or mutate users | deterministic bcrypt-gate races with no-session/no-mutation post-state assertions |
 | SEC-ORG-001 | Cross-site form/fetch mutates cookie-authenticated state | mismatched/missing origin integration refusal and no-mutation assertion |
 | SEC-AUTHZ-001 | A friend or guessed ID reads/writes private notes/files | policy/service integration matrix |
 | SEC-UP-001 | Active content or traversal becomes same-origin executable content | upload/serve contract tests with malicious samples |

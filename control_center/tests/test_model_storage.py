@@ -80,6 +80,27 @@ class ModelStorageTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "undeclared"):
                 journal.save(OperationRecord("op", "setup", "start", None, 100, {"arbitrary": "value"}))
 
+    def test_atomic_file_copy_preserves_the_published_destination_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = ManagedPaths(root / "state")
+            source = root / "source"
+            source.write_bytes(b"complete replacement")
+            destination = paths.runtime / "compose.yaml"
+            destination.parent.mkdir(parents=True)
+            destination.write_bytes(b"published original")
+
+            def fail_after_partial_copy(input_stream: object, output_stream: object, **_kwargs: object) -> None:
+                output_stream.write(input_stream.read(4))  # type: ignore[attr-defined]
+                raise OSError("injected copy failure")
+
+            with patch("anote_control_center.storage.shutil.copyfileobj", side_effect=fail_after_partial_copy):
+                with self.assertRaisesRegex(OSError, "copy failure"):
+                    storage.atomic_file_copy(source, destination, managed_paths=paths)
+
+            self.assertEqual(b"published original", destination.read_bytes())
+            self.assertEqual([destination], list(destination.parent.iterdir()))
+
     def test_single_operation_lock_refuses_a_live_second_writer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = ManagedPaths(Path(directory) / "state")

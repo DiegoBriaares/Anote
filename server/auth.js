@@ -117,7 +117,7 @@ const createSessionService = ({ db, config, now = () => new Date() }) => {
     return { create, read, remove };
 };
 
-const createAuth = ({ db, config, now, userService }) => {
+const createAuth = ({ db, config, now, userService, comparePassword = bcrypt.compare }) => {
     const sessions = createSessionService({ db, config, now });
     const users = userService || createUserService({ db });
     const cookieToken = (req) => parseCookies(req.get('cookie'))[config.sessionCookieName];
@@ -195,6 +195,25 @@ const createAuth = ({ db, config, now, userService }) => {
             return { token, user };
         }).immediate();
     };
+    const login = async ({ username, password, userAgent }) => {
+        const candidates = db.prepare(`
+            SELECT id, username, password, is_admin, avatar_url, preferences
+            FROM users WHERE username = ? COLLATE NOCASE
+            ORDER BY username
+        `).all(username);
+        const candidate = candidates.find((item) => item.username === username)
+            || (candidates.length === 1 ? candidates[0] : null);
+        const matched = await comparePassword(password, candidate?.password || DUMMY_PASSWORD_HASH);
+        if (!candidate || !matched) throw new ApiError(401, 'invalid_credentials');
+        return db.transaction(() => {
+            const current = db.prepare(`
+                SELECT id, username, password, is_admin, avatar_url, preferences
+                FROM users WHERE id = ? AND password = ?
+            `).get(candidate.id, candidate.password);
+            if (!current) throw new ApiError(401, 'invalid_credentials');
+            return { token: sessions.create(current.id, userAgent), user: userDto(current) };
+        }).immediate();
+    };
     const router = express.Router();
 
     router.post('/register', async (req, res, next) => {
@@ -230,22 +249,27 @@ const createAuth = ({ db, config, now, userService }) => {
                 recordLoginFailure(req);
                 throw new ApiError(401, 'invalid_credentials');
             }
-            const candidates = db.prepare(`
-                SELECT id, username, password, is_admin, avatar_url, preferences
-                FROM users WHERE username = ? COLLATE NOCASE
-                ORDER BY username
-            `).all(username);
-            const row = candidates.find((candidate) => candidate.username === username)
-                || (candidates.length === 1 ? candidates[0] : null);
-            const matched = await bcrypt.compare(password, row?.password || DUMMY_PASSWORD_HASH);
-            if (!row || !matched) {
-                recordLoginFailure(req);
-                throw new ApiError(401, 'invalid_credentials');
+            let authenticated;
+            try {
+                authenticated = await login({
+                    username,
+                    password,
+                    userAgent: req.get('user-agent')
+                });
+            } catch (error) {
+                if (error instanceof ApiError && error.code === 'INVALID_CREDENTIALS') {
+                    recordLoginFailure(req);
+                }
+                throw error;
             }
             clearLoginFailures(req);
-            const token = sessions.create(row.id, req.get('user-agent'));
-            res.set('Set-Cookie', sessionCookie(config, req, token, config.sessionAbsoluteSeconds));
-            res.json({ message: 'success', user: userDto(row) });
+            res.set('Set-Cookie', sessionCookie(
+                config,
+                req,
+                authenticated.token,
+                config.sessionAbsoluteSeconds
+            ));
+            res.json({ message: 'success', user: authenticated.user });
         } catch (error) {
             next(error);
         }
@@ -259,7 +283,7 @@ const createAuth = ({ db, config, now, userService }) => {
         res.json({ message: 'success' });
     });
 
-    return { authenticate, expireSessionCookie, register, requireAdmin, router, sessions };
+    return { authenticate, expireSessionCookie, login, register, requireAdmin, router, sessions };
 };
 
 module.exports = { PASSWORD_MIN_LENGTH, createAuth, createSessionService, parseCookies, tokenHash, userDto };

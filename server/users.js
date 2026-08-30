@@ -42,7 +42,8 @@ const profileDto = (row) => ({
 
 const createUserService = ({
     db,
-    retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate()
+    retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate(),
+    hashPassword = (password) => bcrypt.hash(password, 12)
 }) => {
     const usernameIsUnavailable = (username, exceptId = null) => db.prepare(`
         SELECT 1 FROM users
@@ -65,7 +66,7 @@ const createUserService = ({
     const prepareCreate = async ({ username: rawUsername, password: rawPassword, isAdmin = false }) => {
         const username = validateUsername(rawUsername);
         const password = validatePassword(rawPassword);
-        const hash = await bcrypt.hash(password, 12);
+        const hash = await hashPassword(password);
         return { id: crypto.randomUUID(), username, passwordHash: hash, isAdmin: isAdmin === true };
     };
 
@@ -98,7 +99,7 @@ const createUserService = ({
     const bootstrapAdministrator = async ({ username: rawUsername, password: rawPassword }) => {
         const username = validateUsername(rawUsername);
         const password = validatePassword(rawPassword);
-        const hash = await bcrypt.hash(password, 12);
+        const hash = await hashPassword(password);
         const createFirst = db.transaction(() => {
             if (db.prepare('SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1').get()) {
                 throw new ApiError(409, 'administrator_already_exists');
@@ -118,34 +119,48 @@ const createUserService = ({
         return createFirst.immediate();
     };
 
-    const update = async (id, changes) => {
+    const prepareUpdate = async (changes = {}) => {
         const requestedUsername = changes.username === undefined ? undefined : validateUsername(changes.username);
         const requestedPasswordHash = changes.password === undefined
             ? undefined
-            : await bcrypt.hash(validatePassword(changes.password), 12);
+            : await hashPassword(validatePassword(changes.password));
+        return {
+            requestedUsername,
+            requestedPasswordHash,
+            passwordChanged: changes.password !== undefined,
+            requestedAdmin: changes.isAdmin
+        };
+    };
+
+    const applyPreparedUpdate = (id, prepared) => {
+        if (!db.inTransaction) throw new Error('Prepared user updates require a transaction owner.');
         try {
-            const write = db.transaction(() => {
-                const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-                if (!existing) throw new ApiError(404, 'user_not_found');
-                const username = requestedUsername ?? existing.username;
-                const passwordHash = requestedPasswordHash ?? existing.password;
-                const nextAdmin = changes.isAdmin === undefined ? existing.is_admin === 1 : changes.isAdmin === true;
-                if (existing.is_admin === 1 && !nextAdmin
-                    && db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count <= 1) {
-                    throw new ApiError(409, 'last_admin_required');
-                }
-                if (usernameIsUnavailable(username, id)) throw new ApiError(409, 'username_unavailable');
-                db.prepare('UPDATE users SET username = ?, password = ?, is_admin = ? WHERE id = ?')
-                    .run(username, passwordHash, nextAdmin ? 1 : 0, id);
-                if (changes.password !== undefined || (existing.is_admin === 1 && !nextAdmin)) {
-                    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-                }
-            });
-            write.immediate();
+            const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+            if (!existing) throw new ApiError(404, 'user_not_found');
+            const username = prepared.requestedUsername ?? existing.username;
+            const passwordHash = prepared.requestedPasswordHash ?? existing.password;
+            const nextAdmin = prepared.requestedAdmin === undefined
+                ? existing.is_admin === 1
+                : prepared.requestedAdmin === true;
+            if (existing.is_admin === 1 && !nextAdmin
+                && db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count <= 1) {
+                throw new ApiError(409, 'last_admin_required');
+            }
+            if (usernameIsUnavailable(username, id)) throw new ApiError(409, 'username_unavailable');
+            db.prepare('UPDATE users SET username = ?, password = ?, is_admin = ? WHERE id = ?')
+                .run(username, passwordHash, nextAdmin ? 1 : 0, id);
+            if (prepared.passwordChanged || (existing.is_admin === 1 && !nextAdmin)) {
+                db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+            }
         } catch (error) {
             if (error.code?.startsWith('SQLITE_CONSTRAINT')) throw new ApiError(409, 'username_unavailable');
             throw error;
         }
+    };
+
+    const update = async (id, changes) => {
+        const prepared = await prepareUpdate(changes);
+        db.transaction(() => applyPreparedUpdate(id, prepared)).immediate();
     };
 
     const updateProfile = (id, changes = {}) => {
@@ -208,10 +223,12 @@ const createUserService = ({
 
     return {
         bootstrapAdministrator,
+        applyPreparedUpdate,
         create,
         directory,
         insertPrepared,
         prepareCreate,
+        prepareUpdate,
         profile,
         update,
         updateProfile

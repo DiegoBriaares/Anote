@@ -207,7 +207,12 @@ never left running implicitly.
 
 Standby release change stages runtime only, leaves old data unmigrated, clears
 ready lineage and returns `awaiting_checkpoint` for a checkpoint made by the
-updated source.
+updated source. Its exact generated work-directory basename is journaled before
+creation. The old Compose/environment pair is atomically copied, bound by one
+durable size/digest receipt, and receipt-verified before image loading or live
+runtime replacement. Recovery restores only that exact complete pair; a
+pre-receipt interruption removes only its exact work directory and never treats
+partial files as rollback authority.
 
 ## 6. Orchestra
 

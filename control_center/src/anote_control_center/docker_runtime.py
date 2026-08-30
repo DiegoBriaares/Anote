@@ -18,7 +18,7 @@ from .errors import ContractError, RuntimeCommandError
 from .model import Installation
 from .platform_paths import ManagedPaths, PlatformIdentity
 from .releases import ReleaseManifest, RuntimeImage, VerifiedRelease
-from .storage import ensure_private_directory
+from .storage import atomic_file_copy, ensure_private_directory
 
 
 @dataclass(frozen=True)
@@ -268,8 +268,7 @@ class DockerRuntime:
         mode: int,
         managed_paths: ManagedPaths | None = None,
     ) -> None:
-        with source.open("rb") as stream:
-            DockerRuntime._atomic_bytes(stream.read(), destination, mode=mode, managed_paths=managed_paths)
+        atomic_file_copy(source, destination, mode=mode, managed_paths=managed_paths)
 
     @staticmethod
     def _atomic_bytes(

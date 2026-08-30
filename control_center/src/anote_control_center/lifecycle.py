@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import socket
@@ -25,13 +26,33 @@ from .docker_runtime import DockerRuntime, LegacyContainer, LegacyRuntime, Runti
 from .errors import ContractError, RuntimeStillActiveError
 from .model import Installation
 from .platform_paths import ManagedPaths, PlatformIdentity
-from .releases import ReleaseChange, VerifiedRelease, classify_release_change
-from .storage import InstallationRegistry, OperationJournal, OperationLock, OperationRecord, ensure_private_directory
+from .releases import ReleaseChange, VerifiedRelease, classify_release_change, file_sha256
+from .storage import (
+    InstallationRegistry,
+    OperationJournal,
+    OperationLock,
+    OperationRecord,
+    atomic_file_copy,
+    atomic_json_write,
+    ensure_private_directory,
+    strict_json_read,
+)
 
 
 ERASE_CONFIRMATION = "ERASE ANOTE"
 PREFERRED_PORT = 15173
 LAST_FALLBACK_PORT = 15193
+STANDBY_UPDATE_WORK_PATTERN = re.compile(r"standby-update\.[0-9a-f]{16}")
+STANDBY_RUNTIME_FILES = ("compose.yaml", "production.env")
+
+
+def standby_update_work_path(paths: ManagedPaths, name: str) -> Path:
+    if not isinstance(name, str) or STANDBY_UPDATE_WORK_PATTERN.fullmatch(name) is None:
+        raise ContractError("Standby update recovery identity is invalid.", code="recovery_failed")
+    candidate = paths.assert_safe(paths.release_work / name)
+    if candidate.parent != paths.release_work:
+        raise ContractError("Standby update recovery identity escaped its work root.", code="recovery_failed")
+    return candidate
 
 
 def select_available_port(preferred: int = PREFERRED_PORT, last: int = LAST_FALLBACK_PORT) -> int:
@@ -414,11 +435,16 @@ class LifecycleService:
         })
         self.journal.save(record)
         ensure_private_directory(self.paths.release_work, managed_paths=self.paths)
-        temporary = self.paths.release_work / work_name
+        temporary = standby_update_work_path(self.paths, work_name)
         temporary.mkdir()
+        backup_ready = False
+        image_load_started = False
         try:
-            for source in (self.paths.compose, self.paths.environment):
-                shutil.copyfile(source, temporary / source.name)
+            self._create_standby_runtime_backup(temporary)
+            record = replace(record, phase="runtime_backup_ready")
+            self.journal.save(record)
+            backup_ready = True
+            image_load_started = True
             loaded = self.runtime.load_release_images(release)
             self.runtime.write_runtime(release, configuration)
             staged = replace(
@@ -435,18 +461,80 @@ class LifecycleService:
                 updated_at=self.clock(),
             )
             self.registry.save(staged)
+            shutil.rmtree(temporary)
             self.journal.clear()
             return staged
         except Exception:
-            for destination in (self.paths.compose, self.paths.environment):
-                source = temporary / destination.name
-                if source.exists():
-                    shutil.copyfile(source, destination)
-            self.runtime.remove_images(release)
+            try:
+                if backup_ready:
+                    self._restore_standby_runtime_backup(temporary)
+                    self.registry.save(installation)
+                if image_load_started:
+                    self.runtime.remove_images(release)
+            except Exception:
+                self.journal.save(replace(record, phase="recovery_required"))
+                raise
             self.journal.clear()
-            raise
-        finally:
             shutil.rmtree(temporary, ignore_errors=True)
+            raise
+
+    def _create_standby_runtime_backup(self, work: Path) -> None:
+        ensure_private_directory(work, managed_paths=self.paths)
+        files: dict[str, dict[str, object]] = {}
+        for source in (self.paths.compose, self.paths.environment):
+            self.paths.assert_safe(source, allow_missing=False)
+            destination = work / source.name
+            atomic_file_copy(source, destination, managed_paths=self.paths)
+            files[source.name] = {
+                "size": destination.stat().st_size,
+                "sha256": file_sha256(destination),
+            }
+        atomic_json_write(
+            work / "receipt.json",
+            {"schema": 1, "files": files},
+            managed_paths=self.paths,
+        )
+        self._verified_standby_runtime_backup(work)
+
+    def _verified_standby_runtime_backup(self, work: Path) -> dict[str, Path]:
+        self.paths.assert_safe(work, allow_missing=False)
+        if work.is_symlink() or not work.is_dir():
+            raise ContractError("Standby update work directory is unsafe.", code="recovery_failed")
+        receipt = strict_json_read(
+            work / "receipt.json",
+            max_bytes=16 * 1024,
+            managed_paths=self.paths,
+        )
+        if set(receipt) != {"schema", "files"} or receipt["schema"] != 1:
+            raise ContractError("Standby runtime backup receipt is invalid.", code="recovery_failed")
+        entries = receipt["files"]
+        if not isinstance(entries, dict) or set(entries) != set(STANDBY_RUNTIME_FILES):
+            raise ContractError("Standby runtime backup receipt is incomplete.", code="recovery_failed")
+        verified: dict[str, Path] = {}
+        for name in STANDBY_RUNTIME_FILES:
+            source = work / name
+            entry = entries[name]
+            if (
+                not isinstance(entry, dict)
+                or set(entry) != {"size", "sha256"}
+                or isinstance(entry["size"], bool)
+                or not isinstance(entry["size"], int)
+                or entry["size"] < 0
+                or not isinstance(entry["sha256"], str)
+                or re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is None
+                or source.is_symlink()
+                or not source.is_file()
+                or source.stat().st_size != entry["size"]
+                or file_sha256(source) != entry["sha256"]
+            ):
+                raise ContractError("Standby runtime backup failed receipt verification.", code="recovery_failed")
+            verified[name] = source
+        return verified
+
+    def _restore_standby_runtime_backup(self, work: Path) -> None:
+        sources = self._verified_standby_runtime_backup(work)
+        for destination in (self.paths.compose, self.paths.environment):
+            atomic_file_copy(sources[destination.name], destination, managed_paths=self.paths)
 
     def start(self, *, confirm_exclusive: bool = False) -> Installation:
         with OperationLock(self.paths):
@@ -697,16 +785,22 @@ class LifecycleService:
             if record.kind == "stage_standby_update":
                 if installation is None:
                     raise ContractError("Standby update recovery is missing its installation registry.", code="recovery_failed")
-                work = self.paths.release_work / record.details["work_dir"]
-                for destination in (self.paths.compose, self.paths.environment):
-                    source = work / destination.name
-                    if source.is_file() and not source.is_symlink():
-                        shutil.copyfile(source, destination)
-                shutil.rmtree(work, ignore_errors=True)
-                installation = self._installation_from_record(record)
-                self.registry.save(installation)
+                work = standby_update_work_path(self.paths, record.details.get("work_dir", ""))
+                if record.phase == "preflight":
+                    if work.exists():
+                        if work.is_symlink() or not work.is_dir():
+                            raise ContractError("Standby update work directory is unsafe.", code="recovery_failed")
+                        shutil.rmtree(work)
+                    self.journal.clear()
+                    return installation
+                if record.phase not in {"runtime_backup_ready", "recovery_required"}:
+                    raise ContractError("Standby update recovery phase is invalid.", code="recovery_failed")
+                self._restore_standby_runtime_backup(work)
+                previous = self._installation_from_record(record)
+                self.registry.save(previous)
+                shutil.rmtree(work)
                 self.journal.clear()
-                return installation
+                return previous
 
             if record.kind == "start":
                 if installation is None:
