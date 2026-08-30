@@ -1,0 +1,34 @@
+# Anote Control Center Agent Instructions
+
+## Required design path
+
+Read [Control Center system design](../specs/control-center/control-center-system-design.md)
+and [release, registry and checkpoint contract](../specs/control-center/release-checkpoint-contract.md)
+completely before changing this directory.
+
+## Lifecycle rules
+
+- Keep the desktop program payload-free and bilingual. Docker Desktop is the
+  only target prerequisite; do not invoke target Git, Node, Python, SQLite CLI,
+  `rsync` or a registry.
+- GUI widgets consume a service read model and request intent. They never
+  interpret manifests, Docker output, registry JSON, readiness, compatibility,
+  lineage or destructive-path policy.
+- Lifecycle services accept only `VerifiedRelease`/`VerifiedCheckpoint` values,
+  acquire the single operation lock and journal intent before external effects.
+- Fresh setup, adoption, standby, retained reinstall, update, checkpoint,
+  start/stop, safe uninstall and erase keep their distinct guards and
+  postconditions. Every successful mutating setup/update/apply/reinstall result
+  is stopped; only Orchestra starts production explicitly.
+- Destructive paths are canonical registry-owned children. Reject symlinks,
+  reparse points, traversal, broad roots, globs and discovery-only targets.
+- Diagnostics redact secrets/content before bounding output. Worker threads
+  never update Tk widgets directly.
+
+## Evidence and safety
+
+Use deterministic fake adapters for ordering, failure injection and exhaustive
+state/refusal evidence. Archive/path codecs get malicious input tests. Native
+Docker/package/UI checks cover only risks those fakes cannot prove and must use
+an isolated owned root, unique project/port and explicit ephemeral-destruction
+acknowledgement. Never point any check at live Anote.
