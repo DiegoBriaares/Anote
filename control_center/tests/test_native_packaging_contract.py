@@ -26,6 +26,7 @@ class NativePackagingContractTests(unittest.TestCase):
 
         self.assertNotIn("py -3", build_script)
         self.assertIn("Get-Command python -CommandType Application", build_script)
+        self.assertIn("Select-Object -First 1 -ExpandProperty Source", build_script)
         self.assertIn("WaitForExit(60000)", build_script)
         self.assertIn("Stop-Process -Id $check.Id -Force", build_script)
 

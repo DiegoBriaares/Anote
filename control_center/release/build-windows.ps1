@@ -16,7 +16,8 @@ $executablePath = Join-Path $appPath "$productName.exe"
 $installerPath = Join-Path $distPath "Anote-Control-Center-Windows11-x64-Setup.exe"
 $versionFile = Join-Path $buildRoot "version-info.txt"
 $runtimeCompose = Join-Path $controlCenterRoot "src\anote_control_center\runtime\compose.yaml"
-$bootstrapPython = (Get-Command python -CommandType Application -ErrorAction Stop).Source
+$bootstrapPython = Get-Command python -CommandType Application -ErrorAction Stop |
+    Select-Object -First 1 -ExpandProperty Source
 
 $readVersion = "import pathlib,sys,tomllib; print(tomllib.loads(pathlib.Path(sys.argv[1]).read_text())['project']['version'])"
 $packageVersion = [string] (& $bootstrapPython -c $readVersion (Join-Path $controlCenterRoot "pyproject.toml"))
