@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import userEvent from '@testing-library/user-event';
 import { PostponedEventBoard } from './PostponedEventBoard';
 import { useCalendarStore } from '../../store/calendarStore';
@@ -76,13 +77,13 @@ describe('PostponedEventBoard', () => {
         mockedUseCalendarStore.mockReturnValue(buildState());
 
         const user = userEvent.setup();
-        render(<PostponedEventBoard postponedView="today" onViewChange={onViewChange} />);
+        renderWithLanguage(<PostponedEventBoard postponedView="today" onViewChange={onViewChange} />);
 
         expect(screen.getByText('Today follow-up')).toBeTruthy();
         expect(screen.queryByText('Weekly follow-up')).toBeNull();
         expect(screen.queryByText('Anytime follow-up')).toBeNull();
 
-        await user.click(screen.getByRole('button', { name: 'This week' }));
+        await user.click(screen.getByRole('button', { name: 'Week' }));
 
         expect(onViewChange).toHaveBeenCalledWith('week');
     });

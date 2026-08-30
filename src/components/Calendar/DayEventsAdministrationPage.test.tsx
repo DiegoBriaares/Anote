@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import userEvent from '@testing-library/user-event';
 import { DayEventsAdministrationPage } from './DayEventsAdministrationPage';
 import { useCalendarStore } from '../../store/calendarStore';
@@ -61,12 +62,12 @@ afterEach(() => {
 
 describe('DayEventsAdministrationPage', () => {
     it('renders the selected day and all administration sections', async () => {
-        render(<DayEventsAdministrationPage />);
+        renderWithLanguage(<DayEventsAdministrationPage />);
 
-        expect(screen.getByText('Thursday, April 23rd, 2026')).toBeTruthy();
-        expect(screen.getByText('Day Events Administration')).toBeTruthy();
-        expect(screen.getByText('Day Events Information')).toBeTruthy();
-        expect((await screen.findAllByText('Day Events Management')).length).toBeGreaterThan(0);
+        expect(screen.getByText('Thursday, April 23, 2026')).toBeTruthy();
+        expect(screen.getAllByText('Events administration').length).toBeGreaterThan(0);
+        expect(screen.getByText('Event information')).toBeTruthy();
+        expect((await screen.findAllByText('Event management')).length).toBeGreaterThan(0);
         expect(screen.getAllByText('Review launch checklist').length).toBeGreaterThan(0);
     });
 
@@ -75,7 +76,7 @@ describe('DayEventsAdministrationPage', () => {
         mockedUseCalendarStore.mockReturnValue(buildState({ navigateToCalendar }));
         const user = userEvent.setup();
 
-        render(<DayEventsAdministrationPage />);
+        renderWithLanguage(<DayEventsAdministrationPage />);
 
         await user.click(screen.getByRole('button', { name: /Back to Calendar/i }));
 

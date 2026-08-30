@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import { CalendarView } from './CalendarView';
 import { useCalendarStore } from '../../store/calendarStore';
 import { formatDate } from '../../utils/dateUtils';
@@ -35,7 +36,7 @@ describe('CalendarView range selection', () => {
     });
 
     it('keeps a dragged multi-day selection on the calendar after mouseup', () => {
-        render(<CalendarView />);
+        renderWithLanguage(<CalendarView />);
 
         const day23 = screen.getAllByText('23')[0].closest('.calendar-cell');
         const day25 = screen.getAllByText('25')[0].closest('.calendar-cell');
@@ -55,7 +56,7 @@ describe('CalendarView range selection', () => {
     });
 
     it('marks every day in a continuous drag while selecting group event days', () => {
-        render(<CalendarView />);
+        renderWithLanguage(<CalendarView />);
 
         fireEvent.click(screen.getByRole('button', { name: /select days/i }));
 
@@ -69,8 +70,8 @@ describe('CalendarView range selection', () => {
         fireEvent.mouseEnter(day25!);
         fireEvent.mouseUp(window);
 
-        expect(screen.getByText('Mark Days (3)')).toBeTruthy();
-        expect(screen.getAllByText('MARKED')).toHaveLength(3);
+        expect(screen.getByText(/Mark days \(3\)/i)).toBeTruthy();
+        expect(screen.getAllByText('SELECTED')).toHaveLength(3);
     });
 
     it('opens a read view for marked days without leaving the calendar', () => {
@@ -103,7 +104,7 @@ describe('CalendarView range selection', () => {
             }
         } as never);
 
-        render(<CalendarView />);
+        renderWithLanguage(<CalendarView />);
 
         fireEvent.click(screen.getByRole('button', { name: /select days/i }));
 
@@ -146,7 +147,7 @@ describe('CalendarView range selection', () => {
             shareEventsToFriends
         } as never);
 
-        render(<CalendarView />);
+        renderWithLanguage(<CalendarView />);
 
         fireEvent.click(screen.getByRole('button', { name: /select days/i }));
 
@@ -155,7 +156,7 @@ describe('CalendarView range selection', () => {
         fireEvent.mouseUp(window);
         fireEvent.click(screen.getByRole('button', { name: /share events/i }));
 
-        expect(screen.getByText('Select Friends')).toBeTruthy();
+        expect(screen.getByText(/Select friends/i)).toBeTruthy();
 
         fireEvent.click(screen.getByLabelText('Ada Friend'));
         fireEvent.click(screen.getAllByRole('button', { name: /share events/i }).at(-1)!);
@@ -164,7 +165,7 @@ describe('CalendarView range selection', () => {
             expect(shareEventsToFriends).toHaveBeenCalledWith(['friend-1'], ['2026-04-23']);
         });
 
-        expect(screen.queryByText('Select Friends')).toBeNull();
+        expect(screen.queryByText(/Select friends/i)).toBeNull();
         expect(screen.getByRole('button', { name: /select days/i })).toBeTruthy();
     });
 
@@ -201,7 +202,7 @@ describe('CalendarView range selection', () => {
             shareEventsToFriends
         } as never);
 
-        render(<CalendarView />);
+        renderWithLanguage(<CalendarView />);
 
         fireEvent.click(screen.getByRole('button', { name: /select days/i }));
 
@@ -211,7 +212,7 @@ describe('CalendarView range selection', () => {
         fireEvent.click(screen.getByRole('button', { name: /share events/i }));
 
         fireEvent.click(screen.getByLabelText('Ada Friend'));
-        fireEvent.click(screen.getByLabelText('Select Events'));
+        fireEvent.click(screen.getByLabelText(/Select events/i));
         await screen.findByText('Launch readout');
         fireEvent.click(screen.getByText('Launch readout').closest('label')!);
         fireEvent.click(screen.getAllByRole('button', { name: /share events/i }).at(-1)!);
@@ -222,7 +223,7 @@ describe('CalendarView range selection', () => {
     });
 
     it('cancels an in-progress marked-day operation with the X action', () => {
-        render(<CalendarView />);
+        renderWithLanguage(<CalendarView />);
 
         fireEvent.click(screen.getByRole('button', { name: /select days/i }));
 
@@ -236,10 +237,10 @@ describe('CalendarView range selection', () => {
 
         expect(screen.getByRole('region', { name: 'Events for 2026-04-23' })).toBeTruthy();
 
-        fireEvent.click(screen.getByRole('button', { name: /cancel group event operation/i }));
+        fireEvent.click(screen.getByRole('button', { name: /cancel the current operation/i }));
 
         expect(screen.queryByRole('region', { name: 'Events for 2026-04-23' })).toBeNull();
-        expect(screen.queryAllByText('MARKED')).toHaveLength(0);
+        expect(screen.queryAllByText('SELECTED')).toHaveLength(0);
         expect(screen.getByRole('button', { name: /select days/i })).toBeTruthy();
     });
 });

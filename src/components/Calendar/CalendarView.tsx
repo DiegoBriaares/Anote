@@ -12,6 +12,8 @@ import { GroupEventReader } from './GroupEventReader';
 import { GroupEventSharer } from './GroupEventSharer';
 import { buildGroupEventPublishEntries, buildQueuedGroupEvent, hasPublishableGroupDraft, type GroupEventDraft, type QueuedGroupEvent } from './groupEventUtils';
 import clsx from 'clsx';
+import { useTranslation } from '../../i18n/languageContext';
+import { interpolateText } from '../../i18n/appText';
 
 type GroupEventStep = 'idle' | 'select-days' | 'share-events' | 'sharing' | 'read-events' | 'input-events' | 'ready-to-publish' | 'publishing' | 'move-events' | 'moving-events';
 
@@ -30,6 +32,7 @@ const getDateKeysBetween = (start: Date, end: Date) => {
 };
 
 export const CalendarView: React.FC = () => {
+    const { text } = useTranslation();
     const {
         viewDate,
         setViewDate,
@@ -373,12 +376,12 @@ export const CalendarView: React.FC = () => {
                 <div className="flex items-center justify-between relative z-10 flex-wrap gap-4">
                     <div className="flex items-center gap-6">
                         <div className="p-4 border-2 border-orange-400 rounded-full bg-gradient-to-br from-orange-50 to-amber-50">
-                            <Compass className="w-8 h-8 text-orange-500" />
+                            <Compass className="w-8 h-8 text-orange-500" aria-hidden="true" />
                         </div>
                         <div>
-                            <div className="text-[10px] font-mono text-stone-500 tracking-[0.3em] mb-1">SYSTEM: CHRONOS</div>
+                            <div className="text-[10px] font-mono text-stone-500 tracking-[0.3em] mb-1">{text.calendar.system}</div>
                             <h1 className="text-3xl sm:text-4xl text-stone-800 tracking-widest font-serif">
-                                TEMPORAL <span className="text-orange-500">MATRIX</span>
+                                {text.calendar.monthView}
                             </h1>
                         </div>
                     </div>
@@ -393,23 +396,23 @@ export const CalendarView: React.FC = () => {
                                     : 'bg-white border border-stone-200 text-stone-600 hover:border-orange-300'
                                     }`}
                             >
-                                {useCalendarStore.getState().compareMode ? 'Matches' : 'Compare'}
+                                {useCalendarStore.getState().compareMode ? text.calendar.matches : text.calendar.compare}
                             </button>
                         )}
 
                         <div className="hidden md:block text-right mr-4">
-                            <div className="text-[10px] font-mono text-stone-500">COORDINATES</div>
+                            <div className="text-[10px] font-mono text-stone-500">{text.calendar.monthCoordinates}</div>
                             <div className="text-sm font-mono text-orange-600 font-medium">
                                 {viewDate.getFullYear()}.{String(viewDate.getMonth() + 1).padStart(2, '0')}
                             </div>
                         </div>
 
                         <div className="flex border-2 border-orange-300 rounded-xl overflow-hidden bg-white shadow-sm">
-                            <button onClick={handlePrev} className="p-3 hover:bg-orange-50 border-r border-orange-200 transition-colors">
-                                <ChevronLeft className="w-5 h-5 text-orange-500" />
+                            <button type="button" onClick={handlePrev} aria-label={text.common.previous} className="p-3 hover:bg-orange-50 border-r border-orange-200 transition-colors">
+                                <ChevronLeft className="w-5 h-5 text-orange-500" aria-hidden="true" />
                             </button>
-                            <button onClick={handleNext} className="p-3 hover:bg-orange-50 transition-colors">
-                                <ChevronRight className="w-5 h-5 text-orange-500" />
+                            <button type="button" onClick={handleNext} aria-label={text.common.next} className="p-3 hover:bg-orange-50 transition-colors">
+                                <ChevronRight className="w-5 h-5 text-orange-500" aria-hidden="true" />
                             </button>
                         </div>
                     </div>
@@ -423,7 +426,7 @@ export const CalendarView: React.FC = () => {
                         onClick={navigateToPostponed}
                         className="px-5 py-2.5 bg-white/80 border border-orange-200 hover:bg-orange-50 hover:border-orange-400 transition-all rounded-xl shadow-sm text-sm font-medium text-stone-600 uppercase tracking-wider"
                     >
-                        Postponed events
+                        {text.calendar.postponedEvents}
                     </button>
                 </div>
             )}
@@ -437,8 +440,8 @@ export const CalendarView: React.FC = () => {
                             disabled={(groupStep !== 'idle' && !isGroupSelecting) || (isGroupSelecting && !canMarkDays) || isGroupPublishing}
                             className={stepButtonClass(isGroupSelecting || groupStep === 'idle', groupStep !== 'idle' && !isGroupSelecting, isGroupSelecting && !canMarkDays)}
                         >
-                            {groupStep !== 'idle' && !isGroupSelecting ? <CheckCircle2 className="w-4 h-4" /> : <CalendarDays className="w-4 h-4" />}
-                            {isGroupSelecting ? `Mark Days (${markedDateKeys.length})` : 'Select Days'}
+                            {groupStep !== 'idle' && !isGroupSelecting ? <CheckCircle2 className="w-4 h-4" aria-hidden="true" /> : <CalendarDays className="w-4 h-4" aria-hidden="true" />}
+                            {isGroupSelecting ? interpolateText(text.calendar.markDays, { count: markedDateKeys.length }) : text.calendar.selectDays}
                         </button>
                         <button
                             type="button"
@@ -446,8 +449,8 @@ export const CalendarView: React.FC = () => {
                             disabled={!canReadGroupEvents}
                             className={stepButtonClass(isGroupReading, false, !canReadGroupEvents)}
                         >
-                            <BookOpenText className="w-4 h-4" />
-                            Read Events
+                            <BookOpenText className="w-4 h-4" aria-hidden="true" />
+                            {text.calendar.readEvents}
                         </button>
                         <button
                             type="button"
@@ -455,8 +458,8 @@ export const CalendarView: React.FC = () => {
                             disabled={!canOpenGroupInput}
                             className={stepButtonClass(isGroupInputActive, isGroupPublishReady || isGroupPublishing, !canOpenGroupInput)}
                         >
-                            {isGroupPublishReady || isGroupPublishing ? <CheckCircle2 className="w-4 h-4" /> : <ListChecks className="w-4 h-4" />}
-                            Input Events
+                            {isGroupPublishReady || isGroupPublishing ? <CheckCircle2 className="w-4 h-4" aria-hidden="true" /> : <ListChecks className="w-4 h-4" aria-hidden="true" />}
+                            {text.calendar.inputEvents}
                         </button>
                         <button
                             type="button"
@@ -464,8 +467,8 @@ export const CalendarView: React.FC = () => {
                             disabled={!canPublishGroupEvents || isGroupPublishing}
                             className={stepButtonClass(isGroupPublishReady || isGroupPublishing, false, !canPublishGroupEvents || isGroupPublishing)}
                         >
-                            <Send className="w-4 h-4" />
-                            {isGroupPublishing ? 'Publishing...' : `Publish Events${totalPublishableGroupEvents > 0 ? ` (${totalPublishableGroupEvents})` : ''}`}
+                            <Send className="w-4 h-4" aria-hidden="true" />
+                            {isGroupPublishing ? text.calendar.publishing : `${text.calendar.publishEvents}${totalPublishableGroupEvents > 0 ? ` (${totalPublishableGroupEvents})` : ''}`}
                         </button>
                         <button
                             type="button"
@@ -473,8 +476,8 @@ export const CalendarView: React.FC = () => {
                             disabled={!canShareGroupEvents}
                             className={stepButtonClass(isGroupSharing, false, !canShareGroupEvents)}
                         >
-                            <Share2 className="w-4 h-4" />
-                            Share Events
+                            <Share2 className="w-4 h-4" aria-hidden="true" />
+                            {text.calendar.shareEvents}
                         </button>
                         <button
                             type="button"
@@ -482,30 +485,30 @@ export const CalendarView: React.FC = () => {
                             disabled={!canMoveGroupEvents}
                             className={stepButtonClass(isGroupMoving, false, !canMoveGroupEvents)}
                         >
-                            <CalendarCheck className="w-4 h-4" />
-                            Move Events
+                            <CalendarCheck className="w-4 h-4" aria-hidden="true" />
+                            {text.calendar.moveEvents}
                         </button>
                     </div>
 
                     {groupStep !== 'idle' && (
                         <div className="flex items-center gap-3 text-[10px] font-mono text-stone-500 uppercase tracking-[0.2em] flex-wrap justify-center">
-                            <span>{markedDateKeys.length} selected day{markedDateKeys.length === 1 ? '' : 's'}</span>
-                            <span>{queuedGroupEvents.length} queued event{queuedGroupEvents.length === 1 ? '' : 's'}</span>
+                            <span>{interpolateText(markedDateKeys.length === 1 ? text.calendar.selectedDay : text.calendar.selectedDays, { count: markedDateKeys.length })}</span>
+                            <span>{interpolateText(queuedGroupEvents.length === 1 ? text.calendar.queuedEvent : text.calendar.queuedEvents, { count: queuedGroupEvents.length })}</span>
                             {selectedShareFriendIds.length > 0 && (
-                                <span>{selectedShareFriendIds.length} selected friend{selectedShareFriendIds.length === 1 ? '' : 's'}</span>
+                                <span>{interpolateText(selectedShareFriendIds.length === 1 ? text.calendar.selectedFriend : text.calendar.selectedFriends, { count: selectedShareFriendIds.length })}</span>
                             )}
                             {isGroupMoving && (
-                                <span>target {moveTargetDateKey}</span>
+                                <span>{text.calendar.target}: {moveTargetDateKey}</span>
                             )}
                             <button
                                 type="button"
                                 onClick={resetGroupPublishing}
                                 disabled={isGroupPublishing || isBusySharing}
-                                aria-label="Cancel group event operation"
-                                title="Cancel group event operation"
+                                aria-label={text.calendar.cancelOperation}
+                                title={text.calendar.cancelOperation}
                                 className="rounded-full border border-orange-100 bg-white/80 p-1.5 text-stone-400 hover:border-orange-300 hover:text-stone-700 disabled:opacity-50"
                             >
-                                <X className="h-3.5 w-3.5" />
+                                <X className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                         </div>
                     )}
@@ -523,7 +526,7 @@ export const CalendarView: React.FC = () => {
                 <>
                     {actionError && (
                         <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
-                            {actionError}
+                            {text.errors.REQUEST_FAILED}
                         </div>
                     )}
                     <GroupEventSharer
@@ -549,12 +552,12 @@ export const CalendarView: React.FC = () => {
                 <div className="mb-6 rounded-xl border border-orange-100 bg-white/85 px-4 py-4 shadow-sm">
                     {actionError && (
                         <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
-                            {actionError}
+                            {text.errors.REQUEST_FAILED}
                         </div>
                     )}
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-center">
                         <label className="flex flex-col gap-1 text-xs font-mono uppercase tracking-[0.18em] text-stone-500">
-                            Move incomplete events to
+                            {text.calendar.moveIncompleteTo.replace(' {date}', '')}
                             <input
                                 type="date"
                                 value={moveTargetDateKey}
@@ -568,7 +571,7 @@ export const CalendarView: React.FC = () => {
                             disabled={!moveTargetDateKey || isBusyMoving}
                             className="min-h-[42px] rounded-lg bg-orange-500 px-4 py-2 text-xs font-mono font-bold uppercase tracking-[0.18em] text-white shadow-lg shadow-orange-300/40 transition-all hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isBusyMoving ? 'Moving...' : `Move From ${markedDateKeys.length} Day${markedDateKeys.length === 1 ? '' : 's'}`}
+                            {isBusyMoving ? text.calendar.moving : interpolateText(markedDateKeys.length === 1 ? text.calendar.moveFromDay : text.calendar.moveFromDays, { count: markedDateKeys.length })}
                         </button>
                     </div>
                 </div>
@@ -578,7 +581,7 @@ export const CalendarView: React.FC = () => {
                 <>
                     {actionError && (
                         <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
-                            {actionError}
+                            {text.errors.REQUEST_FAILED}
                         </div>
                     )}
                     <GroupEventPublisher
@@ -611,7 +614,7 @@ export const CalendarView: React.FC = () => {
             </div>
 
             {/* Day Detail Modal */}
-            {modalDate && (
+            {modalDate && !isConfigOpen && (
                 <DayModal
                     date={modalDate}
                     events={events[formatDate(modalDate)] || []}
@@ -634,7 +637,7 @@ export const CalendarView: React.FC = () => {
             {!selection.start && (
                 <div className="mt-8 border-t border-orange-200 pt-4 text-center">
                     <span className="text-[10px] font-mono text-stone-500 tracking-widest">
-            // AWAITING INPUT VECTOR // INITIATE DRAG SEQUENCE
+                        {text.calendar.awaitingSelection}
                     </span>
                 </div>
             )}

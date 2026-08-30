@@ -2,6 +2,8 @@ import React from 'react';
 import { Clock, Link as LinkIcon, Plus, StickyNote, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import type { GroupEventDraft, QueuedGroupEvent } from './groupEventUtils';
+import { useTranslation } from '../../i18n/languageContext';
+import { interpolateText } from '../../i18n/appText';
 
 interface GroupEventPublisherProps {
     selectedDateKeys: string[];
@@ -22,6 +24,7 @@ export const GroupEventPublisher: React.FC<GroupEventPublisherProps> = ({
     onAddQueuedEvent,
     onRemoveQueuedEvent
 }) => {
+    const { text } = useTranslation();
     const updateDraft = (key: keyof GroupEventDraft, value: string) => {
         onDraftChange({ ...draft, [key]: value });
     };
@@ -30,11 +33,11 @@ export const GroupEventPublisher: React.FC<GroupEventPublisherProps> = ({
         <div className="mb-8 board-panel rounded-2xl p-4 sm:p-5">
             <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
                 <div>
-                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em]">Event Administration</div>
-                    <div className="text-lg text-stone-800 tracking-[0.16em]">Group Event Input</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em]">{text.calendar.eventAdministration}</div>
+                    <div className="text-lg text-stone-800 tracking-[0.16em]">{text.calendar.groupInput}</div>
                 </div>
                 <div className="text-[10px] font-mono text-orange-600 uppercase tracking-[0.2em]">
-                    {selectedDateKeys.length} marked day{selectedDateKeys.length === 1 ? '' : 's'}
+                    {interpolateText(selectedDateKeys.length === 1 ? text.calendar.selectedDay : text.calendar.selectedDays, { count: selectedDateKeys.length })}
                 </div>
             </div>
 
@@ -68,7 +71,7 @@ export const GroupEventPublisher: React.FC<GroupEventPublisherProps> = ({
                                 onClick={() => onRemoveQueuedEvent(event.id)}
                                 disabled={isSubmitting}
                                 className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
-                                aria-label={`Remove ${event.title}`}
+                                aria-label={interpolateText(text.calendar.removeQueuedEvent, { name: event.title })}
                             >
                                 <Trash2 className="w-4 h-4" />
                             </button>
@@ -78,18 +81,20 @@ export const GroupEventPublisher: React.FC<GroupEventPublisherProps> = ({
             )}
 
             <div className="border-t border-orange-100 pt-4">
-                <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em] mb-2">Create Event</div>
+                <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em] mb-2">{text.calendar.createEvent}</div>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                     <input
                         type="text"
+                        aria-label={text.common.title}
                         value={draft.title}
                         onChange={(e) => updateDraft('title', e.target.value)}
-                        placeholder="Title"
+                        placeholder={text.calendar.eventTitlePlaceholder}
                         disabled={isSubmitting}
                         className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400 disabled:opacity-50"
                     />
                     <input
                         type="time"
+                        aria-label={text.common.time}
                         value={draft.startTime}
                         onChange={(e) => updateDraft('startTime', e.target.value)}
                         disabled={isSubmitting}
@@ -97,26 +102,29 @@ export const GroupEventPublisher: React.FC<GroupEventPublisherProps> = ({
                     />
                     <input
                         type="number"
+                        aria-label={text.common.priority}
                         step="1"
                         value={draft.priority}
                         onChange={(e) => updateDraft('priority', e.target.value)}
-                        placeholder="Priority"
+                        placeholder={text.calendar.priorityPlaceholder}
                         disabled={isSubmitting}
                         className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400 disabled:opacity-50"
                     />
                     <input
                         type="url"
+                        aria-label={text.common.link}
                         value={draft.link}
                         onChange={(e) => updateDraft('link', e.target.value)}
-                        placeholder="Link"
+                        placeholder={text.calendar.linkPlaceholder}
                         disabled={isSubmitting}
                         className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400 disabled:opacity-50"
                     />
                     <input
                         type="text"
+                        aria-label={text.common.note}
                         value={draft.note}
                         onChange={(e) => updateDraft('note', e.target.value)}
-                        placeholder="Note"
+                        placeholder={text.calendar.notePlaceholder}
                         disabled={isSubmitting}
                         className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400 disabled:opacity-50"
                     />
@@ -132,7 +140,7 @@ export const GroupEventPublisher: React.FC<GroupEventPublisherProps> = ({
                         )}
                     >
                         <Plus className="w-4 h-4" />
-                        Add Event
+                        {text.calendar.addEvent}
                     </button>
                 </div>
             </div>

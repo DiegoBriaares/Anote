@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo } from 'react';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 import { useCalendarStore } from '../../store/calendarStore';
-import { formatFullDate, parseDateKey } from '../../utils/dateUtils';
+import { parseDateKey } from '../../utils/dateUtils';
 import { DayAdministration } from './DayAdministration';
+import { useTranslation } from '../../i18n/languageContext';
 
 export const DayEventsAdministrationPage: React.FC = () => {
+    const { language, text } = useTranslation();
     const {
         dayAdministrationDate,
         navigateToCalendar,
@@ -48,10 +50,10 @@ export const DayEventsAdministrationPage: React.FC = () => {
                         </div>
                         <div>
                             <div className="text-[10px] font-mono text-stone-500 tracking-[0.3em] mb-1 uppercase">
-                                Events Administration
+                                {text.calendar.eventsAdministration}
                             </div>
                             <h1 className="text-2xl sm:text-3xl text-stone-800 tracking-widest font-serif">
-                                {activeDate ? formatFullDate(activeDate) : 'Select a calendar day'}
+                                {activeDate ? new Intl.DateTimeFormat(language, { dateStyle: 'full' }).format(activeDate) : text.calendar.selectCalendarDay}
                             </h1>
                         </div>
                     </div>
@@ -60,8 +62,8 @@ export const DayEventsAdministrationPage: React.FC = () => {
                         onClick={navigateToCalendar}
                         className="flex items-center gap-2 px-4 py-2.5 bg-white/80 border border-orange-200 hover:bg-orange-50 hover:border-orange-400 transition-all rounded-xl shadow-sm text-sm font-medium text-stone-600 uppercase tracking-wider"
                     >
-                        <ArrowLeft className="w-4 h-4 text-orange-500" />
-                        Back to Calendar
+                        <ArrowLeft className="w-4 h-4 text-orange-500" aria-hidden="true" />
+                        {text.common.backToCalendar}
                     </button>
                 </div>
             </div>
@@ -70,7 +72,7 @@ export const DayEventsAdministrationPage: React.FC = () => {
                 <DayAdministration activeDate={activeDate} />
             ) : (
                 <div className="board-panel p-6 rounded-2xl text-sm font-mono text-stone-500">
-                    Open a day from the calendar to administer its events.
+                    {text.calendar.openDayHelp}
                 </div>
             )}
         </div>

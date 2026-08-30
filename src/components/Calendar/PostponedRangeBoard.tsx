@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { interpolateText } from '../../i18n/appText';
 import { CalendarRange, CheckCircle2, CircleX } from 'lucide-react';
 import clsx from 'clsx';
 import {
@@ -10,6 +10,7 @@ import {
     normalizePostponedEventDomain,
     type PostponedEventDomain
 } from '../../utils/postponedDomains';
+import { useTranslation } from '../../i18n/languageContext';
 
 interface PostponedRangeBoardProps {
     postponedView?: PostponedEventDomain;
@@ -17,7 +18,8 @@ interface PostponedRangeBoardProps {
 
 export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postponedView }) => {
     const { postponedEvents, viewMode, addEventsBulk, addPostponedEventsBulk, deletePostponedEvent } = useCalendarStore();
-    const statusText = getAppText().eventStatus;
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
     const [sortOrderByView, setSortOrderByView] = React.useState<Record<PostponedEventDomain, 'time' | 'priority'>>({
         today: 'time',
         week: 'time',
@@ -75,25 +77,11 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
         });
     }, [postponedEvents, sortOrder, activeView]);
 
-    const allSelected = sourceEvents.length > 0 && selectedIds.length === sourceEvents.length;
-    const canTransfer = !isReadOnly && selectedIds.length > 0 && !!targetDate;
-    const canPostponeTransfer = !isReadOnly && selectedIds.length > 0;
-
-    React.useEffect(() => {
-        setTargetPostponedViewByView((prev) => ({
-            ...prev,
-            [activeView]: prev[activeView] || getDefaultTargetPostponedEventDomain(activeView)
-        }));
-    }, [activeView]);
-
-    React.useEffect(() => {
-        if (selectedIds.length === 0) return;
-        const validIds = new Set(sourceEvents.map((event) => event.id));
-        setSelectedIdsByView((prev) => ({
-            ...prev,
-            [activeView]: prev[activeView].filter((id) => validIds.has(id))
-        }));
-    }, [sourceEvents, selectedIds.length, activeView]);
+    const validSourceIds = useMemo(() => new Set(sourceEvents.map((event) => event.id)), [sourceEvents]);
+    const effectiveSelectedIds = selectedIds.filter((id) => validSourceIds.has(id));
+    const allSelected = sourceEvents.length > 0 && effectiveSelectedIds.length === sourceEvents.length;
+    const canTransfer = !isReadOnly && effectiveSelectedIds.length > 0 && !!targetDate;
+    const canPostponeTransfer = !isReadOnly && effectiveSelectedIds.length > 0;
 
     const toggleSelection = (id: string) => {
         setSelectedIdsByView((prev) => ({
@@ -114,7 +102,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
 
     const handleTransferEvents = async () => {
         if (!canTransfer) return;
-        const selectedEvents = sourceEvents.filter((event) => selectedIds.includes(event.id));
+        const selectedEvents = sourceEvents.filter((event) => effectiveSelectedIds.includes(event.id));
         if (selectedEvents.length === 0) return;
         const payload = selectedEvents.map((event) => {
             const chain: string[] = [];
@@ -151,7 +139,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
 
     const handlePostponeTransfer = async () => {
         if (!canPostponeTransfer) return;
-        const selectedEvents = sourceEvents.filter((event) => selectedIds.includes(event.id));
+        const selectedEvents = sourceEvents.filter((event) => effectiveSelectedIds.includes(event.id));
         if (selectedEvents.length === 0) return;
         const payload = selectedEvents.map((event) => ({
             title: event.title,
@@ -178,12 +166,12 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
         <div className="w-full board-panel p-5 mt-6 rounded-2xl">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <div className="flex items-center gap-2">
-                    <CalendarRange className="w-4 h-4 text-orange-500" />
-                    <div className="text-sm font-medium text-stone-800 tracking-[0.15em] uppercase">Events Management</div>
+                    <CalendarRange className="w-4 h-4 text-orange-500" aria-hidden="true" />
+                    <div className="text-sm font-medium text-stone-800 tracking-[0.15em] uppercase">{text.calendar.eventsManagement}</div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                        <label htmlFor="postponed-order" className="tracking-[0.2em]">Order</label>
+                        <label htmlFor="postponed-order" className="tracking-[0.2em]">{text.common.order}</label>
                         <select
                             id="postponed-order"
                             value={sortOrder}
@@ -193,12 +181,12 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                             }))}
                             className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white"
                         >
-                            <option value="time">Hour</option>
-                            <option value="priority">Priority</option>
+                            <option value="time">{text.common.hour}</option>
+                            <option value="priority">{text.common.priority}</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                        <label htmlFor="postponed-transfer" className="tracking-[0.2em]">Action</label>
+                        <label htmlFor="postponed-transfer" className="tracking-[0.2em]">{text.calendar.action}</label>
                         <select
                             id="postponed-transfer"
                             value={transferMode}
@@ -208,20 +196,20 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                             }))}
                             className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white"
                         >
-                            <option value="copy">Copy</option>
-                            <option value="move">Move</option>
+                            <option value="copy">{text.common.copy}</option>
+                            <option value="move">{text.common.move}</option>
                         </select>
                     </div>
                 </div>
             </div>
             <div className="mb-5 border border-orange-200 bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">Events Management</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">{text.calendar.eventsManagement}</div>
                 </div>
                 <div className="mt-3 flex flex-col gap-2">
                     {sourceEvents.length === 0 ? (
                         <div className="text-xs text-stone-400 font-mono">
-                            No postponed events to manage.
+                            {text.calendar.noEventsForDay}
                         </div>
                     ) : (
                         sourceEvents.map((event) => (
@@ -236,7 +224,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                             >
                                 <input
                                     type="checkbox"
-                                    checked={selectedIds.includes(event.id)}
+                                    checked={effectiveSelectedIds.includes(event.id)}
                                     onChange={() => toggleSelection(event.id)}
                                     disabled={isReadOnly}
                                     className="h-4 w-4 accent-orange-500 disabled:opacity-60"
@@ -263,11 +251,12 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                 </div>
                 <div className="mt-4 border-t border-orange-100 pt-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">
-                        <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">Target</div>
+                        <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">{text.calendar.target}</div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                         <input
                             type="date"
+                            aria-label={text.calendar.destination}
                             value={targetDate}
                             onChange={(e) => setTargetDateByView((prev) => ({
                                 ...prev,
@@ -277,7 +266,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                             className="border border-orange-200 rounded-lg px-3 py-2 text-sm text-stone-600 bg-white disabled:opacity-60"
                         />
                         <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                            <label htmlFor="postponed-target-view" className="tracking-[0.2em]">Postponed View</label>
+                            <label htmlFor="postponed-target-view" className="tracking-[0.2em]">{text.calendar.postponedView}</label>
                             <select
                                 id="postponed-target-view"
                                 value={targetPostponedView}
@@ -289,7 +278,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                                 className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white disabled:opacity-60"
                             >
                                 {POSTPONED_EVENT_DOMAINS.map((domain) => (
-                                    <option key={domain.value} value={domain.value}>{domain.selectLabel}</option>
+                                    <option key={domain.value} value={domain.value}>{domain.value === 'today' ? text.calendar.todayView : domain.value === 'week' ? text.calendar.weekView : text.calendar.allView}</option>
                                 ))}
                             </select>
                         </div>
@@ -302,10 +291,10 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                         disabled={isReadOnly || sourceEvents.length === 0}
                         className="px-3 py-1.5 text-[11px] font-mono border border-orange-200 rounded-lg text-stone-500 hover:text-stone-700 hover:border-orange-400 disabled:opacity-50"
                     >
-                        {allSelected ? 'None' : 'All'}
+                        {allSelected ? text.common.none : text.common.all}
                     </button>
                     <div className="text-[10px] font-mono text-stone-500 uppercase tracking-widest">
-                        Selected {selectedIds.length}
+                        {interpolateText(effectiveSelectedIds.length === 1 ? text.calendar.selectedEvent : text.calendar.selectedEvents, { count: effectiveSelectedIds.length })}
                     </div>
                     <button
                         type="button"
@@ -313,7 +302,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                         disabled={!canTransfer}
                         className="px-4 py-2 bg-orange-400 text-white text-xs font-mono font-bold hover:bg-orange-500 transition-colors rounded-lg disabled:opacity-50"
                     >
-                        {transferMode === 'move' ? 'Move Selected' : 'Copy Selected'}
+                        {transferMode === 'move' ? text.calendar.moveSelected : text.calendar.copySelected}
                     </button>
                     <button
                         type="button"
@@ -321,7 +310,7 @@ export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postpo
                         disabled={!canPostponeTransfer}
                         className="px-4 py-2 bg-stone-700 text-white text-xs font-mono font-bold hover:bg-stone-800 transition-colors rounded-lg disabled:opacity-50"
                     >
-                        {transferMode === 'move' ? 'Move to Postponed' : 'Copy to Postponed'}
+                        {transferMode === 'move' ? text.calendar.moveToPostponed : text.calendar.copyToPostponed}
                     </button>
                 </div>
             </div>

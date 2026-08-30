@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { configDefaults } from 'vitest/config'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  test: {
+    exclude: [...configDefaults.exclude, 'control_center/**']
+  },
   build: {
     target: 'es2020',
     // Force new file names on each build to bust cache

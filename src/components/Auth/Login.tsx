@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { User, Lock, ArrowRight, Loader2 } from 'lucide-react';
+import { useTranslation } from '../../i18n/languageContext';
 
 export const Login: React.FC = () => {
-    const { login, register, error, isLoading } = useCalendarStore();
+    const { login, register, error, isLoading, appConfig } = useCalendarStore();
+    const { language, setLanguage, text } = useTranslation();
     const [isLogin, setIsLogin] = useState(true);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const registrationValue = appConfig?.registration_enabled;
+    const registrationEnabled = registrationValue === true
+        || registrationValue === 'true'
+        || registrationValue === '1';
+    const isRegistration = !isLogin && registrationEnabled;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isLogin) {
+        if (!isRegistration) {
             await login(username, password);
         } else {
             await register(username, password);
@@ -32,44 +39,50 @@ export const Login: React.FC = () => {
                 <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-orange-400 rounded-br-lg"></div>
 
                 <div className="text-center mb-10">
-                    <h1 className="text-4xl font-serif text-stone-800 tracking-widest mb-2">CHRONOS</h1>
-                    <p className="text-orange-600 font-mono text-xs tracking-[0.3em]">IDENTITY VERIFICATION</p>
+                    <h1 className="text-4xl font-serif text-stone-800 tracking-widest mb-2">{text.common.anote}</h1>
+                    <p className="text-orange-600 text-sm">{text.auth.subtitle}</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="flex flex-col gap-6">
                     <div className="space-y-1">
-                        <label className="text-[10px] font-mono text-stone-500 uppercase tracking-wider">Username</label>
+                        <label htmlFor="anote-username" className="text-[10px] font-mono text-stone-500 uppercase tracking-wider">{text.auth.username}</label>
                         <div className="relative group">
                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 group-focus-within:text-orange-500 transition-colors" />
                             <input
                                 type="text"
+                                id="anote-username"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="w-full bg-white border-2 border-orange-200 rounded-xl py-3 pl-10 pr-4 text-stone-800 font-mono focus:outline-none focus:border-orange-400 hover:border-orange-300 transition-all shadow-sm"
-                                placeholder="ENTER_ID"
+                                placeholder={text.auth.usernamePlaceholder}
+                                autoComplete="username"
                                 required
                             />
                         </div>
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-[10px] font-mono text-stone-500 uppercase tracking-wider">Password</label>
+                        <label htmlFor="anote-password" className="text-[10px] font-mono text-stone-500 uppercase tracking-wider">{text.auth.password}</label>
                         <div className="relative group">
                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 group-focus-within:text-orange-500 transition-colors" />
                             <input
                                 type="password"
+                                id="anote-password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="w-full bg-white border-2 border-orange-200 rounded-xl py-3 pl-10 pr-4 text-stone-800 font-mono focus:outline-none focus:border-orange-400 hover:border-orange-300 transition-all shadow-sm"
                                 placeholder="••••••••"
+                                autoComplete={isRegistration ? 'new-password' : 'current-password'}
+                                minLength={isRegistration ? 12 : undefined}
                                 required
                             />
                         </div>
+                        {isRegistration && <p className="text-xs text-stone-500">{text.auth.passwordHint}</p>}
                     </div>
 
                     {error && (
                         <div className="text-red-600 text-xs font-mono border border-red-300 bg-red-50 p-3 text-center rounded-lg">
-                            ERROR: {error}
+                            {error}
                         </div>
                     )}
 
@@ -83,7 +96,7 @@ export const Login: React.FC = () => {
                                 <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                                 <>
-                                    {isLogin ? 'INITIATE SESSION' : 'REGISTER IDENTITY'}
+                                    {isRegistration ? text.auth.register : text.auth.signIn}
                                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                                 </>
                             )}
@@ -91,13 +104,33 @@ export const Login: React.FC = () => {
                     </button>
                 </form>
 
-                <div className="mt-6 text-center">
-                    <button
-                        onClick={() => { setIsLogin(!isLogin); }}
-                        className="text-xs font-mono text-stone-500 hover:text-orange-600 transition-colors uppercase tracking-wide"
-                    >
-                        {isLogin ? '[ Create New Identity ]' : '[ Access Existing Identity ]'}
-                    </button>
+                {registrationEnabled ? (
+                    <div className="mt-6 text-center">
+                        <button
+                            type="button"
+                            onClick={() => { setIsLogin(!isLogin); }}
+                            className="text-xs font-mono text-stone-500 hover:text-orange-600 transition-colors uppercase tracking-wide"
+                        >
+                            {isRegistration ? text.auth.signInPrompt : text.auth.createAccountPrompt}
+                        </button>
+                    </div>
+                ) : (
+                    <p className="mt-6 text-center text-xs text-stone-500" role="status">
+                        {text.errors.REGISTRATION_DISABLED}
+                    </p>
+                )}
+                <div className="mt-4 flex justify-center gap-2" aria-label={text.common.language}>
+                    {(['en', 'es'] as const).map((option) => (
+                        <button
+                            key={option}
+                            type="button"
+                            onClick={() => setLanguage(option)}
+                            aria-pressed={language === option}
+                            className={`rounded-full px-3 py-1 text-xs transition-colors ${language === option ? 'bg-orange-500 text-white' : 'bg-orange-50 text-stone-600 hover:bg-orange-100'}`}
+                        >
+                            {option === 'en' ? text.common.english : text.common.spanish}
+                        </button>
+                    ))}
                 </div>
             </div>
         </div>

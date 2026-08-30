@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { formatDate } from '../../utils/dateUtils';
@@ -44,7 +45,7 @@ describe('MonthGrid', () => {
             }
         } as never);
 
-        render(
+        renderWithLanguage(
             <MonthGrid
                 year={2026}
                 month={3}
@@ -76,7 +77,7 @@ describe('MonthGrid', () => {
             }
         } as never);
 
-        render(
+        renderWithLanguage(
             <MonthGrid
                 year={2026}
                 month={3}
@@ -95,7 +96,7 @@ describe('MonthGrid', () => {
         const markedDate = new Date(2026, 3, 23);
         const dateKey = formatDate(markedDate);
 
-        render(
+        renderWithLanguage(
             <MonthGrid
                 year={2026}
                 month={3}
@@ -107,8 +108,8 @@ describe('MonthGrid', () => {
             />
         );
 
-        expect(screen.getByText('MARKED')).toBeTruthy();
         expect(screen.getByText('SELECTED')).toBeTruthy();
+        expect(screen.getByText('Selected day')).toBeTruthy();
         expect(screen.getByText('23').closest('.cell-selected')).not.toBeNull();
     });
 });

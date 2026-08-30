@@ -1,8 +1,9 @@
 import React from 'react';
 import { CalendarRange, CheckCircle2, CircleX, Clock, Send, Users } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { interpolateText } from '../../i18n/appText';
 import clsx from 'clsx';
+import { useTranslation } from '../../i18n/languageContext';
 
 interface ShareFriend {
     id: string;
@@ -54,7 +55,8 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
     onSelectIncompleteEvents,
     onShare
 }) => {
-    const statusText = getAppText().eventStatus;
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
     const shareableEvents = sortShareableEvents(selectedDateKeys.flatMap((dateKey) => eventsByDate[dateKey] || []));
     const totalEvents = shareableEvents.length;
     const canShare = selectedFriendIds.length > 0
@@ -67,31 +69,31 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
         <div className="mb-8 board-panel rounded-2xl p-4 sm:p-5">
             <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em]">Event Distribution</div>
-                    <div className="text-lg text-stone-800 tracking-[0.16em]">Share Events</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em]">{text.calendar.eventDistribution}</div>
+                    <div className="text-lg text-stone-800 tracking-[0.16em]">{text.calendar.shareEvents}</div>
                 </div>
                 <div className="flex items-center gap-3 text-[10px] font-mono text-orange-600 uppercase tracking-[0.2em] flex-wrap">
-                    <span>{selectedDateKeys.length} day{selectedDateKeys.length === 1 ? '' : 's'}</span>
-                    <span>{totalEvents} event{totalEvents === 1 ? '' : 's'}</span>
-                    <span>{selectedFriendIds.length} friend{selectedFriendIds.length === 1 ? '' : 's'}</span>
+                    <span>{interpolateText(selectedDateKeys.length === 1 ? text.calendar.selectedDay : text.calendar.selectedDays, { count: selectedDateKeys.length })}</span>
+                    <span>{interpolateText(totalEvents === 1 ? text.calendar.selectedEvent : text.calendar.selectedEvents, { count: totalEvents })}</span>
+                    <span>{interpolateText(selectedFriendIds.length === 1 ? text.calendar.selectedFriend : text.calendar.selectedFriends, { count: selectedFriendIds.length })}</span>
                 </div>
             </div>
 
             {totalEvents === 0 && (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-mono text-amber-700">
-                    Selected days do not have events to share.
+                    {text.calendar.noShareableEvents}
                 </div>
             )}
 
             <div className="rounded-xl border border-orange-100 bg-white/75 p-3">
                 <div className="mb-3 flex items-center gap-2 border-b border-orange-100 pb-2">
                     <Users className="h-4 w-4 text-orange-500" />
-                    <div className="text-xs font-mono font-bold uppercase tracking-[0.18em] text-stone-700">Select Friends</div>
+                    <div className="text-xs font-mono font-bold uppercase tracking-[0.18em] text-stone-700">{text.calendar.selectFriends}</div>
                 </div>
 
                 {friends.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-orange-100 px-3 py-6 text-center text-[11px] font-mono text-stone-400">
-                        No friends available
+                        {text.calendar.noFriends}
                     </div>
                 ) : (
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -136,7 +138,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                         onChange={onToggleEventSelection}
                         className="h-4 w-4 accent-orange-500"
                     />
-                    <span className="text-xs font-mono font-bold uppercase tracking-[0.18em]">Select Events</span>
+                    <span className="text-xs font-mono font-bold uppercase tracking-[0.18em]">{text.calendar.selectEvents}</span>
                     {isEventSelectionEnabled && (
                         <span className="ml-auto rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-mono text-orange-600">
                             {selectedEventIds.length}/{totalEvents}
@@ -153,7 +155,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                                 disabled={isSubmitting || totalEvents === 0}
                                 className="rounded-lg border border-orange-100 bg-white px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-orange-600 hover:border-orange-300 disabled:opacity-50"
                             >
-                                Select All
+                                {text.common.selectAll}
                             </button>
                             <button
                                 type="button"
@@ -161,7 +163,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                                 disabled={isSubmitting || selectedEventIds.length === 0}
                                 className="rounded-lg border border-orange-100 bg-white px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-stone-500 hover:border-orange-300 disabled:opacity-50"
                             >
-                                Unselect All
+                                {text.calendar.unselectAll}
                             </button>
                             <button
                                 type="button"
@@ -169,7 +171,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                                 disabled={isSubmitting || totalEvents === 0}
                                 className="rounded-lg border border-orange-100 bg-white px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-stone-500 hover:border-orange-300 disabled:opacity-50"
                             >
-                                Select Active
+                                {text.calendar.selectIncomplete}
                             </button>
                         </div>
 
@@ -181,7 +183,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                                     <section
                                         key={dateKey}
                                         className="min-w-0 rounded-xl border border-orange-100 bg-white/80 p-3 shadow-sm"
-                                        aria-label={`Share events for ${dateKey}`}
+                                        aria-label={interpolateText(text.calendar.shareEventsFor, { date: dateKey })}
                                     >
                                         <div className="mb-3 flex items-center justify-between gap-2 border-b border-orange-100 pb-2">
                                             <div className="flex min-w-0 items-center gap-2">
@@ -196,7 +198,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                                         <div className="flex flex-col gap-2">
                                             {dayEvents.length === 0 ? (
                                                 <div className="rounded-lg border border-dashed border-orange-100 px-3 py-6 text-center text-[11px] font-mono text-stone-400">
-                                                    No events
+                                                    {text.common.noEvents}
                                                 </div>
                                             ) : (
                                                 dayEvents.map((event) => {
@@ -267,7 +269,7 @@ export const GroupEventSharer: React.FC<GroupEventSharerProps> = ({
                     )}
                 >
                     <Send className="h-4 w-4" />
-                    {isSubmitting ? 'Sharing...' : 'Share Events'}
+                    {isSubmitting ? text.calendar.sharing : text.calendar.shareEvents}
                 </button>
             </div>
         </div>

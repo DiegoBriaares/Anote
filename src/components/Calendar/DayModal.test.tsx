@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import userEvent from '@testing-library/user-event';
 import { DayModal } from './DayModal';
 import { useCalendarStore } from '../../store/calendarStore';
@@ -31,7 +32,7 @@ describe('DayModal', () => {
         const onAdminister = vi.fn();
         const user = userEvent.setup();
 
-        render(
+        renderWithLanguage(
             <DayModal
                 date={new Date(2026, 3, 23)}
                 events={[]}
@@ -42,7 +43,7 @@ describe('DayModal', () => {
             />
         );
 
-        await user.click(screen.getByRole('button', { name: 'Open Day Events Administration' }));
+        await user.click(screen.getByRole('button', { name: /Open event administration/i }));
 
         expect(onAdminister).toHaveBeenCalledTimes(1);
     });

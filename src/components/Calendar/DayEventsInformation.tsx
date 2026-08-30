@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { useTranslation } from '../../i18n/languageContext';
 import { formatDate } from '../../utils/dateUtils';
 import { Clock, History } from 'lucide-react';
 import clsx from 'clsx';
@@ -11,23 +11,12 @@ interface DayEventsInformationProps {
 
 export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ activeDate }) => {
     const { events } = useCalendarStore();
-    const statusText = getAppText().eventStatus;
-    const [expandedIds, setExpandedIds] = useState<string[]>([]);
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
+    const [expandedByDate, setExpandedByDate] = useState<Record<string, string[]>>({});
 
     const dateStr = formatDate(activeDate);
-    const expandedByDateRef = useRef<Record<string, string[]>>({});
-
-    useEffect(() => {
-        if (expandedByDateRef.current[dateStr]) {
-            setExpandedIds(expandedByDateRef.current[dateStr]);
-        } else {
-            setExpandedIds([]);
-        }
-    }, [dateStr]);
-
-    useEffect(() => {
-        expandedByDateRef.current[dateStr] = expandedIds;
-    }, [dateStr, expandedIds]);
+    const expandedIds = expandedByDate[dateStr] || [];
     const dayEvents = useMemo(() => {
         const list = events[dateStr] || [];
         return [...list].sort((a, b) => {
@@ -39,22 +28,24 @@ export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ acti
     }, [events, dateStr]);
 
     const toggleExpanded = (id: string) => {
-        setExpandedIds((prev) => (
-            prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]
-        ));
+        setExpandedByDate((current) => {
+            const currentIds = current[dateStr] || [];
+            const nextIds = currentIds.includes(id) ? currentIds.filter((entry) => entry !== id) : [...currentIds, id];
+            return { ...current, [dateStr]: nextIds };
+        });
     };
 
     return (
         <div className="w-full board-panel p-4 rounded-2xl mt-6">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <div>
-                    <div className="text-[10px] font-mono text-stone-500 tracking-[0.25em] uppercase">Day Events Information</div>
+                    <div className="text-[10px] font-mono text-stone-500 tracking-[0.25em] uppercase">{text.calendar.eventInformation}</div>
                     <div className="text-xl text-stone-800 tracking-[0.2em]">{dateStr}</div>
                 </div>
             </div>
 
             {dayEvents.length === 0 ? (
-                <div className="text-xs text-stone-500 font-mono">No events available.</div>
+                <div className="text-xs text-stone-500 font-mono">{text.calendar.noEventsForDay}</div>
             ) : (
                 <div className="flex flex-col gap-3">
                     {dayEvents.map((event) => {
@@ -90,7 +81,7 @@ export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ acti
                                             event.completed && 'text-emerald-700/80 dark:text-emerald-300/80',
                                             event.failed && 'text-red-700/80 dark:text-red-300/80'
                                         )}>
-                                            <Clock className="w-3 h-3" />
+                                            <Clock className="w-3 h-3" aria-hidden="true" />
                                             {event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--'}
                                         </span>
                                         {event.completed && (
@@ -108,7 +99,7 @@ export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ acti
                                             onClick={() => toggleExpanded(event.id)}
                                             className="text-orange-600 hover:text-orange-700 flex items-center gap-1 text-[11px]"
                                         >
-                                            <History className="w-3 h-3" /> Track Record
+                                            <History className="w-3 h-3" aria-hidden="true" /> {text.calendar.trackRecord}
                                         </button>
                                     </div>
                                 </div>
@@ -116,11 +107,11 @@ export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ acti
                                     <div className="text-[11px] text-stone-500 font-mono">
                                         {wasPostponed && (
                                             <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-amber-600">
-                                                Previously Postponed
+                                                {text.calendar.previouslyPostponed}
                                             </div>
                                         )}
                                         {originDates.length === 0 ? (
-                                            <span>Original entry.</span>
+                                            <span>{text.calendar.originalEntry.replace(': {date}', '')}</span>
                                         ) : (
                                             <div className="flex flex-wrap gap-2">
                                                 {originDates.map((origin) => (

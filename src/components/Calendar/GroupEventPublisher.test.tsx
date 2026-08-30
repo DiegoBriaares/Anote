@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import { GroupEventPublisher } from './GroupEventPublisher';
 import { buildGroupEventPublishEntries, buildQueuedGroupEvent } from './groupEventUtils';
 
@@ -31,7 +32,7 @@ describe('GroupEventPublisher', () => {
     });
 
     it('renders queued events and the selected day count in the mini administration section', () => {
-        render(
+        renderWithLanguage(
             <GroupEventPublisher
                 selectedDateKeys={['2026-04-23', '2026-04-24']}
                 draft={{ title: '', startTime: '', priority: '', link: '', note: '' }}
@@ -52,7 +53,7 @@ describe('GroupEventPublisher', () => {
             />
         );
 
-        expect(screen.getByText('2 marked days')).toBeTruthy();
+        expect(screen.getByText('2 selected days')).toBeTruthy();
         expect(screen.getByText('Planning review')).toBeTruthy();
         expect(screen.getByText('09:30 · P2')).toBeTruthy();
     });

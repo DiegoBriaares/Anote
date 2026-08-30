@@ -1,347 +1,180 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { addDays } from 'date-fns';
-import { ArrowLeft, Clock3, GitBranch, Play, Plus, Save, Trash2 } from 'lucide-react';
-import { useCalendarStore, type Program } from '../../store/calendarStore';
-import { formatDate, parseDateKey } from '../../utils/dateUtils';
+import { useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Clock3, Play, Plus, Save, Trash2 } from 'lucide-react';
+
+import type { Program } from '../../api/contracts';
+import type { ProgramInput } from '../../api/programs';
+import { interpolateText } from '../../i18n/appText';
+import { useTranslation } from '../../i18n/languageContext';
+import { useCalendarStore } from '../../store/calendarStore';
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-type ProgramDraft = Program & {
-    isDirty?: boolean;
-};
-
-const toDraft = (program: Program): ProgramDraft => ({ ...program, isDirty: false });
-
-export const ProgramsPanel: React.FC = () => {
+export const ProgramsPanel = () => {
     const {
         programs,
-        fetchProfile,
+        actionError,
         savePrograms,
-        setTomorrowProgramParameter,
+        createProgram,
+        deleteProgram,
+        runProgram,
         navigateToCalendar
     } = useCalendarStore();
-    const [drafts, setDrafts] = useState<ProgramDraft[]>([]);
+    const { text } = useTranslation();
+    const [edits, setEdits] = useState<Record<string, Partial<ProgramInput>>>({});
     const [message, setMessage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isRunning, setIsRunning] = useState(false);
     const [runProgramId, setRunProgramId] = useState('');
-    const [runSourceDateKey, setRunSourceDateKey] = useState(() => formatDate(new Date()));
-    const [runTargetDateKey, setRunTargetDateKey] = useState(() => formatDate(addDays(new Date(), 1)));
-    const [runUsesCascadeOffset, setRunUsesCascadeOffset] = useState(false);
+    const [deleteCandidate, setDeleteCandidate] = useState<Program | null>(null);
+    const cancelDeleteRef = useRef<HTMLButtonElement>(null);
 
-    useEffect(() => {
-        fetchProfile();
-    }, [fetchProfile]);
+    const drafts = useMemo(() => programs.map((program) => ({
+        ...program,
+        ...edits[program.id]
+    })), [edits, programs]);
+    const selectedProgram = drafts.find((program) => program.id === runProgramId) || drafts[0] || null;
+    const selectedProgramId = selectedProgram?.id || '';
+    const hasInvalidTime = drafts.some((program) => !TIME_PATTERN.test(program.activationTime));
 
-    useEffect(() => {
-        queueMicrotask(() => {
-            setDrafts((current) => (
-                current.some((program) => program.isDirty)
-                    ? current
-                    : programs.map(toDraft)
-            ));
-        });
-    }, [programs]);
-
-    useEffect(() => {
-        if (drafts.length === 0) {
-            setRunProgramId('');
-            return;
-        }
-
-        if (!drafts.some((program) => program.id === runProgramId)) {
-            setRunProgramId(drafts[0].id);
-        }
-    }, [drafts, runProgramId]);
-
-    const hasInvalidTime = useMemo(() => (
-        drafts.some((program) => !TIME_PATTERN.test(program.activationTime))
-    ), [drafts]);
-
-    const selectedRunProgram = useMemo(() => (
-        drafts.find((program) => program.id === runProgramId) || drafts[0] || null
-    ), [drafts, runProgramId]);
-
-    const resolvedRunTargetDateKey = useMemo(() => {
-        if (!runUsesCascadeOffset) return runTargetDateKey;
-        const sourceDate = parseDateKey(runSourceDateKey);
-        if (!sourceDate) return '';
-        return formatDate(addDays(sourceDate, selectedRunProgram?.targetOffsetDays ?? 1));
-    }, [runSourceDateKey, runTargetDateKey, runUsesCascadeOffset, selectedRunProgram]);
-
-    const updateDraft = (id: string, patch: Partial<Program>) => {
-        setDrafts((current) => current.map((program) => (
-            program.id === id
-                ? { ...program, ...patch, isDirty: true }
-                : program
-        )));
+    const updateDraft = (id: string, patch: Partial<ProgramInput>) => {
+        setEdits((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
         setMessage(null);
+    };
+
+    const handleAdd = async () => {
+        const created = await createProgram({
+            name: text.programs.defaultName,
+            enabled: false,
+            activationTime: '00:00',
+            targetDayOffset: 1,
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+        });
+        if (created) setRunProgramId(created.id);
     };
 
     const handleSave = async () => {
         if (hasInvalidTime) {
-            setMessage('Use a valid 24-hour time between 00:00 and 23:59.');
+            setMessage(text.programs.invalidTime);
             return;
         }
-
         setIsSaving(true);
-        const nextPrograms = drafts.map((program) => ({
-            id: program.id,
-            name: program.name,
-            activationTime: program.activationTime,
-            isEnabled: program.isEnabled,
-            tomorrowProgramParameter: program.tomorrowProgramParameter,
-            targetOffsetDays: program.targetOffsetDays ?? 1
-        }));
-        await savePrograms(nextPrograms);
-        setDrafts(nextPrograms.map(toDraft));
+        const succeeded = await savePrograms(drafts);
+        if (succeeded) {
+            setEdits({});
+            setMessage(text.programs.saved);
+        }
         setIsSaving(false);
-        setMessage('Programs saved.');
     };
 
-    const handleAdd = () => {
-        setDrafts((current) => [
-            ...current,
-            {
-                id: crypto.randomUUID(),
-                name: 'To Tomorrow Program',
-                activationTime: '00:00',
-                isEnabled: false,
-                tomorrowProgramParameter: false,
-                targetOffsetDays: 1,
-                isDirty: true
-            }
-        ]);
-        setMessage(null);
+    const handleDelete = async () => {
+        if (!deleteCandidate) return;
+        const deleted = await deleteProgram(deleteCandidate.id, deleteCandidate.revision);
+        if (deleted) {
+            setEdits((current) => {
+                const next = { ...current };
+                delete next[deleteCandidate.id];
+                return next;
+            });
+            setMessage(text.programs.deleted);
+        }
+        setDeleteCandidate(null);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Delete this program?')) return;
-        const nextPrograms = drafts
-            .filter((program) => program.id !== id)
-            .map((program) => ({
-                id: program.id,
-                name: program.name,
-                activationTime: program.activationTime,
-                isEnabled: program.isEnabled,
-                tomorrowProgramParameter: program.tomorrowProgramParameter,
-                targetOffsetDays: program.targetOffsetDays ?? 1
-            }));
-        await savePrograms(nextPrograms);
-        setDrafts(nextPrograms.map(toDraft));
-        setMessage('Program deleted.');
-    };
-
-    const handleRunNow = async () => {
-        if (!runSourceDateKey || !resolvedRunTargetDateKey) return;
-        setMessage(`Running ${selectedRunProgram?.name || 'program'}...`);
-        const didRun = await setTomorrowProgramParameter(true, {
-            sourceDateKeys: [runSourceDateKey],
-            targetDateKey: resolvedRunTargetDateKey
-        });
-        setMessage(didRun ? `${selectedRunProgram?.name || 'Program'} completed.` : `${selectedRunProgram?.name || 'Program'} could not complete.`);
+    const handleRun = async () => {
+        if (!selectedProgram) return;
+        setIsRunning(true);
+        setMessage(interpolateText(text.programs.runStarted, { name: selectedProgram.name }));
+        const run = await runProgram(selectedProgram.id, selectedProgram.revision);
+        setMessage(run
+            ? interpolateText(text.programs.runCompleted, { name: selectedProgram.name, count: run.movedEventCount })
+            : interpolateText(text.programs.runFailed, { name: selectedProgram.name }));
+        setIsRunning(false);
     };
 
     return (
         <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-8 mb-8">
-            <button
-                onClick={navigateToCalendar}
-                className="mb-6 flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors"
-            >
-                <ArrowLeft className="w-4 h-4" /> BACK TO CALENDAR
+            <button type="button" onClick={navigateToCalendar} className="mb-6 flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors">
+                <ArrowLeft className="w-4 h-4" aria-hidden="true" /> {text.shell.backToCalendar}
             </button>
 
-            <div className="border border-orange-200 bg-white/80 backdrop-blur-xl p-6 relative overflow-hidden rounded-2xl shadow-xl shadow-orange-100/50">
-                <div className="absolute top-0 left-0 w-20 h-20 border-r border-b border-orange-200 pointer-events-none" />
-                <div className="absolute bottom-0 right-0 w-20 h-20 border-l border-t border-orange-200 pointer-events-none" />
-
-                <div className="flex items-start justify-between gap-8 relative z-10 flex-col lg:flex-row">
+            <section className="border border-orange-200 bg-white/80 backdrop-blur-xl p-6 relative overflow-hidden rounded-2xl shadow-xl shadow-orange-100/50" aria-labelledby="programs-title">
+                <div className="flex items-start justify-between gap-8 flex-col lg:flex-row">
                     <div className="flex items-center gap-4">
                         <div className="p-3 border-2 border-orange-400 rounded-full bg-gradient-to-br from-orange-50 to-amber-50">
-                            <Clock3 className="w-6 h-6 text-orange-500" />
+                            <Clock3 className="w-6 h-6 text-orange-500" aria-hidden="true" />
                         </div>
                         <div>
-                            <div className="text-[10px] font-mono text-stone-500 tracking-[0.3em] mb-1">PROGRAM CONTROL</div>
-                            <h2 className="text-2xl text-stone-800 tracking-widest">PROGRAMS</h2>
+                            <div className="text-[10px] font-mono text-stone-500 tracking-[0.3em] mb-1">{text.programs.eyebrow}</div>
+                            <h2 id="programs-title" className="text-2xl text-stone-800 tracking-widest">{text.programs.title}</h2>
+                            <p className="mt-1 text-sm text-stone-500">{text.programs.description}</p>
                         </div>
                     </div>
-                    <div className="flex flex-wrap items-end gap-3">
-                        <button
-                            onClick={handleAdd}
-                            className="px-4 py-2 bg-orange-100 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-200 transition-colors uppercase tracking-wider flex items-center gap-2"
-                        >
-                            <Plus className="w-4 h-4" /> Add Program
-                        </button>
-                    </div>
-                </div>
-
-                <div className="mt-10 border-y border-orange-100 bg-white/60 px-4 py-6 relative z-10 rounded-xl shadow-inner shadow-orange-50/70">
-                    <div className="mb-4 flex items-center gap-3">
-                        <div className="rounded-full border border-orange-200 bg-white p-2 text-orange-500">
-                            <Play className="h-4 w-4" />
-                        </div>
-                        <div>
-                            <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-orange-600">Manual Execution</div>
-                            <h3 className="text-lg font-medium tracking-[0.08em] text-stone-800">Run Program Now</h3>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.2fr)_minmax(150px,0.8fr)_minmax(220px,1fr)_auto] lg:items-end">
-                        <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-[0.18em] text-stone-500">
-                            Program
-                            <select
-                                value={runProgramId}
-                                onChange={(event) => setRunProgramId(event.target.value)}
-                                className="h-10 rounded-lg border border-orange-200 bg-white px-3 text-sm font-sans normal-case tracking-normal text-stone-700 focus:border-orange-400 focus:outline-none"
-                            >
-                                {drafts.map((program) => (
-                                    <option key={program.id} value={program.id}>{program.name}</option>
-                                ))}
-                            </select>
-                        </label>
-
-                        <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-[0.18em] text-stone-500">
-                            Run date
-                            <input
-                                type="date"
-                                value={runSourceDateKey}
-                                onChange={(event) => setRunSourceDateKey(event.target.value)}
-                                className="h-10 rounded-lg border border-orange-200 bg-white px-3 text-sm font-sans normal-case tracking-normal text-stone-700 focus:border-orange-400 focus:outline-none"
-                            />
-                        </label>
-
-                        <div className="flex flex-col gap-2">
-                            <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-stone-500">
-                                <input
-                                    type="checkbox"
-                                    checked={runUsesCascadeOffset}
-                                    onChange={(event) => setRunUsesCascadeOffset(event.target.checked)}
-                                    className="h-4 w-4 accent-orange-500"
-                                />
-                                <GitBranch className="h-3.5 w-3.5 text-orange-500" />
-                                Cascade program offset
-                            </label>
-                            <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-[0.18em] text-stone-500">
-                                {runUsesCascadeOffset ? 'Resolved target day' : 'Manual target day'}
-                                <input
-                                    type="date"
-                                    value={resolvedRunTargetDateKey}
-                                    onChange={(event) => setRunTargetDateKey(event.target.value)}
-                                    disabled={runUsesCascadeOffset}
-                                    className="h-10 rounded-lg border border-orange-200 bg-white px-3 text-sm font-sans normal-case tracking-normal text-stone-700 focus:border-orange-400 focus:outline-none disabled:bg-orange-50 disabled:text-stone-500"
-                                />
-                            </label>
-                        </div>
-
-                        <button
-                            onClick={handleRunNow}
-                            disabled={!runSourceDateKey || !resolvedRunTargetDateKey || !selectedRunProgram}
-                            className="h-10 px-4 bg-white border border-orange-200 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-50 transition-colors uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Play className="w-4 h-4" /> Run Now
-                        </button>
-                    </div>
-                </div>
-
-                <div className="mt-12 relative z-10">
-                    <div className="mb-4 flex items-center gap-3">
-                        <div className="rounded-full border border-orange-200 bg-white p-2 text-orange-500">
-                            <Clock3 className="h-4 w-4" />
-                        </div>
-                        <div>
-                            <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-orange-600">Scheduled Automation</div>
-                            <h3 className="text-lg font-medium tracking-[0.08em] text-stone-800">Program Definitions</h3>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto rounded-xl border border-orange-100 bg-orange-50/40">
-                    <table className="w-full min-w-[860px] text-left">
-                        <thead className="bg-white/80 border-b border-orange-100">
-                            <tr>
-                                <th className="px-4 py-3 text-[10px] font-mono text-orange-600 tracking-[0.2em] uppercase">Name</th>
-                                <th className="px-4 py-3 text-[10px] font-mono text-orange-600 tracking-[0.2em] uppercase">Activation Time</th>
-                                <th className="px-4 py-3 text-[10px] font-mono text-orange-600 tracking-[0.2em] uppercase">Target Offset</th>
-                                <th className="px-4 py-3 text-[10px] font-mono text-orange-600 tracking-[0.2em] uppercase">Enabled</th>
-                                <th className="px-4 py-3 text-[10px] font-mono text-orange-600 tracking-[0.2em] uppercase text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-100">
-                            {drafts.map((program) => (
-                                <tr key={program.id} className="bg-white/40 hover:bg-white/70 transition-colors">
-                                    <td className="px-4 py-3">
-                                        <input
-                                            type="text"
-                                            value={program.name}
-                                            onChange={(event) => updateDraft(program.id, { name: event.target.value })}
-                                            className="w-full bg-white border-2 border-orange-100 text-sm text-stone-800 px-3 py-2 rounded-lg focus:outline-none focus:border-orange-400"
-                                        />
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            placeholder="00:00"
-                                            maxLength={5}
-                                            pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                                            value={program.activationTime}
-                                            onChange={(event) => updateDraft(program.id, { activationTime: event.target.value })}
-                                            className="w-36 bg-white border-2 border-orange-100 text-sm text-stone-800 px-3 py-2 rounded-lg focus:outline-none focus:border-orange-400"
-                                        />
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <label className="inline-flex items-center gap-2 text-sm text-stone-600">
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                max={365}
-                                                value={program.targetOffsetDays ?? 1}
-                                                onChange={(event) => updateDraft(program.id, { targetOffsetDays: Number(event.target.value) })}
-                                                className="w-24 bg-white border-2 border-orange-100 text-sm text-stone-800 px-3 py-2 rounded-lg focus:outline-none focus:border-orange-400"
-                                            />
-                                            days after today
-                                        </label>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <label className="inline-flex items-center gap-2 text-sm text-stone-600">
-                                            <input
-                                                type="checkbox"
-                                                checked={program.isEnabled}
-                                                onChange={(event) => updateDraft(program.id, { isEnabled: event.target.checked })}
-                                                className="accent-orange-500 w-4 h-4 rounded"
-                                            />
-                                            Active
-                                        </label>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center justify-end gap-2">
-                                            <button
-                                                onClick={() => handleDelete(program.id)}
-                                                className="p-2 text-stone-400 hover:text-red-500 transition-colors"
-                                                title="Delete program"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    </div>
-                </div>
-
-                <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className={`text-sm ${message?.includes('valid') || message?.includes('could not') ? 'text-red-600' : 'text-stone-500'}`}>
-                        {message || 'Enabled programs run when the connected session clock reaches the activation time.'}
-                    </div>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving || hasInvalidTime}
-                        className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-sm font-medium hover:from-orange-600 hover:to-amber-600 transition-all rounded-xl shadow-lg shadow-orange-300/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                        <Save className="w-4 h-4" /> {isSaving ? 'Saving...' : 'Save Programs'}
+                    <button id="programs-add" type="button" onClick={() => { void handleAdd(); }} className="px-4 py-2 bg-orange-100 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-200 transition-colors uppercase tracking-wider flex items-center gap-2">
+                        <Plus className="w-4 h-4" aria-hidden="true" /> {text.programs.add}
                     </button>
                 </div>
-            </div>
+
+                <div className="mt-10 border-y border-orange-100 bg-white/60 px-4 py-6 rounded-xl shadow-inner shadow-orange-50/70">
+                    <div className="mb-4 flex items-center gap-3">
+                        <Play className="h-5 w-5 text-orange-500" aria-hidden="true" />
+                        <div>
+                            <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-orange-600">{text.programs.manualEyebrow}</div>
+                            <h3 className="text-lg font-medium text-stone-800">{text.programs.manualTitle}</h3>
+                        </div>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                        <label className="flex flex-col gap-1 text-xs text-stone-600">
+                            {text.programs.program}
+                            <select id="programs-run-select" value={selectedProgramId} onChange={(event) => setRunProgramId(event.target.value)} className="h-10 rounded-lg border border-orange-200 bg-white px-3 text-sm">
+                                {drafts.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}
+                            </select>
+                        </label>
+                        <button id="programs-run" type="button" disabled={!selectedProgram || isRunning} onClick={() => { void handleRun(); }} className="h-10 rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+                            {isRunning ? text.programs.running : text.programs.run}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="mt-8 overflow-x-auto">
+                    {drafts.length === 0 ? <p className="py-8 text-center text-stone-500">{text.programs.noPrograms}</p> : (
+                        <table className="w-full border-separate border-spacing-y-2">
+                            <thead><tr className="text-left text-xs uppercase text-orange-600">
+                                <th className="px-3">{text.programs.name}</th><th className="px-3">{text.programs.activationTime}</th><th className="px-3">{text.programs.targetOffset}</th><th className="px-3">{text.programs.timeZone}</th><th className="px-3">{text.common.enabled}</th><th className="px-3 text-right">{text.programs.actions}</th>
+                            </tr></thead>
+                            <tbody>{drafts.map((program) => (
+                                <tr key={program.id} className="bg-white/60">
+                                    <td className="p-3"><input aria-label={text.programs.name} value={program.name} onChange={(event) => updateDraft(program.id, { name: event.target.value })} className="w-full rounded border border-orange-100 px-2 py-1" /></td>
+                                    <td className="p-3"><input aria-label={text.programs.activationTime} value={program.activationTime} onChange={(event) => updateDraft(program.id, { activationTime: event.target.value })} className="w-24 rounded border border-orange-100 px-2 py-1" /></td>
+                                    <td className="p-3"><input aria-label={text.programs.targetOffset} type="number" min={0} max={365} value={program.targetDayOffset} onChange={(event) => updateDraft(program.id, { targetDayOffset: Number(event.target.value) })} className="w-20 rounded border border-orange-100 px-2 py-1" /></td>
+                                    <td className="p-3"><input aria-label={text.programs.timeZone} value={program.timeZone} onChange={(event) => updateDraft(program.id, { timeZone: event.target.value })} className="w-44 rounded border border-orange-100 px-2 py-1" /></td>
+                                    <td className="p-3"><input aria-label={text.common.enabled} type="checkbox" checked={program.enabled} onChange={(event) => updateDraft(program.id, { enabled: event.target.checked })} /></td>
+                                    <td className="p-3 text-right"><button type="button" aria-label={`${text.common.delete}: ${program.name}`} onClick={() => { setDeleteCandidate(program); queueMicrotask(() => cancelDeleteRef.current?.focus()); }} className="rounded p-2 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
+                                </tr>
+                            ))}</tbody>
+                        </table>
+                    )}
+                </div>
+
+                {(message || actionError) && <p className="mt-4 text-sm text-stone-600" role="status">{message || actionError}</p>}
+                <div className="mt-6 flex justify-end">
+                    <button id="programs-save" type="button" disabled={isSaving || Object.keys(edits).length === 0} onClick={() => { void handleSave(); }} className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+                        <Save className="h-4 w-4" aria-hidden="true" /> {isSaving ? text.common.saving : text.programs.save}
+                    </button>
+                </div>
+            </section>
+
+            {deleteCandidate && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/40 p-4" role="presentation">
+                    <div role="alertdialog" aria-modal="true" aria-labelledby="delete-program-title" className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+                        <h3 id="delete-program-title" className="text-lg font-semibold text-stone-800">{text.programs.deleteConfirm}</h3>
+                        <p className="mt-2 text-sm text-stone-600">{deleteCandidate.name}</p>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button ref={cancelDeleteRef} type="button" onClick={() => setDeleteCandidate(null)} className="rounded-lg border border-stone-200 px-4 py-2 text-sm">{text.common.cancel}</button>
+                            <button id="programs-confirm-delete" type="button" onClick={() => { void handleDelete(); }} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">{text.common.delete}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

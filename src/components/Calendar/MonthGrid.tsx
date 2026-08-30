@@ -1,8 +1,9 @@
 import React from 'react';
-import { getMonthGrid, isDateInRange, formatDate, formatMonthYear } from '../../utils/dateUtils';
+import { getMonthGrid, isDateInRange, formatDate } from '../../utils/dateUtils';
 import { useCalendarStore } from '../../store/calendarStore';
 import { isSameMonth, isToday } from 'date-fns';
 import clsx from 'clsx';
+import { useTranslation } from '../../i18n/languageContext';
 
 interface MonthGridProps {
     year: number;
@@ -27,6 +28,7 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
 }) => {
     const days = getMonthGrid(year, month);
     const { events, selection, compareMode, compareEvents } = useCalendarStore();
+    const { language, text } = useTranslation();
     const currentMonthDate = new Date(year, month);
     const markedDates = new Set(markedDateKeys);
 
@@ -35,9 +37,9 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
             {/* Technical Header */}
             <div className="calendar-panel__head pb-4 mb-4 px-2">
                 <div>
-                    <div className="text-[10px] text-stone-500 font-mono tracking-widest mb-1">SECTOR {month + 1}</div>
+                    <div className="text-[10px] text-stone-500 font-mono tracking-widest mb-1">{text.calendar.sector} {month + 1}</div>
                     <h3 className="text-2xl text-orange-600 uppercase tracking-widest">
-                        {formatMonthYear(currentMonthDate)}
+                        {new Intl.DateTimeFormat(language, { month: 'long', year: 'numeric' }).format(currentMonthDate)}
                     </h3>
                 </div>
                 <div className="flex gap-1">
@@ -48,9 +50,9 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
 
             {/* Grid Header */}
             <div className="grid grid-cols-7 calendar-panel__rowhead mb-1">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                    <div key={day} className="text-center text-[10px] text-stone-500 font-mono uppercase py-2 border-r border-orange-100 last:border-r-0 font-medium">
-                        {day}
+                {Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(language, { weekday: 'short' }).format(new Date(2024, 0, 7 + index))).map((day, index) => (
+                    <div key={index} className="text-center text-[10px] text-stone-500 font-mono uppercase py-2 border-r border-orange-100 last:border-r-0 font-medium">
+                        {day.replace('.', '')}
                     </div>
                 ))}
             </div>
@@ -90,11 +92,23 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                     const dailyFact = useCalendarStore.getState().dailyFacts[dateStr];
 
                     return (
-                        <div
+                        <button
+                            type="button"
                             key={date.toISOString()}
                             onMouseDown={() => onDateClick(date)}
+                            onKeyDown={(event) => {
+                                if (event.key !== 'Enter' && event.key !== ' ') return;
+                                event.preventDefault();
+                                if (event.key === 'Enter' && !isDayMarkingActive && onDateDoubleClick) {
+                                    onDateDoubleClick(date);
+                                } else {
+                                    onDateClick(date);
+                                }
+                            }}
                             onDoubleClick={() => onDateDoubleClick?.(date)}
                             onMouseEnter={() => (isSelecting || isDayMarkingActive) && onDateEnter(date)}
+                            aria-label={new Intl.DateTimeFormat(language, { dateStyle: 'full' }).format(date)}
+                            aria-pressed={isSelected}
                             className={clsx(
                                 "calendar-cell min-h-[120px] relative p-2 transition-all duration-200 group",
                                 !isCurrentMonth && "cell-faded",
@@ -123,7 +137,7 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                 <div className="flex gap-1">
                                     {isMarked && (
                                         <span className="text-[9px] text-orange-600 font-mono bg-orange-100 px-1 rounded event-count">
-                                            MARKED
+                                            {text.calendar.marked}
                                         </span>
                                     )}
                                     {dayEvents.length > 0 && (
@@ -168,7 +182,7 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                     <div
                                         key={`ghost-${event.id}`}
                                         className="text-[10px] font-mono truncate px-1.5 py-1 rounded-r border border-orange-200/50 text-stone-400 bg-white/40"
-                                        title="Your Event (Ghost View)"
+                                        title={text.calendar.ghostDay}
                                     >
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="truncate opacity-60">{event.title}</span>
@@ -187,7 +201,7 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-full w-[1px] bg-orange-300/50" />
                                     {isMarked && isDayMarkingActive && (
                                         <div className="absolute bottom-2 left-2 rounded-full bg-orange-500 px-2 py-0.5 text-[9px] font-mono text-white shadow-sm">
-                                            SELECTED
+                                            {text.calendar.selectedDayLabel}
                                         </div>
                                     )}
                                 </div>
@@ -201,7 +215,7 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
                                     </div>
                                 </div>
                             )}
-                        </div>
+                        </button>
                     );
                 })}
             </div>

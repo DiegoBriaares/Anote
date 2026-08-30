@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { useTranslation } from '../../i18n/languageContext';
 import { Clock, History } from 'lucide-react';
 import clsx from 'clsx';
 import { FALLBACK_POSTPONED_EVENT_DOMAIN, normalizePostponedEventDomain, type PostponedEventDomain } from '../../utils/postponedDomains';
@@ -11,22 +11,11 @@ interface PostponedEventsInformationProps {
 
 export const PostponedEventsInformation: React.FC<PostponedEventsInformationProps> = ({ postponedView }) => {
     const { postponedEvents } = useCalendarStore();
-    const statusText = getAppText().eventStatus;
-    const [expandedIds, setExpandedIds] = useState<string[]>([]);
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
+    const [expandedByView, setExpandedByView] = useState<Record<PostponedEventDomain, string[]>>({ today: [], week: [], all: [] });
     const activeView = postponedView ?? FALLBACK_POSTPONED_EVENT_DOMAIN;
-    const expandedByViewRef = useRef<Record<PostponedEventDomain, string[]>>({
-        today: [],
-        week: [],
-        all: []
-    });
-
-    useEffect(() => {
-        setExpandedIds(expandedByViewRef.current[activeView] || []);
-    }, [activeView]);
-
-    useEffect(() => {
-        expandedByViewRef.current[activeView] = expandedIds;
-    }, [activeView, expandedIds]);
+    const expandedIds = expandedByView[activeView];
 
     const dayEvents = useMemo(() => {
         const list = (postponedEvents || []).filter((event) => normalizePostponedEventDomain(event.postponedView) === activeView);
@@ -39,22 +28,24 @@ export const PostponedEventsInformation: React.FC<PostponedEventsInformationProp
     }, [postponedEvents, activeView]);
 
     const toggleExpanded = (id: string) => {
-        setExpandedIds((prev) => (
-            prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]
-        ));
+        setExpandedByView((current) => {
+            const currentIds = current[activeView];
+            const nextIds = currentIds.includes(id) ? currentIds.filter((entry) => entry !== id) : [...currentIds, id];
+            return { ...current, [activeView]: nextIds };
+        });
     };
 
     return (
         <div className="w-full board-panel p-4 rounded-2xl mt-6">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <div>
-                    <div className="text-[10px] font-mono text-stone-500 tracking-[0.25em] uppercase">Events Information</div>
-                    <div className="text-xl text-stone-800 tracking-[0.2em]">Postponed Events</div>
+                    <div className="text-[10px] font-mono text-stone-500 tracking-[0.25em] uppercase">{text.calendar.eventInformation}</div>
+                    <div className="text-xl text-stone-800 tracking-[0.2em]">{text.calendar.postponedEvents}</div>
                 </div>
             </div>
 
             {dayEvents.length === 0 ? (
-                <div className="text-xs text-stone-500 font-mono">No events available.</div>
+                <div className="text-xs text-stone-500 font-mono">{text.calendar.noEventsForDay}</div>
             ) : (
                 <div className="flex flex-col gap-3">
                     {dayEvents.map((event) => {
@@ -75,7 +66,7 @@ export const PostponedEventsInformation: React.FC<PostponedEventsInformationProp
                                     <div className="text-sm text-stone-800 font-mono truncate">{event.title}</div>
                                     <div className="flex items-center gap-2 text-[11px] text-stone-500">
                                         <span className="flex items-center gap-1">
-                                            <Clock className="w-3 h-3" />
+                                            <Clock className="w-3 h-3" aria-hidden="true" />
                                             {event.startTime && event.startTime.trim() !== '' ? event.startTime : '--:--'}
                                         </span>
                                         {event.completed && (
@@ -93,14 +84,14 @@ export const PostponedEventsInformation: React.FC<PostponedEventsInformationProp
                                             onClick={() => toggleExpanded(event.id)}
                                             className="text-orange-600 hover:text-orange-700 flex items-center gap-1 text-[11px]"
                                         >
-                                            <History className="w-3 h-3" /> Track Record
+                                            <History className="w-3 h-3" aria-hidden="true" /> {text.calendar.trackRecord}
                                         </button>
                                     </div>
                                 </div>
                                 {isExpanded && (
                                     <div className="text-[11px] text-stone-500 font-mono">
                                         {originDates.length === 0 ? (
-                                            <span>Original entry.</span>
+                                            <span>{text.calendar.originalEntry.replace(': {date}', '')}</span>
                                         ) : (
                                             <div className="flex flex-wrap gap-2">
                                                 {originDates.map((origin) => (
