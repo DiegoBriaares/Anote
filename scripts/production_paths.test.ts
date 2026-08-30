@@ -1,4 +1,6 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -32,5 +34,24 @@ describe('production path ownership', () => {
             ? '/private/example-home/Library/Application Support/Anote/production'
             : '/private/example-state/Anote/production';
         expect(home).toBe(expected);
+    });
+
+    it('refuses legacy production ownership after Control Center enrollment', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anote-control-center-guard-'));
+        const productionHome = path.join(root, 'production');
+        fs.mkdirSync(path.join(root, 'registry'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'registry', 'installation.json'), '{}');
+
+        const result = spawnSync(
+            'bash',
+            ['-c', 'source "$1"', 'bash', script],
+            {
+                encoding: 'utf8',
+                env: { ...process.env, ANOTE_PRODUCTION_HOME: productionHome }
+            }
+        );
+
+        expect(result.status).toBe(73);
+        expect(result.stderr).toContain('managed by Anote Control Center');
     });
 });

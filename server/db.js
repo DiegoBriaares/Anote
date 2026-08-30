@@ -1,117 +1,38 @@
+const fs = require('fs');
+const path = require('path');
 const BetterSqlite3 = require('better-sqlite3');
 
-const normalizeArgs = (args) => {
-    const argList = Array.from(args);
-    const last = argList[argList.length - 1];
-    if (typeof last === 'function') {
-        return { params: argList.slice(0, -1), cb: last };
-    }
-    return { params: argList, cb: undefined };
-};
-
-const createStatementWrapper = (stmt) => {
-    return {
-        run: (...args) => {
-            const { params: normalized, cb: callback } = normalizeArgs(args);
-            try {
-                const info = stmt.run(...normalized);
-                callback?.call(info, null);
-                return info;
-            } catch (err) {
-                callback?.(err);
-                return undefined;
-            }
-        },
-        get: (...args) => {
-            const { params: normalized, cb: callback } = normalizeArgs(args);
-            try {
-                const row = stmt.get(...normalized);
-                callback?.(null, row);
-                return row;
-            } catch (err) {
-                callback?.(err, undefined);
-                return undefined;
-            }
-        },
-        all: (...args) => {
-            const { params: normalized, cb: callback } = normalizeArgs(args);
-            try {
-                const rows = stmt.all(...normalized);
-                callback?.(null, rows);
-                return rows;
-            } catch (err) {
-                callback?.(err, undefined);
-                return undefined;
-            }
-        },
-        finalize: (cb) => {
-            cb?.(null);
-        }
-    };
-};
-
-const createDatabase = (dbPath, onOpen) => {
-    let dbInstance;
-    let wrapper;
+/**
+ * Open Anote's single database owner.
+ *
+ * The native synchronous API is deliberate: statement failures must unwind
+ * the owning transaction or abort startup, never disappear into callbacks.
+ */
+const createDatabase = (databasePath) => {
+    fs.mkdirSync(path.dirname(databasePath), { recursive: true, mode: 0o700 });
+    const db = new BetterSqlite3(databasePath);
     try {
-        dbInstance = new BetterSqlite3(dbPath);
-    } catch (err) {
-        onOpen?.(err, undefined);
-        throw err;
+        fs.chmodSync(databasePath, 0o600);
+    } catch (error) {
+        if (process.platform !== 'win32') throw error;
     }
-
-    wrapper = {
-        run: (sql, ...args) => {
-            const { params: normalized, cb: callback } = normalizeArgs(args);
-            try {
-                const info = dbInstance.prepare(sql).run(...normalized);
-                callback?.call(info, null);
-                return info;
-            } catch (err) {
-                callback?.(err);
-                return undefined;
-            }
-        },
-        get: (sql, ...args) => {
-            const { params: normalized, cb: callback } = normalizeArgs(args);
-            try {
-                const row = dbInstance.prepare(sql).get(...normalized);
-                callback?.(null, row);
-                return row;
-            } catch (err) {
-                callback?.(err, undefined);
-                return undefined;
-            }
-        },
-        all: (sql, ...args) => {
-            const { params: normalized, cb: callback } = normalizeArgs(args);
-            try {
-                const rows = dbInstance.prepare(sql).all(...normalized);
-                callback?.(null, rows);
-                return rows;
-            } catch (err) {
-                callback?.(err, undefined);
-                return undefined;
-            }
-        },
-        prepare: (sql) => createStatementWrapper(dbInstance.prepare(sql)),
-        serialize: (fn) => {
-            fn();
-        },
-        close: (cb) => {
-            try {
-                dbInstance.close();
-                cb?.(null);
-            } catch (err) {
-                cb?.(err);
-            }
-        }
-    };
-
-    if (onOpen) {
-        setImmediate(() => onOpen(null, wrapper));
+    db.pragma('foreign_keys = ON');
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000');
+    db.pragma('synchronous = FULL');
+    if (db.pragma('foreign_keys', { simple: true }) !== 1
+        || String(db.pragma('journal_mode', { simple: true })).toLocaleLowerCase() !== 'wal'
+        || db.pragma('busy_timeout', { simple: true }) !== 5000) {
+        db.close();
+        throw new Error('Required SQLite connection policy could not be established');
     }
-    return wrapper;
+    return db;
 };
 
-module.exports = { createDatabase };
+const closeDatabase = (db) => {
+    if (!db?.open) return;
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.close();
+};
+
+module.exports = { createDatabase, closeDatabase };

@@ -3,6 +3,9 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const ignoredDirectories = new Set(['.git', 'node_modules', 'dist']);
+const ignoredGeneratedPaths = new Set([
+    path.join('control_center', 'build')
+]);
 const allowedSensitiveFiles = new Set([
     '.env.example',
     path.join('server', 'uploads', '.gitkeep')
@@ -37,8 +40,10 @@ const isForbiddenDataFile = (relative) => {
 
 const scan = (directory) => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.name === '.git') continue;
         if (entry.isDirectory() && ignoredDirectories.has(entry.name)) continue;
         const absolute = path.join(directory, entry.name);
+        if (entry.isDirectory() && ignoredGeneratedPaths.has(relativePath(absolute))) continue;
         if (entry.isDirectory()) {
             scan(absolute);
             continue;

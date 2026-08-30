@@ -14,14 +14,26 @@ const isProduction = nodeEnv === 'production';
 const serverDir = __dirname;
 const databasePath = path.resolve(process.env.ANOTE_DATABASE_PATH || path.join(serverDir, 'calendar.db'));
 const uploadDir = path.resolve(process.env.ANOTE_UPLOAD_DIR || path.join(serverDir, 'uploads'));
-const secretKey = process.env.SECRET_KEY || (isProduction ? '' : 'anote-development-only-secret');
-
-if (!secretKey) {
-    throw new Error('SECRET_KEY is required when NODE_ENV=production');
+const configuredTimeZone = process.env.ANOTE_DEFAULT_TIME_ZONE;
+if (isProduction && !configuredTimeZone) {
+    throw new Error('ANOTE_DEFAULT_TIME_ZONE is required in production.');
 }
+const defaultTimeZone = configuredTimeZone || 'UTC';
+try {
+    new Intl.DateTimeFormat('en-US', { timeZone: defaultTimeZone }).format();
+} catch {
+    throw new Error('ANOTE_DEFAULT_TIME_ZONE must be a valid IANA time zone.');
+}
+const parsePositiveInteger = (value, fallback, name) => {
+    const parsed = Number(value ?? fallback);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        throw new Error(`Invalid ${name}: ${value}`);
+    }
+    return parsed;
+};
 
-fs.mkdirSync(path.dirname(databasePath), { recursive: true });
-fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync(path.dirname(databasePath), { recursive: true, mode: 0o700 });
+fs.mkdirSync(uploadDir, { recursive: true, mode: 0o700 });
 
 module.exports = Object.freeze({
     nodeEnv,
@@ -30,5 +42,14 @@ module.exports = Object.freeze({
     host: process.env.HOST || (isProduction ? '0.0.0.0' : '127.0.0.1'),
     databasePath,
     uploadDir,
-    secretKey
+    sessionCookieName: 'anote_session',
+    sessionIdleSeconds: parsePositiveInteger(process.env.ANOTE_SESSION_IDLE_SECONDS, 60 * 60 * 24 * 7, 'session idle duration'),
+    sessionAbsoluteSeconds: parsePositiveInteger(process.env.ANOTE_SESSION_ABSOLUTE_SECONDS, 60 * 60 * 24 * 30, 'session absolute duration'),
+    secureCookies: process.env.ANOTE_SECURE_COOKIES === '1',
+    defaultTimeZone,
+    release: Object.freeze({
+        id: process.env.ANOTE_RELEASE_ID || 'development',
+        version: process.env.ANOTE_RELEASE_VERSION || '0.0.0-development',
+        sourceCommit: process.env.ANOTE_SOURCE_COMMIT || 'unknown'
+    })
 });
