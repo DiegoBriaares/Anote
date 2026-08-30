@@ -117,6 +117,7 @@ rolls back the complete command.
 | DATA-TXN-001 | Bulk create/move/share/delete either commits the declared complete set or commits nothing. Returned counts come from committed changes, never requested input length. | corresponding domain service transaction |
 | DATA-TXN-002 | Role/subrole, friendship, user deletion and note replacement preserve all foreign-key and ownership rules in one transaction. | corresponding domain service transaction |
 | DATA-TXN-003 | Registration hashes before the write lock, then rechecks policy and commits the user plus initial session in one immediate transaction. | authentication and user/session services |
+| DATA-TXN-004 | Saving a day's fact and background is one calendar-metadata command; both changed fields and any retired background attachment commit or roll back together. | calendar metadata and attachment retirement services |
 | DATA-REV-001 | Mutable resource creation starts at revision 1. Every successful mutation increments exactly once. | resource service and schema constraint |
 | DATA-REV-002 | Revision acceptance is one SQL predicate over resource ID, owner ID and expected revision. A preliminary read cannot authorize a later write. | resource service |
 | DATA-REV-003 | Missing expected revision is invalid for an existing revisioned mutation; there is no legacy force-overwrite route. | route validator |

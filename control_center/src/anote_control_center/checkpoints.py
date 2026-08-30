@@ -45,6 +45,11 @@ WINDOWS_RESERVED_NAMES = frozenset({
 })
 STAGED_CHECKPOINT_PATTERN = re.compile(r"checkpoint\.package-[0-9a-f]{12}\.anote-checkpoint")
 CHECKPOINT_WORK_PATTERN = re.compile(r"checkpoint\.work-[0-9a-f]{12}")
+CHECKPOINT_DATA_PATTERNS = {
+    "staging": re.compile(r"data\.checkpoint-[0-9a-f]{12}"),
+    "previous": re.compile(r"data\.previous-[0-9a-f]{12}"),
+    "failed": re.compile(r"data\.failed-[0-9a-f]{12}"),
+}
 
 
 def checkpoint_staging_path(paths: ManagedPaths, name: str) -> Path:
@@ -59,6 +64,14 @@ def checkpoint_work_path(paths: ManagedPaths, name: str) -> Path:
     if not isinstance(name, str) or CHECKPOINT_WORK_PATTERN.fullmatch(name) is None:
         raise ContractError("Checkpoint recovery work identity is invalid.", code="recovery_failed")
     return paths.assert_safe(paths.root / name)
+
+
+def checkpoint_data_path(paths: ManagedPaths, name: str, kind: str) -> Path:
+    """Resolve one journal-owned checkpoint data directory by its declared role."""
+    pattern = CHECKPOINT_DATA_PATTERNS.get(kind)
+    if pattern is None or not isinstance(name, str) or pattern.fullmatch(name) is None:
+        raise ContractError("Checkpoint recovery data identity is invalid.", code="recovery_failed")
+    return paths.assert_safe(paths.production / name)
 
 
 def _validate_portable_upload_path(path: PurePosixPath) -> None:
@@ -901,16 +914,24 @@ class CheckpointService:
             self.paths,
             f"checkpoint.package-{os.urandom(6).hex()}.anote-checkpoint",
         )
+        staging_name = f"data.checkpoint-{os.urandom(6).hex()}"
+        previous_name = f"data.previous-{os.urandom(6).hex()}"
+        failed_name = f"data.failed-{os.urandom(6).hex()}"
         operation = OperationRecord(
             os.urandom(12).hex(), "apply_checkpoint", "extracting", installation.installation_id,
             self.clock(), {
                 "checkpoint_id": checkpoint.manifest.checkpoint_id,
                 "checkpoint_staging_name": package_copy.name,
+                "checkpoint_data_staging_name": staging_name,
+                "checkpoint_previous_name": previous_name,
+                "checkpoint_failed_name": failed_name,
             },
         )
-        staging = self.paths.production / f"data.checkpoint-{os.urandom(6).hex()}"
-        previous = self.paths.production / f"data.previous-{os.urandom(6).hex()}"
-        failed_candidate = self.paths.production / f"data.failed-{os.urandom(6).hex()}"
+        staging = checkpoint_data_path(self.paths, staging_name, "staging")
+        previous = checkpoint_data_path(self.paths, previous_name, "previous")
+        failed_candidate = checkpoint_data_path(self.paths, failed_name, "failed")
+        if any(path.exists() or path.is_symlink() for path in (staging, previous, failed_candidate)):
+            raise ContractError("Checkpoint data staging identity already exists.", code="recovery_required")
         swapped = False
         committed = False
         journal_started = False

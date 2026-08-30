@@ -260,16 +260,33 @@ class LifecycleApplicationTests(unittest.TestCase):
             staged_name = "checkpoint.package-0123456789ab.anote-checkpoint"
             staged = paths.production / staged_name
             staged.write_bytes(b"partial checkpoint bytes")
+            data_staging_name = "data.checkpoint-0123456789ab"
+            data_staging = paths.production / data_staging_name
+            data_staging.mkdir()
+            previous_name = "data.previous-0123456789ab"
+            failed_name = "data.failed-0123456789ab"
+            unrelated_previous = paths.production / "data.previous-manually-retained"
+            unrelated_previous.mkdir()
+            database_before = paths.database.read_bytes()
             service.journal.save(OperationRecord(
                 "checkpoint-crash", "apply_checkpoint", "extracting",
                 installed.installation_id, 100,
-                {"checkpoint_id": "cp-pending", "checkpoint_staging_name": staged_name},
+                {
+                    "checkpoint_id": "cp-pending",
+                    "checkpoint_staging_name": staged_name,
+                    "checkpoint_data_staging_name": data_staging_name,
+                    "checkpoint_previous_name": previous_name,
+                    "checkpoint_failed_name": failed_name,
+                },
             ))
 
             recovered = service.recover_interrupted()
 
             self.assertEqual(installed, recovered)
             self.assertFalse(staged.exists())
+            self.assertFalse(data_staging.exists())
+            self.assertTrue(unrelated_previous.exists())
+            self.assertEqual(database_before, paths.database.read_bytes())
             self.assertIsNone(service.journal.load())
 
     def test_update_failure_restores_previous_release_data_and_stopped_state(self) -> None:
@@ -423,6 +440,21 @@ class LifecycleApplicationTests(unittest.TestCase):
             service.erase_all(ERASE_CONFIRMATION)
             self.assertIsNone(registry.load())
             self.assertEqual("keep", unrelated.read_text(encoding="utf-8"))
+
+    def test_safe_uninstall_validates_runtime_before_docker_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _release, _paths, registry, runtime, service = self.fresh(Path(directory))
+            before_events = list(runtime.events)
+            with patch.object(
+                LifecycleService,
+                "_validated_runtime_path",
+                side_effect=ContractError("unsafe runtime", code="unsafe_owned_path"),
+            ):
+                with self.assertRaisesRegex(ContractError, "unsafe runtime"):
+                    service.safe_uninstall()
+            self.assertEqual(before_events, runtime.events)
+            self.assertIsNotNone(registry.load())
+            self.assertIsNone(service.journal.load())
 
     def test_erase_validates_all_owned_paths_before_runtime_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

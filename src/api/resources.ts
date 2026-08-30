@@ -19,8 +19,10 @@ export const peopleApi = {
 export const calendarResourcesApi = {
     dailyFacts: (start: string, end: string) => apiData<Record<string, string>>(`/daily-facts?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
     dayBackgrounds: (start: string, end: string) => apiData<Record<string, string>>(`/day-backgrounds?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
-    saveDailyFact: (date: string, content: string) => apiRequest<{ message: string }>('/daily-facts', { method: 'POST', body: jsonBody({ date, content }) }),
-    saveDayBackground: (date: string, imageUrl: string) => apiRequest<{ message: string }>('/day-backgrounds', { method: 'POST', body: jsonBody({ date, imageUrl }) }),
+    saveDaySettings: (date: string, changes: { content?: string; imageUrl?: string }) => apiRequest<{ message: string }>('/day-settings', {
+        method: 'POST',
+        body: jsonBody({ date, ...changes })
+    }),
     roles: () => apiData<WireRecord[]>('/roles'),
     subroles: () => apiData<WireRecord[]>('/subroles'),
     createRole: (payload: WireRecord) => apiRequest<{ message: string }>('/roles', { method: 'POST', body: jsonBody(payload) }),

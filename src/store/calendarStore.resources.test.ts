@@ -26,10 +26,17 @@ describe('calendar resource writes', () => {
         });
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(failedResponse());
 
-        expect(await useCalendarStore.getState().saveDailyFact('2026-08-30', 'Context')).toBe(false);
-        expect(await useCalendarStore.getState().saveDayBackground('2026-08-30', 'https://example.test/image.png'))
-            .toBe(false);
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(await useCalendarStore.getState().saveDaySettings('2026-08-30', {
+            content: 'Context',
+            imageUrl: 'https://example.test/image.png'
+        })).toBe(false);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toBe('/api/day-settings');
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+            date: '2026-08-30',
+            content: 'Context',
+            imageUrl: 'https://example.test/image.png'
+        });
         expect(useCalendarStore.getState()).toMatchObject({
             dailyFacts: {},
             dayBackgrounds: {}

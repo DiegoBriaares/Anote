@@ -7,7 +7,7 @@ import type { CalendarState, Role, Subrole } from '../calendarStore';
 import type { OwnerContext } from './types';
 
 type ResourcesOwner = Pick<CalendarState,
-    'fetchMonthVisuals' | 'saveDailyFact' | 'saveDayBackground' |
+    'fetchMonthVisuals' | 'saveDaySettings' |
     'fetchRoles' | 'fetchSubroles' | 'manageRoles' | 'manageSubroles' | 'reorderRoles' |
     'fetchEventNotes' | 'saveEventNote' | 'uploadFile'
 >;
@@ -38,23 +38,19 @@ export const createResourcesOwner = ({ set, get, logoutAndReset }: OwnerContext)
         }
     },
 
-    saveDailyFact: async (date, content) => {
+    saveDaySettings: async (date, changes) => {
         if (!get().user) return false;
         try {
-            await calendarResourcesApi.saveDailyFact(date, content);
-            set((state) => ({ dailyFacts: { ...state.dailyFacts, [date]: content }, actionError: null }));
-            return true;
-        } catch (error) {
-            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
-            return false;
-        }
-    },
-
-    saveDayBackground: async (date, imageUrl) => {
-        if (!get().user) return false;
-        try {
-            await calendarResourcesApi.saveDayBackground(date, imageUrl);
-            set((state) => ({ dayBackgrounds: { ...state.dayBackgrounds, [date]: imageUrl }, actionError: null }));
+            await calendarResourcesApi.saveDaySettings(date, changes);
+            set((state) => ({
+                dailyFacts: changes.content === undefined
+                    ? state.dailyFacts
+                    : { ...state.dailyFacts, [date]: changes.content },
+                dayBackgrounds: changes.imageUrl === undefined
+                    ? state.dayBackgrounds
+                    : { ...state.dayBackgrounds, [date]: changes.imageUrl },
+                actionError: null
+            }));
             return true;
         } catch (error) {
             if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });

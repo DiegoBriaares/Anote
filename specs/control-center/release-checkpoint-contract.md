@@ -284,7 +284,10 @@ Apply rechecks actual Docker stopped state under the shared operation lock,
 generates and validates one owned staging name, and journals that exact relative
 identity before copying any package byte. The copy hashes every byte. Recovery
 removes only the journaled staging child, including a partial copy left by
-process or power loss. Only that package identity is reopened. Both extracted database and uploads
+process or power loss. The extracted candidate, retained previous data, and
+failed-candidate directories are likewise generated, role-validated, and
+journaled before extraction; recovery restores or removes only those exact
+children and never discovers rollback authority by glob. Only that package identity is reopened. Both extracted database and uploads
 digests are rechecked before database integrity/schema/privacy and upload
 inventory validation. It then advances the journal to destructive intent, atomically swaps the
 complete data directory, and records lineage. A source-path replacement,

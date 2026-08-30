@@ -17,6 +17,7 @@ from .checkpoints import (
     CheckpointService,
     SnapshotService,
     VerifiedCheckpoint,
+    checkpoint_data_path,
     checkpoint_staging_path,
     checkpoint_work_path,
 )
@@ -573,15 +574,13 @@ class LifecycleService:
                 raise ContractError("Stop Anote through Orchestra before uninstalling its runtime.", code="stop_required")
             if installation.state not in {"checkpoint_required", "awaiting_checkpoint", "ready_stopped", "stopped_dirty"}:
                 raise ContractError("Finish recovery before uninstalling Anote.", code="recovery_required")
+            runtime_path = self._validated_runtime_path()
             record = self._record("safe_uninstall", "preflight", installation, {"release": installation.version})
             self.journal.save(record)
             self.runtime.down(installation)
             self.runtime.remove_registered_images(installation)
-            if self.paths.runtime.exists():
-                self.paths.assert_safe(self.paths.runtime, allow_missing=False)
-                if self.paths.runtime.is_symlink():
-                    raise ContractError("Anote runtime path is unsafe.", code="unsafe_owned_path")
-                shutil.rmtree(self.paths.runtime)
+            if runtime_path is not None:
+                shutil.rmtree(runtime_path)
             retained = replace(
                 installation,
                 state="runtime_removed_data_retained",
@@ -748,24 +747,30 @@ class LifecycleService:
                 staged_name = record.details.get("checkpoint_staging_name")
                 if staged_name:
                     checkpoint_staging_path(self.paths, staged_name).unlink(missing_ok=True)
-                previous = sorted(self.paths.production.glob("data.previous-*"))
-                if len(previous) > 1:
-                    raise ContractError("Checkpoint recovery found ambiguous previous data.", code="recovery_failed")
+                staging = checkpoint_data_path(
+                    self.paths, record.details.get("checkpoint_data_staging_name", ""), "staging",
+                )
+                previous = checkpoint_data_path(
+                    self.paths, record.details.get("checkpoint_previous_name", ""), "previous",
+                )
+                failed = checkpoint_data_path(
+                    self.paths, record.details.get("checkpoint_failed_name", ""), "failed",
+                )
+                for candidate in (staging, previous, failed):
+                    self._validate_checkpoint_directory(candidate)
                 committed_checkpoint = record.details.get("checkpoint_id")
                 if committed_checkpoint and installation.last_checkpoint_id == committed_checkpoint:
-                    for candidate in previous:
-                        shutil.rmtree(candidate, ignore_errors=True)
-                    previous = []
-                elif previous:
-                    failed = self.paths.production / f"data.failed-recovery-{secrets.token_hex(6)}"
+                    self._remove_checkpoint_directory(previous)
+                elif previous.exists():
+                    if failed.exists():
+                        raise ContractError("Checkpoint recovery found an ambiguous failed candidate.", code="recovery_failed")
                     if self.paths.data.exists():
                         os.replace(self.paths.data, failed)
-                    os.replace(previous[0], self.paths.data)
-                    shutil.rmtree(failed, ignore_errors=True)
-                for pattern in ("data.checkpoint-*", "data.failed-*"):
-                    for candidate in self.paths.production.glob(pattern):
-                        if candidate.is_dir() and not candidate.is_symlink():
-                            shutil.rmtree(candidate)
+                    os.replace(previous, self.paths.data)
+                elif not self.paths.data.exists():
+                    raise ContractError("Checkpoint recovery is missing both current and previous data.", code="recovery_failed")
+                self._remove_checkpoint_directory(staging)
+                self._remove_checkpoint_directory(failed)
                 self.journal.clear()
                 return installation
 
@@ -792,11 +797,12 @@ class LifecycleService:
             if record.kind == "safe_uninstall":
                 if installation is None:
                     raise ContractError("Safe uninstall recovery is missing its registry.", code="recovery_failed")
+                runtime_path = self._validated_runtime_path()
                 if self.paths.compose.exists() and self.paths.environment.exists():
                     self.runtime.down(installation)
                 self.runtime.remove_registered_images(installation)
-                if self.paths.runtime.exists() and not self.paths.runtime.is_symlink():
-                    shutil.rmtree(self.paths.runtime)
+                if runtime_path is not None:
+                    shutil.rmtree(runtime_path)
                 retained = replace(
                     installation,
                     state="runtime_removed_data_retained",
@@ -843,6 +849,28 @@ class LifecycleService:
         self.paths.assert_safe(self.paths.registry)
         self.paths.assert_safe(self.paths.operations)
         return self.paths.owned_erase_paths()
+
+    def _validated_runtime_path(self) -> Path | None:
+        if not self.paths.runtime.exists() and not self.paths.runtime.is_symlink():
+            return None
+        runtime = self.paths.assert_safe(self.paths.runtime, allow_missing=False)
+        if not runtime.is_dir() or runtime.is_symlink():
+            raise ContractError("Anote runtime path is unsafe.", code="unsafe_owned_path")
+        return runtime
+
+    @staticmethod
+    def _remove_checkpoint_directory(path: Path) -> None:
+        LifecycleService._validate_checkpoint_directory(path)
+        if not path.exists():
+            return
+        shutil.rmtree(path)
+
+    @staticmethod
+    def _validate_checkpoint_directory(path: Path) -> None:
+        if not path.exists() and not path.is_symlink():
+            return
+        if not path.is_dir() or path.is_symlink():
+            raise ContractError("Checkpoint recovery data path is unsafe.", code="recovery_failed")
 
     def _candidate(
         self,

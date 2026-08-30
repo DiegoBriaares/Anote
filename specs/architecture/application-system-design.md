@@ -191,7 +191,7 @@ on deliberate invalidation/focus, not every three seconds.
 | APP-BOOT-001 | Process startup | composition/database owners | listener and scheduler exist only after migrations | initialization failure/success integration test |
 | APP-STOP-001 | SIGTERM/container stop | composition root | no new scheduled work; SQLite closes cleanly | controlled-shutdown owner test |
 | APP-I18N-001 | Language change | language provider | coherent EN or ES text and aria labels | catalog shape/parity plus representative render |
-| APP-WRITE-001 | Profile/day-setting mutation | focused state owner and editing surface | confirmed success applies/navigates; failure preserves draft and surface with localized recovery | owner failure-result tests plus representative profile/day dialog interactions |
+| APP-WRITE-001 | Profile/day-setting mutation | domain transaction, focused state owner and editing surface | one combined day command commits all changed fields; confirmed success applies/navigates; failure preserves server state, draft and surface with localized recovery | injected server rollback, owner request-shape tests and representative profile/day dialog interactions |
 | APP-UI-001 | Guarded/destructive control | backend policy plus interaction owner | visible state agrees with effective result; refusal preserves edits/data | owner contract; browser evidence only for focus/routing risks |
 | APP-HEALTH-001 | Control Center validation | runtime identity and readiness owner | exact selected release and usable data/upload boundary | packaged gateway readiness check |
 

@@ -19,13 +19,12 @@ afterEach(() => {
 
 describe('DayConfigModal', () => {
     it('keeps a rejected day-setting draft open for correction or retry', async () => {
-        const saveDailyFact = vi.fn().mockResolvedValue(false);
+        const saveDaySettings = vi.fn().mockResolvedValue(false);
         const onClose = vi.fn();
         mockedUseCalendarStore.mockReturnValue({
             dailyFacts: {},
             dayBackgrounds: {},
-            saveDailyFact,
-            saveDayBackground: vi.fn().mockResolvedValue(true)
+            saveDaySettings
         });
         const user = userEvent.setup();
         renderWithLanguage(<DayConfigModal date={new Date('2026-08-30T12:00:00Z')} isOpen onClose={onClose} />);
@@ -34,7 +33,7 @@ describe('DayConfigModal', () => {
         await user.type(fact, 'Important context');
         await user.click(screen.getByRole('button', { name: 'Save day settings' }));
 
-        expect(saveDailyFact).toHaveBeenCalledTimes(1);
+        expect(saveDaySettings).toHaveBeenCalledWith('2026-08-30', { content: 'Important context' });
         expect((fact as HTMLTextAreaElement).value).toBe('Important context');
         expect(onClose).not.toHaveBeenCalled();
     });

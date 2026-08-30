@@ -233,7 +233,9 @@ Safe uninstall removes only recreatable registered containers, networks,
 images when no other registered installation owns them, generated runtime and
 active-runtime registry state. It retains production data, backups,
 checkpoints, verified release cache/inbox, installation identity, exact release
-and stopped resume state. Start is unavailable until exact reinstall succeeds.
+and stopped resume state. The runtime path is validated under the operation
+lock before the journal or any Docker mutation, in both ordinary execution and
+interrupted recovery. Start is unavailable until exact reinstall succeeds.
 
 Full erase is a separate command. It displays the canonical registry-owned
 targets in EN/ES, requires literal `ERASE ANOTE`, proves stopped state, acquires

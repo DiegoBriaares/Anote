@@ -16,7 +16,7 @@ type DayConfigFormProps = DayConfigModalProps & {
 };
 
 const DayConfigForm = ({ date, dateKey, initialFact, initialBackground, onClose }: DayConfigFormProps) => {
-    const { saveDailyFact, saveDayBackground } = useCalendarStore();
+    const { saveDaySettings } = useCalendarStore();
     const { language, text } = useTranslation();
     const [factDraft, setFactDraft] = useState(initialFact);
     const [backgroundDraft, setBackgroundDraft] = useState(initialBackground);
@@ -56,11 +56,13 @@ const DayConfigForm = ({ date, dateKey, initialFact, initialBackground, onClose 
     const handleSave = async () => {
         if (isSaving) return;
         setIsSaving(true);
-        const factSaved = factDraft === initialFact || await saveDailyFact(dateKey, factDraft);
-        const backgroundSaved = backgroundDraft === initialBackground
-            || await saveDayBackground(dateKey, backgroundDraft);
+        const changes = {
+            ...(factDraft !== initialFact ? { content: factDraft } : {}),
+            ...(backgroundDraft !== initialBackground ? { imageUrl: backgroundDraft } : {})
+        };
+        const saved = Object.keys(changes).length === 0 || await saveDaySettings(dateKey, changes);
         setIsSaving(false);
-        if (factSaved && backgroundSaved) onClose();
+        if (saved) onClose();
     };
 
     return (

@@ -154,8 +154,7 @@ export interface CalendarState {
     dailyFacts: Record<string, string>;
     dayBackgrounds: Record<string, string>;
     fetchMonthVisuals: (start: string, end: string) => Promise<void>;
-    saveDailyFact: (date: string, content: string) => Promise<boolean>;
-    saveDayBackground: (date: string, imageUrl: string) => Promise<boolean>;
+    saveDaySettings: (date: string, changes: { content?: string; imageUrl?: string }) => Promise<boolean>;
 
     // Roles & Notes
     roles: Role[];

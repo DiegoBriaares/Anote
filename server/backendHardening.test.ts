@@ -1072,6 +1072,35 @@ describe('session and request boundary', () => {
     });
 });
 
+describe('calendar metadata transaction ownership', () => {
+    it('commits a day fact and background as one command', () => {
+        const { db } = createTestDatabase();
+        insertUser(db, 'u1');
+        const metadata = createCalendarMetadataService({ db });
+        db.exec(`
+            CREATE TRIGGER fail_day_background BEFORE INSERT ON day_backgrounds_v2
+            BEGIN SELECT RAISE(ABORT, 'injected day background failure'); END;
+        `);
+
+        expect(() => metadata.saveDaySettings('u1', '2026-08-30', {
+            content: 'Atomic context',
+            imageUrl: 'https://example.test/background.png'
+        })).toThrow('injected day background failure');
+        expect(db.prepare('SELECT COUNT(*) AS count FROM daily_facts_v2').get().count).toBe(0);
+        expect(db.prepare('SELECT COUNT(*) AS count FROM day_backgrounds_v2').get().count).toBe(0);
+
+        db.exec('DROP TRIGGER fail_day_background');
+        metadata.saveDaySettings('u1', '2026-08-30', {
+            content: 'Atomic context',
+            imageUrl: 'https://example.test/background.png'
+        });
+        expect(db.prepare('SELECT content FROM daily_facts_v2').get().content).toBe('Atomic context');
+        expect(db.prepare('SELECT image_url FROM day_backgrounds_v2').get().image_url)
+            .toBe('https://example.test/background.png');
+        closeDatabase(db);
+    });
+});
+
 describe('attachment authorization', () => {
     it('keeps note files owner-only while allowing authenticated avatar reads', () => {
         const { db, directory } = createTestDatabase();

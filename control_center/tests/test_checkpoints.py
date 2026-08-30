@@ -274,6 +274,9 @@ class CheckpointTests(unittest.TestCase):
                 record = journal.load()
                 self.assertIsNotNone(record)
                 self.assertEqual(destination.name, record.details["checkpoint_staging_name"])  # type: ignore[union-attr]
+                self.assertRegex(record.details["checkpoint_data_staging_name"], r"^data\.checkpoint-[0-9a-f]{12}$")  # type: ignore[union-attr]
+                self.assertRegex(record.details["checkpoint_previous_name"], r"^data\.previous-[0-9a-f]{12}$")  # type: ignore[union-attr]
+                self.assertRegex(record.details["checkpoint_failed_name"], r"^data\.failed-[0-9a-f]{12}$")  # type: ignore[union-attr]
                 raise RuntimeError("injected staging failure")
 
             with (
