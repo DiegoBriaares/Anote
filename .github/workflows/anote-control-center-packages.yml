@@ -28,7 +28,9 @@ jobs:
         name: Match tag and bundled version
         run: |
           bundled="$(python -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("control_center/pyproject.toml").read_text())["project"]["version"])')"
+          runtime="$(PYTHONPATH=control_center/src python -c 'import anote_control_center; print(anote_control_center.__version__)')"
           [[ "$bundled" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$runtime" = "$bundled" || { echo "Runtime version $runtime does not match bundled version $bundled." >&2; exit 1; }
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             tagged="${GITHUB_REF_NAME#anote-control-center-v}"
             test "$tagged" = "$bundled" || { echo "Tag version $tagged does not match bundled version $bundled." >&2; exit 1; }
@@ -74,7 +76,7 @@ jobs:
           fi
           if [ "$configured" = 6 ]; then
             echo "configured=1" >> "$GITHUB_OUTPUT"
-            echo "### Apple package: signed and notarized" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Apple publication policy: signing and notarization required" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "configured=0" >> "$GITHUB_OUTPUT"
             echo "### Apple package: unsigned" >> "$GITHUB_STEP_SUMMARY"
@@ -109,6 +111,15 @@ jobs:
         env:
           REQUIRE_SIGNING: ${{ steps.signing.outputs.configured }}
         run: control_center/release/build-macos.sh
+      - name: Record Apple package result
+        env:
+          SIGNED: ${{ steps.signing.outputs.configured }}
+        run: |
+          if [ "$SIGNED" = 1 ]; then
+            echo "Apple package result: signed and notarized." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Apple package result: unsigned." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: anote-control-center-macos-arm64
@@ -140,7 +151,7 @@ jobs:
           if ($env:REQUIRE_SIGNING_REQUESTED -eq '1' -and $configured -ne 3) { throw "Windows signing was required but no complete credential set is configured." }
           if ($configured -eq 3) {
             Add-Content $env:GITHUB_OUTPUT "configured=1"
-            Add-Content $env:GITHUB_STEP_SUMMARY "### Windows package: Authenticode signed"
+            Add-Content $env:GITHUB_STEP_SUMMARY "### Windows publication policy: Authenticode signing required"
           } else {
             Add-Content $env:GITHUB_OUTPUT "configured=0"
             Add-Content $env:GITHUB_STEP_SUMMARY "### Windows package: unsigned"
@@ -182,6 +193,16 @@ jobs:
           if ($check.ExitCode -ne 0) { throw "Installed application self-check failed." }
           $uninstall = Start-Process -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
           if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $executable)) { throw "Installer did not uninstall cleanly." }
+      - name: Record Windows package result
+        shell: pwsh
+        env:
+          SIGNED: ${{ steps.signing.outputs.configured }}
+        run: |
+          if ($env:SIGNED -eq '1') {
+            Add-Content $env:GITHUB_STEP_SUMMARY "Windows package result: Authenticode signed."
+          } else {
+            Add-Content $env:GITHUB_STEP_SUMMARY "Windows package result: unsigned."
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: anote-control-center-windows-x64
