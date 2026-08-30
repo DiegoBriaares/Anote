@@ -100,6 +100,11 @@ image set is exactly `api` and `web`. Each image records tag, Linux architecture
 configuration digest and OCI/runtime-manifest digest derived from the exact
 archive. Loading succeeds only when Docker reports the declared tags and one of
 the archive-derived immutable identities; tag presence alone is insufficient.
+Classic Docker commonly exposes the configuration digest as `.Id`, while
+Docker Desktop's containerd image store may expose the verified top-level OCI
+load digest. Control Center records the exact host-observed member of that
+verified identity set in the installation registry, then requires that same ID
+for every later start, command, update, rollback and removal operation.
 
 Windows x64 packages declare Linux `amd64`. Apple Silicon packages declare
 Linux `arm64`. Two packages for one logical release have identical release ID,

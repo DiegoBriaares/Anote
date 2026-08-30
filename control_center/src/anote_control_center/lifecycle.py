@@ -95,7 +95,10 @@ class LifecycleService:
             self.journal.save(record)
             configuration = RuntimeConfiguration(timezone, installation.public_port, bind_address)
             try:
-                self.runtime.load_release_images(release)
+                loaded = self.runtime.load_release_images(release)
+                installation = self._with_loaded_image_ids(installation, loaded)
+                record = self._with_record_image_ids(record, installation)
+                self.journal.save(record)
                 self.runtime.write_runtime(release, configuration)
                 self.journal.save(replace(record, phase="runtime_prepared"))
                 self.runtime.run_release_command(installation, release.commands.migrate)
@@ -146,7 +149,10 @@ class LifecycleService:
             record = self._record("prepare_standby", "preflight", installation, {"release": release.manifest.version})
             self.journal.save(record)
             try:
-                self.runtime.load_release_images(release)
+                loaded = self.runtime.load_release_images(release)
+                installation = self._with_loaded_image_ids(installation, loaded)
+                record = self._with_record_image_ids(record, installation)
+                self.journal.save(record)
                 self.runtime.write_runtime(
                     release,
                     RuntimeConfiguration(timezone, installation.public_port, bind_address),
@@ -199,8 +205,12 @@ class LifecycleService:
             try:
                 self.runtime.stop_legacy(legacy)
                 backup = self.snapshots.create("pre-adoption")
-                self.journal.save(replace(record, phase="legacy_snapshotted", details={**record.details, "backup_id": backup.backup_id}))
-                self.runtime.load_release_images(release)
+                record = replace(record, phase="legacy_snapshotted", details={**record.details, "backup_id": backup.backup_id})
+                self.journal.save(record)
+                loaded = self.runtime.load_release_images(release)
+                installation = self._with_loaded_image_ids(installation, loaded)
+                record = self._with_record_image_ids(record, installation)
+                self.journal.save(record)
                 self.runtime.write_runtime(release, configuration)
                 self.runtime.run_release_command(installation, release.commands.migrate)
                 health = self.runtime.up(installation)
@@ -285,7 +295,8 @@ class LifecycleService:
                 web_image_digest=release.manifest.image_for_role("web").config_digest,
             )
             try:
-                self.runtime.load_release_images(release)
+                loaded = self.runtime.load_release_images(release)
+                target = self._with_loaded_image_ids(target, loaded)
                 self.runtime.write_runtime(release, configuration)
                 self.journal.save(replace(record, phase="migrating"))
                 self.runtime.run_release_command(target, release.commands.migrate)
@@ -321,7 +332,8 @@ class LifecycleService:
             self.journal.save(record)
             recovering = installation
             try:
-                self.runtime.load_release_images(release)
+                loaded = self.runtime.load_release_images(release)
+                recovering = self._with_loaded_image_ids(recovering, loaded)
                 self.runtime.write_runtime(
                     release,
                     RuntimeConfiguration(
@@ -377,7 +389,7 @@ class LifecycleService:
         try:
             for source in (self.paths.compose, self.paths.environment):
                 shutil.copyfile(source, temporary / source.name)
-            self.runtime.load_release_images(release)
+            loaded = self.runtime.load_release_images(release)
             self.runtime.write_runtime(release, configuration)
             staged = replace(
                 installation,
@@ -387,9 +399,9 @@ class LifecycleService:
                 source_commit=release.manifest.source_commit,
                 package_sha256=release.package_sha256,
                 api_image_tag=release.manifest.image_for_role("api").tag,
-                api_image_digest=release.manifest.image_for_role("api").config_digest,
+                api_image_digest=loaded["api"],
                 web_image_tag=release.manifest.image_for_role("web").tag,
-                web_image_digest=release.manifest.image_for_role("web").config_digest,
+                web_image_digest=loaded["web"],
                 updated_at=self.clock(),
             )
             self.registry.save(staged)
@@ -810,6 +822,24 @@ class LifecycleService:
             now,
             now,
         )
+
+    @staticmethod
+    def _with_loaded_image_ids(installation: Installation, loaded: dict[str, str]) -> Installation:
+        if set(loaded) != {"api", "web"}:
+            raise ContractError("Loaded release image identity is incomplete.", code="image_identity_mismatch")
+        return replace(
+            installation,
+            api_image_digest=loaded["api"],
+            web_image_digest=loaded["web"],
+        )
+
+    @staticmethod
+    def _with_record_image_ids(record: OperationRecord, installation: Installation) -> OperationRecord:
+        return replace(record, details={
+            **record.details,
+            "api_image_digest": installation.api_image_digest,
+            "web_image_digest": installation.web_image_digest,
+        })
 
     def _record(self, kind: str, phase: str, installation: Installation, details: dict[str, str]) -> OperationRecord:
         identity = {

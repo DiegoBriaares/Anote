@@ -76,7 +76,7 @@ def inspect_image(reference: str, expected_architecture: str) -> dict[str, str]:
     image_id = row.get("Id")
     if not isinstance(image_id, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
         raise RuntimeError(f"Image identity is invalid: {reference}")
-    return {"config_digest": image_id, "operating_system": "linux", "architecture": architecture}
+    return {"runtime_digest": image_id, "operating_system": "linux", "architecture": architecture}
 
 
 def build_image(
@@ -171,7 +171,11 @@ def create_package(
                 operating_system="linux",
                 architecture=platform.container_architecture,
             )
-            if docker_identity["config_digest"] != archive_identity.config_digest:
+            if docker_identity["runtime_digest"] not in {
+                archive_identity.config_digest,
+                archive_identity.manifest_digest,
+                archive_identity.load_digest,
+            }:
                 raise RuntimeError("Docker inspection and exact image archive disagree")
             identity = {
                 "config_digest": archive_identity.config_digest,

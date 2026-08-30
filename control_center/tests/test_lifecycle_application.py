@@ -31,9 +31,10 @@ class FakeRuntime:
         self.bootstrap_payload: dict[str, str] | None = None
         self.legacy: LegacyRuntime | None = None
 
-    def load_release_images(self, release: object) -> None:
+    def load_release_images(self, release: object) -> dict[str, str]:
         release.assert_current()  # type: ignore[attr-defined]
         self.events.append("load")
+        return {"api": "sha256:" + "7" * 64, "web": "sha256:" + "8" * 64}
 
     def write_runtime(self, release: object, configuration: RuntimeConfiguration) -> None:
         self.configuration = configuration
@@ -134,6 +135,8 @@ class LifecycleApplicationTests(unittest.TestCase):
             _release, _paths, registry, runtime, _service = self.fresh(Path(directory))
             installed = registry.load()
             self.assertEqual("checkpoint_required", installed.state)  # type: ignore[union-attr]
+            self.assertEqual("sha256:" + "7" * 64, installed.api_image_digest)  # type: ignore[union-attr]
+            self.assertEqual("sha256:" + "8" * 64, installed.web_image_digest)  # type: ignore[union-attr]
             self.assertFalse(runtime.running)
             self.assertEqual({"username": "administrator", "password": "a-secure-password"}, runtime.bootstrap_payload)
             self.assertNotIn("America/Mexico_City", json.dumps(runtime.bootstrap_payload))

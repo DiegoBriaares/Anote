@@ -200,9 +200,10 @@ class DockerRuntime:
             if self._numeric_version(compose.stdout) < self._numeric_version(manifest.minimum_docker_compose):
                 raise RuntimeCommandError("Docker Compose is older than this Anote release requires.", code="docker_version_too_old")
 
-    def load_release_images(self, release: VerifiedRelease) -> None:
+    def load_release_images(self, release: VerifiedRelease) -> dict[str, str]:
         release.assert_current()
         self.require_ready(release.manifest)
+        loaded: dict[str, str] = {}
         for image in release.manifest.images:
             self.reporter(f"Loading {image.role} image")
             self._run(
@@ -210,9 +211,10 @@ class DockerRuntime:
                 timeout=1800,
                 message="A verified Anote image could not be loaded.",
             )
-            self._verify_image(image)
+            loaded[image.role] = self._verify_image(image)
+        return loaded
 
-    def _verify_image(self, image: RuntimeImage) -> None:
+    def _verify_image(self, image: RuntimeImage) -> str:
         result = self._run(
             ["docker", "image", "inspect", image.tag, "--format", "{{json .}}"],
             timeout=60,
@@ -223,10 +225,15 @@ class DockerRuntime:
         except json.JSONDecodeError as error:
             raise RuntimeCommandError("A loaded image returned unreadable identity information.", code="image_identity_mismatch") from error
         actual_arch = str(value.get("Architecture", "")).replace("x86_64", "amd64").replace("aarch64", "arm64") if isinstance(value, dict) else ""
-        if not isinstance(value, dict) or (
-            value.get("Id"), value.get("Os"), actual_arch
-        ) != (image.config_digest, image.operating_system, image.architecture):
+        actual_id = value.get("Id") if isinstance(value, dict) else None
+        if (
+            not isinstance(actual_id, str)
+            or actual_id not in image.accepted_runtime_digests
+            or value.get("Os") != image.operating_system
+            or actual_arch != image.architecture
+        ):
             raise RuntimeCommandError("A loaded image does not match the verified release manifest.", code="image_identity_mismatch")
+        return actual_id
 
     def write_runtime(self, release: VerifiedRelease, configuration: RuntimeConfiguration) -> None:
         ensure_private_directory(self.paths.runtime, managed_paths=self.paths)
@@ -365,16 +372,17 @@ class DockerRuntime:
                 value = json.loads(inspected.stdout)
             except json.JSONDecodeError as error:
                 raise RuntimeCommandError("Release image identity is unreadable.", code="image_identity_mismatch") from error
-            if not isinstance(value, dict) or value.get("Id") != image.config_digest:
+            actual_id = value.get("Id") if isinstance(value, dict) else None
+            if not isinstance(actual_id, str) or actual_id not in image.accepted_runtime_digests:
                 raise RuntimeCommandError("A release image tag now identifies different bytes.", code="image_identity_mismatch")
             self._run(
-                ["docker", "image", "rm", image.config_digest],
+                ["docker", "image", "rm", actual_id],
                 timeout=300,
                 message="Anote runtime images could not be removed.",
             )
 
     def remove_registered_images(self, installation: Installation) -> None:
-        """Remove only tags whose current config identity is recorded in the registry."""
+        """Remove only tags whose current host image ID is recorded in the registry."""
         for tag, expected_digest in (
             (installation.api_image_tag, installation.api_image_digest),
             (installation.web_image_tag, installation.web_image_digest),

@@ -9,6 +9,7 @@ from anote_control_center.docker_runtime import CommandResult, DockerRuntime
 from anote_control_center.errors import RuntimeCommandError
 from anote_control_center.model import Installation
 from anote_control_center.platform_paths import ManagedPaths
+from anote_control_center.releases import RuntimeImage
 
 from helpers import MAC
 
@@ -66,7 +67,25 @@ def container_row(
 
 
 class DockerRuntimeTests(unittest.TestCase):
-    def test_registered_image_removal_uses_exact_recorded_config_id(self) -> None:
+    def test_loaded_image_accepts_the_verified_top_level_oci_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = RuntimeImage(
+                "api", "anote-api:test", "images/api.tar",
+                "sha256:" + "a" * 64, "sha256:" + "b" * 64, "sha256:" + "c" * 64,
+                "linux", "arm64",
+            )
+            response = CommandResult(0, json.dumps({
+                "Id": image.load_digest,
+                "Os": "linux",
+                "Architecture": "arm64",
+            }), "")
+            executor = ScriptedExecutor({
+                ("docker", "image", "inspect", image.tag, "--format", "{{json .}}"): response,
+            })
+            runtime = DockerRuntime(ManagedPaths(Path(directory) / "state"), MAC, executor=executor)
+            self.assertEqual(image.load_digest, runtime._verify_image(image))
+
+    def test_registered_image_removal_uses_exact_recorded_host_id(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             value = installation()
             responses: dict[tuple[str, ...], CommandResult] = {}

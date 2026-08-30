@@ -114,6 +114,11 @@ class RuntimeImage:
         if self.operating_system != "linux" or self.architecture not in {"amd64", "arm64"}:
             raise ContractError("Runtime image platform is unsupported.", code="invalid_release")
 
+    @property
+    def accepted_runtime_digests(self) -> frozenset[str]:
+        """Exact IDs Docker may expose for this verified archive across image stores."""
+        return frozenset((self.config_digest, self.manifest_digest, self.load_digest))
+
 
 @dataclass(frozen=True)
 class RuntimeCommands:
