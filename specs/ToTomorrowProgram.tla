@@ -1,194 +1,168 @@
 ----------------------------- MODULE ToTomorrowProgram -----------------------------
-EXTENDS FiniteSets
+EXTENDS FiniteSets, Naturals
 
-\* Abstract state-machine contract for the To Tomorrow automatic program.
-\*
-\* This spec intentionally avoids React, Zustand, SQLite, HTTP, and browser APIs.
-\* The substitutable implementation boundary is:
-\*   - eventDate/completed represent calendar memory cells,
-\*   - enabled/activationTime represent persisted program rows,
-\*   - currentTime represents the connected session clock,
-\*   - tomorrowProgramParameter is the cascade trigger,
-\*   - sessionOpen/sessionMessage represent the automatic activation protocol.
+\* Finite safety model for the server-owned Anote automatic-program boundary.
+\* Scheduling arithmetic and SQLite behavior are tested by their concrete owners;
+\* this model explores replay, status preservation, exact source selection and
+\* notification/session ordering without representing browser clocks or storage.
 
-CONSTANTS EventIds, ProgramIds, Dates, Times, Today, Tomorrow, ActivationMessage
+CONSTANTS EventIds, ProgramIds, Dates,
+          Pending, Completed, Failed,
+          Past, Today, Tomorrow, Future,
+          ActivationMessage
 
-ASSUME /\ EventIds # {}
+ASSUME /\ Cardinality(EventIds) >= 3
+       /\ EventIds # {}
        /\ ProgramIds # {}
-       /\ Today \in Dates
-       /\ Tomorrow \in Dates
+       /\ Dates = {Past, Today, Tomorrow, Future}
+       /\ Past # Today
        /\ Today # Tomorrow
+       /\ Tomorrow # Future
+       /\ Pending # Completed
+       /\ Completed # Failed
+       /\ Pending # Failed
+
+ePending == CHOOSE e \in EventIds: TRUE
+eCompleted == CHOOSE e \in EventIds \ {ePending}: TRUE
 
 VARIABLES eventDate,
-          completed,
+          eventStatus,
+          revision,
           enabled,
-          activationTime,
-          currentTime,
-          tomorrowProgramParameter,
+          dueSource,
+          hasRun,
+          runTarget,
+          notification,
           sessionOpen,
-          sessionMessage,
-          hasRun
+          sessionMessage
 
-vars == <<eventDate,
-          completed,
-          enabled,
-          activationTime,
-          currentTime,
-          tomorrowProgramParameter,
-          sessionOpen,
-          sessionMessage,
-          hasRun>>
+vars == <<eventDate, eventStatus, revision, enabled, dueSource, hasRun,
+          runTarget, notification, sessionOpen, sessionMessage>>
 
 TypeOK ==
     /\ eventDate \in [EventIds -> Dates]
-    /\ completed \in [EventIds -> BOOLEAN]
+    /\ eventStatus \in [EventIds -> {Pending, Completed, Failed}]
+    /\ revision \in [EventIds -> Nat \ {0}]
     /\ enabled \in [ProgramIds -> BOOLEAN]
-    /\ activationTime \in [ProgramIds -> Times]
-    /\ currentTime \in Times
-    /\ tomorrowProgramParameter \in BOOLEAN
+    /\ dueSource \in [ProgramIds -> Dates]
+    /\ hasRun \in [ProgramIds -> SUBSET Dates]
+    /\ runTarget \in [ProgramIds -> [Dates -> Dates]]
+    /\ notification \subseteq ProgramIds
     /\ sessionOpen \in BOOLEAN
-    /\ sessionMessage \in { "", ActivationMessage }
-    /\ hasRun \in [ProgramIds -> SUBSET Times]
+    /\ sessionMessage \in {"", ActivationMessage}
 
 Init ==
-    /\ TypeOK
-    /\ tomorrowProgramParameter = FALSE
+    /\ eventDate = [e \in EventIds |-> IF e = ePending THEN Past ELSE Today]
+    /\ eventStatus = [e \in EventIds |->
+          IF e = ePending THEN Pending
+          ELSE IF e = eCompleted THEN Completed
+          ELSE Failed]
+    /\ revision = [e \in EventIds |-> 1]
+    /\ enabled = [p \in ProgramIds |-> TRUE]
+    /\ dueSource = [p \in ProgramIds |-> Past]
+    /\ hasRun = [p \in ProgramIds |-> {}]
+    /\ runTarget = [p \in ProgramIds |-> [d \in Dates |-> d]]
+    /\ notification = {}
     /\ sessionOpen = TRUE
     /\ sessionMessage = ""
-    /\ hasRun = [p \in ProgramIds |-> {}]
 
-ToTomorrowDateMap ==
+TargetFor(source) == IF source = Today THEN Tomorrow ELSE Today
+
+MovedBy(source, target) ==
     [e \in EventIds |->
-        IF /\ eventDate[e] = Today
-           /\ ~completed[e]
-        THEN Tomorrow
+        IF /\ eventDate[e] = source
+           /\ eventStatus[e] = Pending
+        THEN target
         ELSE eventDate[e]]
 
-SetProgram(p, time, en) ==
+RevisionAfter(source) ==
+    [e \in EventIds |->
+        IF /\ eventDate[e] = source
+           /\ eventStatus[e] = Pending
+        THEN revision[e] + 1
+        ELSE revision[e]]
+
+AutomaticRun(p) ==
+    LET source == dueSource[p]
+        target == TargetFor(source)
+    IN  /\ p \in ProgramIds
+        /\ enabled[p]
+        /\ source \in {Past, Today}
+        /\ source \notin hasRun[p]
+        /\ eventDate' = MovedBy(source, target)
+        /\ revision' = RevisionAfter(source)
+        /\ hasRun' = [hasRun EXCEPT ![p] = @ \cup {source}]
+        /\ runTarget' = [runTarget EXCEPT ![p][source] = target]
+        /\ dueSource' = [dueSource EXCEPT ![p] = Tomorrow]
+        /\ notification' = notification \cup {p}
+        /\ UNCHANGED <<eventStatus, enabled, sessionOpen, sessionMessage>>
+
+ManualRun(p) ==
     /\ p \in ProgramIds
-    /\ time \in Times
-    /\ en \in BOOLEAN
-    /\ enabled' = [enabled EXCEPT ![p] = en]
-    /\ activationTime' = [activationTime EXCEPT ![p] = time]
-    /\ UNCHANGED <<eventDate,
-                  completed,
-                  currentTime,
-                  tomorrowProgramParameter,
-                  sessionOpen,
-                  sessionMessage,
-                  hasRun>>
+    /\ Today \notin hasRun[p]
+    /\ eventDate' = MovedBy(Today, Tomorrow)
+    /\ revision' = RevisionAfter(Today)
+    /\ hasRun' = [hasRun EXCEPT ![p] = @ \cup {Today}]
+    /\ runTarget' = [runTarget EXCEPT ![p][Today] = Tomorrow]
+    /\ UNCHANGED <<eventStatus, enabled, dueSource, notification,
+                    sessionOpen, sessionMessage>>
 
-ClockTick(time) ==
-    /\ time \in Times
-    /\ currentTime' = time
-    /\ UNCHANGED <<eventDate,
-                  completed,
-                  enabled,
-                  activationTime,
-                  tomorrowProgramParameter,
-                  sessionOpen,
-                  sessionMessage,
-                  hasRun>>
-
-SetTomorrowProgramParameterTrue ==
-    /\ sessionOpen
-    /\ tomorrowProgramParameter' = TRUE
-    /\ UNCHANGED <<eventDate,
-                  completed,
-                  enabled,
-                  activationTime,
-                  currentTime,
-                  sessionOpen,
-                  sessionMessage,
-                  hasRun>>
-
-RunToTomorrowFromParameter ==
-    /\ sessionOpen
-    /\ tomorrowProgramParameter
-    /\ eventDate' = ToTomorrowDateMap
-    /\ tomorrowProgramParameter' = FALSE
-    /\ completed' = completed
-    /\ UNCHANGED <<enabled,
-                  activationTime,
-                  currentTime,
-                  sessionOpen,
-                  sessionMessage,
-                  hasRun>>
-
-AutomaticToTomorrow(p) ==
+RetryCommittedRun(p, source) ==
     /\ p \in ProgramIds
+    /\ source \in hasRun[p]
+    /\ UNCHANGED vars
+
+SetEnabled(p, value) ==
+    /\ p \in ProgramIds
+    /\ value \in BOOLEAN
+    /\ enabled' = [enabled EXCEPT ![p] = value]
+    /\ UNCHANGED <<eventDate, eventStatus, revision, dueSource, hasRun,
+                    runTarget, notification, sessionOpen, sessionMessage>>
+
+ObserveAutomaticRun(p) ==
+    /\ p \in notification
     /\ sessionOpen
-    /\ enabled[p]
-    /\ activationTime[p] = currentTime
-    /\ ~tomorrowProgramParameter
-    /\ currentTime \notin hasRun[p]
-    /\ eventDate' = ToTomorrowDateMap
-    /\ completed' = completed
-    /\ tomorrowProgramParameter' = FALSE
+    /\ notification' = notification \ {p}
     /\ sessionOpen' = FALSE
     /\ sessionMessage' = ActivationMessage
-    /\ hasRun' = [hasRun EXCEPT ![p] = @ \cup {currentTime}]
-    /\ UNCHANGED <<enabled, activationTime, currentTime>>
+    /\ UNCHANGED <<eventDate, eventStatus, revision, enabled, dueSource,
+                    hasRun, runTarget>>
 
 Next ==
-    \/ \E p \in ProgramIds, time \in Times, en \in BOOLEAN:
-        SetProgram(p, time, en)
-    \/ \E time \in Times:
-        ClockTick(time)
-    \/ SetTomorrowProgramParameterTrue
-    \/ RunToTomorrowFromParameter
-    \/ \E p \in ProgramIds:
-        AutomaticToTomorrow(p)
+    \/ \E p \in ProgramIds: AutomaticRun(p)
+    \/ \E p \in ProgramIds: ManualRun(p)
+    \/ \E p \in ProgramIds, source \in Dates: RetryCommittedRun(p, source)
+    \/ \E p \in ProgramIds, value \in BOOLEAN: SetEnabled(p, value)
+    \/ \E p \in ProgramIds: ObserveAutomaticRun(p)
 
-Spec ==
-    Init /\ [][Next]_vars
+Spec == Init /\ [][Next]_vars
 
-\* Safety contracts for any implementation substituted under this abstraction.
-
-CompletedNeverChanges ==
-    completed' = completed
-
-OnlyTodayIncompleteEventsMove ==
+OnlyPendingSourceEventsMove ==
     \A e \in EventIds:
-        eventDate'[e] # eventDate[e] =>
-            /\ eventDate[e] = Today
-            /\ ~completed[e]
-            /\ eventDate'[e] = Tomorrow
+        eventDate'[e] # eventDate[e] => eventStatus[e] = Pending
 
-CompletedEventsStayPut ==
+TerminalEventsStayPut ==
     \A e \in EventIds:
-        completed[e] => eventDate'[e] = eventDate[e]
+        eventStatus[e] \in {Completed, Failed} => eventDate'[e] = eventDate[e]
 
-AutomaticActivationClosesWithProtocolMessage ==
+MoveIncrementsRevisionExactlyOnce ==
+    \A e \in EventIds:
+        IF eventDate'[e] # eventDate[e]
+        THEN revision'[e] = revision[e] + 1
+        ELSE revision'[e] = revision[e]
+
+RunLedgerMonotonic ==
+    \A p \in ProgramIds: hasRun[p] \subseteq hasRun'[p]
+
+SessionCloseHasAutomaticProtocol ==
     /\ sessionOpen
-    /\ sessionOpen' = FALSE
-    =>
-    /\ sessionMessage' = ActivationMessage
-    /\ \E p \in ProgramIds:
-        /\ enabled[p]
-        /\ activationTime[p] = currentTime
-        /\ currentTime \in hasRun'[p]
+    /\ ~sessionOpen'
+    => sessionMessage' = ActivationMessage
 
-ParameterRunDoesNotCloseSession ==
-    /\ tomorrowProgramParameter
-    /\ eventDate' = ToTomorrowDateMap
-    =>
-    /\ sessionOpen' = sessionOpen
-    /\ sessionMessage' = sessionMessage
-
-AlwaysCompletedNeverChanges ==
-    [][CompletedNeverChanges]_vars
-
-AlwaysOnlyTodayIncompleteEventsMove ==
-    [][OnlyTodayIncompleteEventsMove]_vars
-
-AlwaysCompletedEventsStayPut ==
-    [][CompletedEventsStayPut]_vars
-
-AlwaysAutomaticActivationClosesWithProtocolMessage ==
-    [][AutomaticActivationClosesWithProtocolMessage]_vars
-
-AlwaysParameterRunDoesNotCloseSessionSilently ==
-    [][ParameterRunDoesNotCloseSession]_vars
+AlwaysOnlyPendingSourceEventsMove == [][OnlyPendingSourceEventsMove]_vars
+AlwaysTerminalEventsStayPut == [][TerminalEventsStayPut]_vars
+AlwaysMoveIncrementsRevisionExactlyOnce == [][MoveIncrementsRevisionExactlyOnce]_vars
+AlwaysRunLedgerMonotonic == [][RunLedgerMonotonic]_vars
+AlwaysSessionCloseHasAutomaticProtocol == [][SessionCloseHasAutomaticProtocol]_vars
 
 =============================================================================
