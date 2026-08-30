@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: anote-control-center-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   contract:
     runs-on: ubuntu-24.04
@@ -44,6 +48,8 @@ jobs:
   macos:
     needs: contract
     runs-on: macos-15
+    outputs:
+      signed: ${{ steps.signing.outputs.configured }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -125,10 +131,14 @@ jobs:
           name: anote-control-center-macos-arm64
           path: control_center/dist/Anote-Control-Center-macOS-Apple-Silicon.dmg
           if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
 
   windows:
     needs: contract
     runs-on: windows-2025
+    outputs:
+      signed: ${{ steps.signing.outputs.configured }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -223,3 +233,51 @@ jobs:
           name: anote-control-center-windows-x64
           path: control_center/dist/Anote-Control-Center-Windows11-x64-Setup.exe
           if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/anote-control-center-v')
+    needs: [contract, macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: anote-control-center-*
+          path: ${{ runner.temp }}/publication
+          merge-multiple: true
+      - name: Publish durable tagged Control Center release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MACOS_SIGNED: ${{ needs.macos.outputs.signed }}
+          VERSION: ${{ needs.contract.outputs.version }}
+          WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
+        run: |
+          notes="$RUNNER_TEMP/anote-control-center-release-notes.md"
+          if [ "$MACOS_SIGNED" = 1 ]; then macos_status="signed and notarized"; else macos_status="unsigned"; fi
+          if [ "$WINDOWS_SIGNED" = 1 ]; then windows_status="Authenticode signed"; else windows_status="unsigned"; fi
+          printf 'Anote Control Center %s.\n\nSource commit: `%s`\n\n- macOS Apple Silicon DMG: %s\n- Windows 11 x64 installer: %s\n' "$VERSION" "$GITHUB_SHA" "$macos_status" "$windows_status" > "$notes"
+          python scripts/release/publish_tag_release.py \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --title "Anote Control Center $VERSION" \
+            --notes-file "$notes" \
+            --asset "$RUNNER_TEMP/publication/Anote-Control-Center-macOS-Apple-Silicon.dmg" \
+            --asset "$RUNNER_TEMP/publication/Anote-Control-Center-Windows11-x64-Setup.exe"
+      - name: Remove successful run transfer artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            --jq '.artifacts[].id' | while read -r artifact_id; do
+              test -z "$artifact_id" || gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"
+            done

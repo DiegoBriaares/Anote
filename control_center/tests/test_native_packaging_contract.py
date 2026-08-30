@@ -49,6 +49,31 @@ class NativePackagingContractTests(unittest.TestCase):
         self.assertIn('bundle_build_version" != "$package_version"', build_script)
         self.assertIn('codesign --force --deep --sign - "$app_path"', build_script)
 
+    def test_tag_publication_is_exact_bounded_and_does_not_publish_validation_runs(self) -> None:
+        application = (REPOSITORY_ROOT / ".github" / "workflows" / "anote-application-release.yml").read_text(
+            encoding="utf-8"
+        )
+        control_center = (
+            REPOSITORY_ROOT / ".github" / "workflows" / "anote-control-center-packages.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/anote-v')",
+            application,
+        )
+        self.assertIn(
+            "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/anote-control-center-v')",
+            control_center,
+        )
+        for workflow, upload_count in ((application, 2), (control_center, 2)):
+            self.assertEqual(workflow.count("retention-days: 1"), upload_count)
+            self.assertNotIn("retention-days: 14", workflow)
+            self.assertIn("actions: write", workflow)
+            self.assertEqual(workflow.count("contents: write"), 1)
+            self.assertIn("scripts/release/publish_tag_release.py", workflow)
+            self.assertIn("Remove successful run transfer artifacts", workflow)
+            self.assertIn("actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
