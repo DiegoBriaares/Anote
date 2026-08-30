@@ -171,11 +171,7 @@ def create_package(
                 operating_system="linux",
                 architecture=platform.container_architecture,
             )
-            if docker_identity["runtime_digest"] not in {
-                archive_identity.config_digest,
-                archive_identity.manifest_digest,
-                archive_identity.load_digest,
-            }:
+            if not archive_identity.accepts_runtime_digest(docker_identity["runtime_digest"]):
                 raise RuntimeError("Docker inspection and exact image archive disagree")
             identity = {
                 "config_digest": archive_identity.config_digest,

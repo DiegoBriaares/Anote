@@ -29,6 +29,9 @@ class ImageArchiveTests(unittest.TestCase):
             identity = inspect_image_archive(path, "anote-api:test", operating_system="linux", architecture="arm64")
             self.assertEqual((config, manifest, load), (identity.config_digest, identity.manifest_digest, identity.load_digest))
             self.assertNotEqual(manifest, load)
+            for digest in (config, manifest, load):
+                self.assertTrue(identity.accepts_runtime_digest(digest))
+            self.assertFalse(identity.accepts_runtime_digest("sha256:" + "0" * 64))
 
     def test_rejects_invalid_attestation_reference_and_wrong_platform(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

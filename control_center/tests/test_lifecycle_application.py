@@ -30,11 +30,12 @@ class FakeRuntime:
         self.fail_retire = False
         self.bootstrap_payload: dict[str, str] | None = None
         self.legacy: LegacyRuntime | None = None
+        self.loaded_image_ids = {"api": "sha256:" + "7" * 64, "web": "sha256:" + "8" * 64}
 
     def load_release_images(self, release: object) -> dict[str, str]:
         release.assert_current()  # type: ignore[attr-defined]
         self.events.append("load")
-        return {"api": "sha256:" + "7" * 64, "web": "sha256:" + "8" * 64}
+        return dict(self.loaded_image_ids)
 
     def write_runtime(self, release: object, configuration: RuntimeConfiguration) -> None:
         self.configuration = configuration
@@ -70,7 +71,12 @@ class FakeRuntime:
         self.running = False
 
     def down(self, _installation: object) -> None:
-        self.events.append("down")
+        self.events.append(
+            "down:"
+            + _installation.api_image_digest  # type: ignore[attr-defined]
+            + ":"
+            + _installation.web_image_digest  # type: ignore[attr-defined]
+        )
         if self.fail_down:
             raise RuntimeCommandError("injected down failure", code="docker_command_failed")
         self.running = False
@@ -86,7 +92,12 @@ class FakeRuntime:
         self.events.append("remove-images")
 
     def remove_registered_images(self, _installation: object) -> None:
-        self.events.append("remove-registered-images")
+        self.events.append(
+            "remove-registered-images:"
+            + _installation.api_image_digest  # type: ignore[attr-defined]
+            + ":"
+            + _installation.web_image_digest  # type: ignore[attr-defined]
+        )
 
     def inspect_legacy(self, _project_name: str) -> LegacyRuntime:
         if self.legacy is None:
@@ -227,7 +238,44 @@ class LifecycleApplicationTests(unittest.TestCase):
                 self.assertEqual(0, connection.execute("SELECT count(*) FROM events WHERE title = 'candidate-only'").fetchone()[0])
             finally:
                 connection.close()
-            self.assertIn("remove-registered-images", runtime.events)
+            self.assertTrue(any(event.startswith("remove-registered-images:") for event in runtime.events))
+            self.assertIsNone(service.journal.load())
+
+    def test_interrupted_retained_reinstall_removes_journaled_host_image_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release, paths, registry, runtime, service = self.fresh(root)
+            retained = service.safe_uninstall(release)  # type: ignore[arg-type]
+            old_api, old_web = retained.api_image_digest, retained.web_image_digest
+            new_api, new_web = "sha256:" + "9" * 64, "sha256:" + "a" * 64
+            runtime.loaded_image_ids = {"api": new_api, "web": new_web}
+            runtime.fail_next_up = True
+            runtime.fail_down = True
+            with self.assertRaises(RuntimeCommandError):
+                service.reinstall_retained(release)  # type: ignore[arg-type]
+            journal = service.journal.load()
+            assert journal is not None
+            self.assertEqual((new_api, new_web), (journal.details["api_image_digest"], journal.details["web_image_digest"]))
+            failed = registry.load()
+            assert failed is not None
+            self.assertEqual(("recovery_required", new_api, new_web), (failed.state, failed.api_image_digest, failed.web_image_digest))
+
+            # Reproduce a process interruption immediately after the journal write,
+            # before the retained registry can publish the candidate host IDs.
+            registry.save(retained)
+            runtime.fail_down = False
+            recovery_events = len(runtime.events)
+
+            recovered = service.recover_interrupted()
+
+            assert recovered is not None
+            self.assertEqual((old_api, old_web), (recovered.api_image_digest, recovered.web_image_digest))
+            events = runtime.events[recovery_events:]
+            self.assertIn(f"down:{new_api}:{new_web}", events)
+            self.assertIn(f"remove-registered-images:{new_api}:{new_web}", events)
+            self.assertNotIn(f"remove-registered-images:{old_api}:{old_web}", events)
+            self.assertEqual("runtime_removed_data_retained", recovered.state)
+            self.assertFalse(paths.runtime.exists())
             self.assertIsNone(service.journal.load())
 
     def test_interrupted_start_recovery_converges_to_stopped_dirty(self) -> None:

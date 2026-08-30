@@ -334,6 +334,8 @@ class LifecycleService:
             try:
                 loaded = self.runtime.load_release_images(release)
                 recovering = self._with_loaded_image_ids(recovering, loaded)
+                record = self._with_record_image_ids(record, recovering)
+                self.journal.save(record)
                 self.runtime.write_runtime(
                     release,
                     RuntimeConfiguration(
@@ -359,7 +361,12 @@ class LifecycleService:
                     if self.paths.compose.exists() and self.paths.environment.exists():
                         self.runtime.down(recovering)
                 except Exception:
-                    self.registry.save(replace(installation, state="recovery_required", updated_at=self.clock()))
+                    self.registry.save(replace(
+                        recovering,
+                        state="recovery_required",
+                        retained_resume_state=None,
+                        updated_at=self.clock(),
+                    ))
                     self.journal.save(replace(record, phase="recovery_required"))
                     raise
                 self.registry.save(installation)
@@ -720,9 +727,10 @@ class LifecycleService:
             if record.kind == "reinstall_retained":
                 if installation is None:
                     raise ContractError("Retained reinstall recovery is missing its registry.", code="recovery_failed")
+                candidate = self._installation_from_record(record)
                 if self.paths.compose.exists() and self.paths.environment.exists():
-                    self.runtime.down(installation)
-                self.runtime.remove_registered_images(installation)
+                    self.runtime.down(candidate)
+                self.runtime.remove_registered_images(candidate)
                 if self.paths.runtime.exists() and not self.paths.runtime.is_symlink():
                     shutil.rmtree(self.paths.runtime)
                 retained = replace(

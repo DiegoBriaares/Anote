@@ -11,7 +11,7 @@ from anote_control_center.model import Installation
 from anote_control_center.platform_paths import ManagedPaths
 from anote_control_center.releases import RuntimeImage
 
-from helpers import MAC
+from helpers import MAC, write_release
 
 
 OWNED = ("production", "backups", "checkpoints", "releases", "logs", "operations")
@@ -97,6 +97,23 @@ class DockerRuntimeTests(unittest.TestCase):
             self.assertIn(("docker", "image", "rm", value.api_image_digest), executor.calls)
             self.assertIn(("docker", "image", "rm", value.web_image_digest), executor.calls)
             self.assertNotIn(("docker", "image", "rm", value.api_image_tag), executor.calls)
+
+    def test_release_image_removal_uses_verified_host_load_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release = write_release(root / "release")
+            responses: dict[tuple[str, ...], CommandResult] = {}
+            for image in release.manifest.images:
+                responses[("docker", "image", "inspect", image.tag, "--format", "{{json .}}")] = CommandResult(
+                    0, json.dumps({"Id": image.load_digest}), "",
+                )
+                responses[("docker", "image", "rm", image.load_digest)] = CommandResult(0, "", "")
+            executor = ScriptedExecutor(responses)
+            DockerRuntime(ManagedPaths(root / "state"), MAC, executor=executor).remove_images(release)
+            for image in release.manifest.images:
+                self.assertIn(("docker", "image", "rm", image.load_digest), executor.calls)
+                self.assertNotIn(("docker", "image", "rm", image.tag), executor.calls)
+                self.assertNotIn(("docker", "image", "rm", image.config_digest), executor.calls)
 
     def test_legacy_adoption_rejects_an_extra_network_dependent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

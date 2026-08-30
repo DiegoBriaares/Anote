@@ -33,6 +33,14 @@ class ImageArchiveIdentity:
     operating_system: str
     architecture: str
 
+    @property
+    def accepted_runtime_digests(self) -> frozenset[str]:
+        """Exact IDs a Docker image store may expose for this verified archive."""
+        return frozenset((self.config_digest, self.manifest_digest, self.load_digest))
+
+    def accepts_runtime_digest(self, digest: str) -> bool:
+        return digest in self.accepted_runtime_digests
+
 
 def _fail(message: str) -> ContractError:
     return ContractError(message, code="invalid_release")
