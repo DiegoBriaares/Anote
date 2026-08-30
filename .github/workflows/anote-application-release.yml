@@ -1,0 +1,157 @@
+name: Anote native application release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Anote semantic version (without anote-v prefix)
+        required: true
+        type: string
+  push:
+    tags:
+      - "anote-v[0-9]*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anote-application-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then value="${GITHUB_REF_NAME#anote-v}"; else value="$REQUESTED"; fi
+          [[ "$value" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$ ]]
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+  native:
+    needs: contract
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x86_64
+            host_platform: windows-amd64
+            artifact: anote-release-linux-amd64
+          - runner: ubuntu-24.04-arm
+            architecture: aarch64
+            host_platform: macos-arm64
+            artifact: anote-release-linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Prove native build architecture
+        env:
+          EXPECTED: ${{ matrix.architecture }}
+        run: test "$(uname -m)" = "$EXPECTED" || { echo "Unexpected native runner $(uname -m)" >&2; exit 1; }
+      - name: Build and reverify exact native OCI package
+        env:
+          VERSION: ${{ needs.contract.outputs.version }}
+          HOST_PLATFORM: ${{ matrix.host_platform }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/anote-release"
+          python scripts/release/build_anote_release.py --version "$VERSION" --host-platform "$HOST_PLATFORM" --output "$RUNNER_TEMP/anote-release/anote-$VERSION-$HOST_PLATFORM.anote-release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/anote-release/*.anote-release
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  pair:
+    needs: [contract, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: anote-release-linux-*
+          path: ${{ runner.temp }}/native-pair
+          merge-multiple: true
+      - name: Prove one logical release and two native OCI identities
+        env:
+          VERSION: ${{ needs.contract.outputs.version }}
+        run: |
+          python scripts/release/verify_anote_release_pair.py --amd64 "$RUNNER_TEMP/native-pair/anote-$VERSION-windows-amd64.anote-release" --arm64 "$RUNNER_TEMP/native-pair/anote-$VERSION-macos-arm64.anote-release" | tee "$RUNNER_TEMP/native-pair/native-pair-identity.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anote-${{ needs.contract.outputs.version }}-native-pair-evidence
+          path: ${{ runner.temp }}/native-pair/native-pair-identity.json
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/anote-v')
+    needs: [contract, native, pair]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: anote-release-linux-*
+          path: ${{ runner.temp }}/publication
+          merge-multiple: true
+      - uses: actions/download-artifact@v5
+        with:
+          name: anote-${{ needs.contract.outputs.version }}-native-pair-evidence
+          path: ${{ runner.temp }}/publication
+      - name: Reverify exact tagged application assets
+        env:
+          VERSION: ${{ needs.contract.outputs.version }}
+        run: |
+          cd "$RUNNER_TEMP/publication"
+          python "$GITHUB_WORKSPACE/scripts/release/verify_anote_release_pair.py" \
+            --amd64 "anote-$VERSION-windows-amd64.anote-release" \
+            --arm64 "anote-$VERSION-macos-arm64.anote-release" > verified-pair.json
+          cmp native-pair-identity.json verified-pair.json
+          python -c 'import json,os,pathlib; value=json.loads(pathlib.Path("verified-pair.json").read_text()); assert value["source_commit"] == os.environ["GITHUB_SHA"]'
+      - name: Publish durable tagged application release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.contract.outputs.version }}
+        run: |
+          notes="$RUNNER_TEMP/anote-application-release-notes.md"
+          printf 'Anote %s application release.\n\nSource commit: `%s`\n\nThe assets are verified native offline packages for Linux/amd64 and Linux/arm64 plus their shared-identity evidence. Their manifests disclose unsigned package status.\n' "$VERSION" "$GITHUB_SHA" > "$notes"
+          python scripts/release/publish_tag_release.py \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --title "Anote $VERSION" \
+            --notes-file "$notes" \
+            --asset "$RUNNER_TEMP/publication/anote-$VERSION-windows-amd64.anote-release" \
+            --asset "$RUNNER_TEMP/publication/anote-$VERSION-macos-arm64.anote-release" \
+            --asset "$RUNNER_TEMP/publication/native-pair-identity.json"
+      - name: Remove successful run transfer artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            --jq '.artifacts[].id' | while read -r artifact_id; do
+              test -z "$artifact_id" || gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"
+            done

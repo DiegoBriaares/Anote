@@ -2,16 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_URL } from '../utils/api';
 import { useCalendarStore, type CalendarEvent } from './calendarStore';
 
-const jsonResponse = (data: unknown, status = 200) => ({
-    ok: status >= 200 && status < 300,
+const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
     status,
-    statusText: status >= 200 && status < 300 ? 'OK' : 'Error',
-    json: async () => data
+    headers: { 'Content-Type': 'application/json' }
 });
 
 const resetStoreState = () => {
     useCalendarStore.setState({
-        token: null,
+        user: null,
         viewMode: 'self',
         actionError: null,
         events: {},
@@ -51,7 +49,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self'
         } as never);
 
@@ -74,7 +72,7 @@ describe('calendarStore completed events', () => {
             }]
         }));
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
-        useCalendarStore.setState({ token: 'token-123', viewMode: 'self' } as never);
+        useCalendarStore.setState({ user: { id: 'user-1', username: 'mira' }, viewMode: 'self' } as never);
 
         await useCalendarStore.getState().fetchEvents();
 
@@ -94,15 +92,17 @@ describe('calendarStore completed events', () => {
             note: null,
             link: null,
             completed: true,
+            revision: 1,
+            version: 1,
             originDates: null,
             wasPostponed: null
         };
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(jsonResponse({ message: 'success' }));
+            .mockResolvedValueOnce(jsonResponse({ message: 'success', revision: 2, version: 2 }));
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [{
@@ -146,7 +146,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [event]
@@ -162,7 +162,10 @@ describe('calendarStore completed events', () => {
         expect(fetchMock).toHaveBeenCalledWith(`${API_URL}/events/event-1/status`, expect.objectContaining({
             method: 'PATCH'
         }));
-        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ status: 'completed' });
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+            status: 'completed',
+            revision: 100
+        });
 
         resolveFetch(jsonResponse({
             message: 'success',
@@ -200,7 +203,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [event]
@@ -211,10 +214,10 @@ describe('calendarStore completed events', () => {
 
         expect(didUpdate).toBe(false);
         expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.completed).toBe(false);
-        expect(useCalendarStore.getState().actionError).toBe('Failed to update event completion');
+        expect(useCalendarStore.getState().actionError).toBe('That action could not be completed. Try again.');
     });
 
-    it('falls back to the full event update when the completion endpoint is not available', async () => {
+    it('fails closed without a second write when the status endpoint is unavailable', async () => {
         const event: CalendarEvent = {
             id: 'event-1',
             title: 'Finish report',
@@ -235,7 +238,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [event]
@@ -247,18 +250,13 @@ describe('calendarStore completed events', () => {
 
         const didUpdate = await useCalendarStore.getState().setEventCompleted(event, true);
 
-        expect(didUpdate).toBe(true);
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(didUpdate).toBe(false);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/events/event-1/status`);
         expect(fetchMock.mock.calls[0][1]?.method).toBe('PATCH');
-        expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/events/event-1`);
-        expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT');
-        const fallbackBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
-        expect(fallbackBody.completed).toBe(true);
-        expect(fallbackBody.failed).toBe(false);
-        expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.completed).toBe(true);
-        expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.version).toBe(250);
-        expect(useCalendarStore.getState().actionError).toBeNull();
+        expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.completed).toBe(false);
+        expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.version).toBe(100);
+        expect(useCalendarStore.getState().actionError).toBe('That action could not be completed. Try again.');
     });
 
     it('marks an event failed and clears completion after the status request succeeds', async () => {
@@ -276,7 +274,7 @@ describe('calendarStore completed events', () => {
         }));
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: { '2026-04-23': [event] },
             compareEvents: { '2026-04-23': [event] }
@@ -285,7 +283,10 @@ describe('calendarStore completed events', () => {
         const didUpdate = await useCalendarStore.getState().setEventStatus(event, 'failed');
 
         expect(didUpdate).toBe(true);
-        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ status: 'failed' });
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+            status: 'failed',
+            revision: 100
+        });
         expect(useCalendarStore.getState().events['2026-04-23']?.[0]).toMatchObject({
             completed: false,
             failed: true,
@@ -316,7 +317,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [{
@@ -364,7 +365,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [{
@@ -390,12 +391,12 @@ describe('calendarStore completed events', () => {
 
     it('moves an edited event to its new date without needing a refetch', async () => {
         const fetchMock = vi.fn().mockResolvedValue(
-            jsonResponse({ message: 'success' })
+            jsonResponse({ message: 'success', revision: 2, version: 2 })
         );
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [{
@@ -407,6 +408,8 @@ describe('calendarStore completed events', () => {
                     note: null,
                     link: null,
                     completed: false,
+                    revision: 1,
+                    version: 1,
                     originDates: null,
                     wasPostponed: null
                 }]
@@ -453,7 +456,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self',
             events: {
                 '2026-04-23': [{
@@ -486,7 +489,7 @@ describe('calendarStore completed events', () => {
 
         expect(didEdit).toBe(false);
         expect(useCalendarStore.getState().events['2026-04-23']?.[0]?.completed).toBe(false);
-        expect(useCalendarStore.getState().actionError).toBe('Failed to update event');
+        expect(useCalendarStore.getState().actionError).toBe('That action could not be completed. Try again.');
     });
 
     it('maps completed flags from the postponed events API response', async () => {
@@ -511,7 +514,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self'
         } as never);
 
@@ -542,7 +545,7 @@ describe('calendarStore completed events', () => {
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
+            user: { id: 'user-1', username: 'mira' },
             viewMode: 'self'
         } as never);
 

@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import userEvent from '@testing-library/user-event';
 import { RangeBoard } from './RangeBoard';
 import { formatDate } from '../../utils/dateUtils';
@@ -63,11 +64,11 @@ describe('RangeBoard', () => {
         );
 
         const user = userEvent.setup();
-        render(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
+        renderWithLanguage(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
 
         await user.click(screen.getAllByRole('checkbox')[0]);
         await user.selectOptions(screen.getByLabelText('Action'), 'move');
-        await user.click(screen.getByRole('button', { name: 'Move to Postponed' }));
+        await user.click(screen.getByRole('button', { name: /Move to postponed/i }));
 
         expect(addPostponedEventsBulk).toHaveBeenCalled();
         expect(addPostponedEventsBulk.mock.calls[0][0][0].completed).toBe(true);
@@ -84,11 +85,11 @@ describe('RangeBoard', () => {
 
         const targetDate = formatDate(new Date(2026, 0, 2));
         const user = userEvent.setup();
-        render(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
+        renderWithLanguage(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
 
         await screen.findByDisplayValue(targetDate);
         await user.click(screen.getAllByRole('checkbox')[0]);
-        await user.click(screen.getByRole('button', { name: 'Copy Selected' }));
+        await user.click(screen.getByRole('button', { name: /Copy selected/i }));
 
         expect(addEventsBulk).toHaveBeenCalledTimes(1);
         const payload = addEventsBulk.mock.calls[0][0];
@@ -99,7 +100,7 @@ describe('RangeBoard', () => {
     it('renders completed management rows with the completed styling', () => {
         mockedUseCalendarStore.mockReturnValue(buildRangeState());
 
-        render(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
+        renderWithLanguage(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
 
         expect(screen.getByText('Draft itinerary').closest('.board-card-completed')).not.toBeNull();
         expect(screen.getByText('Completed')).toBeTruthy();
@@ -114,11 +115,11 @@ describe('RangeBoard', () => {
         );
 
         const user = userEvent.setup();
-        render(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
+        renderWithLanguage(<RangeBoard activeDate={new Date(2026, 0, 1)} />);
 
         await user.click(screen.getAllByRole('checkbox')[0]);
-        await user.selectOptions(screen.getByLabelText('Postponed View'), 'today');
-        await user.click(screen.getByRole('button', { name: 'Copy to Postponed' }));
+        await user.selectOptions(screen.getByLabelText('Postponed list'), 'today');
+        await user.click(screen.getByRole('button', { name: /Copy to postponed/i }));
 
         expect(addPostponedEventsBulk).toHaveBeenCalledTimes(1);
         expect(addPostponedEventsBulk.mock.calls[0][0][0].postponedView).toBe('today');

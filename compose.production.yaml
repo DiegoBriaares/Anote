@@ -6,18 +6,26 @@ services:
     build:
       context: .
       dockerfile: docker/api.Containerfile
+    user: "${ANOTE_API_UID:-1000}:${ANOTE_API_GID:-1000}"
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3001
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set}
       ANOTE_DATABASE_PATH: /data/calendar.db
       ANOTE_UPLOAD_DIR: /data/uploads
+      ANOTE_DEFAULT_TIME_ZONE: ${ANOTE_DEFAULT_TIME_ZONE:?ANOTE_DEFAULT_TIME_ZONE must be set}
+      ANOTE_RELEASE_ID: ${ANOTE_RELEASE_ID:-legacy-compose}
+      ANOTE_RELEASE_VERSION: ${ANOTE_RELEASE_VERSION:-1.0.0}
+      ANOTE_SOURCE_COMMIT: ${ANOTE_SOURCE_COMMIT:-unknown}
     volumes:
       - ${ANOTE_DATA_DIR:?ANOTE_DATA_DIR must be set}:/data
     expose:
       - "3001"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health/ready').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
       interval: 5s
@@ -36,6 +44,10 @@ services:
     ports:
       - "${ANOTE_BIND_ADDRESS:-0.0.0.0}:${ANOTE_PUBLIC_PORT:-15173}:8080"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/health/ready"]
       interval: 5s

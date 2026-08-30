@@ -10,7 +10,7 @@ describe('API URL ownership', () => {
     });
 
     it('routes backend-owned assets through the same gateway', () => {
-        expect(normalizeApiAssetUrl('/uploads/avatar.png')).toBe('/api/uploads/avatar.png');
+        expect(normalizeApiAssetUrl('/attachments/avatar-1')).toBe('/api/attachments/avatar-1');
     });
 
     it('preserves external and document-local URLs', () => {

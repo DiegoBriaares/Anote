@@ -11,7 +11,7 @@ describe('calendarStore day administration navigation', () => {
             events: {},
             users: [],
             user: null,
-            token: null,
+            sessionStatus: 'anonymous',
             viewMode: 'self'
         } as never);
         vi.restoreAllMocks();
@@ -32,33 +32,38 @@ describe('calendarStore day administration navigation', () => {
         expect(useCalendarStore.getState().dayAdministrationDate).toBe('2026-04-24');
     });
 
-    it('ignores non-message arguments when logging out', () => {
+    it('ignores non-message arguments when logging out', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'success' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        })));
         useCalendarStore.setState({
-            token: 'token-123',
             user: { id: 'user-1', username: 'mira' },
+            sessionStatus: 'authenticated',
             currentView: 'profile',
             error: null
         } as never);
 
-        (useCalendarStore.getState().logout as unknown as (message: unknown) => void)({ type: 'click' });
+        await (useCalendarStore.getState().logout as unknown as (message: unknown) => Promise<void>)({ type: 'click' });
 
         expect(useCalendarStore.getState().user).toBeNull();
-        expect(useCalendarStore.getState().token).toBeNull();
+        expect(useCalendarStore.getState().sessionStatus).toBe('anonymous');
         expect(useCalendarStore.getState().currentView).toBe('calendar');
         expect(useCalendarStore.getState().error).toBeNull();
     });
 
     it('keeps event state and reports action errors when adding an event fails', async () => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            ok: false,
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            error: { code: 'REQUEST_FAILED' },
+            requestId: 'request-1'
+        }), {
             status: 500,
-            statusText: 'Server Error',
-            json: async () => ({ error: 'Database unavailable' })
-        }) as unknown as typeof fetch);
+            headers: { 'Content-Type': 'application/json' }
+        })) as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
             user: { id: 'user-1', username: 'mira' },
+            sessionStatus: 'authenticated',
             viewMode: 'self',
             events: {}
         } as never);
@@ -69,15 +74,15 @@ describe('calendarStore day administration navigation', () => {
 
         expect(didAdd).toBe(false);
         expect(useCalendarStore.getState().events['2026-04-23']).toBeUndefined();
-        expect(useCalendarStore.getState().actionError).toBe('Database unavailable');
+        expect(useCalendarStore.getState().actionError).toBe('That action could not be completed. Try again.');
     });
 
     it('does not show user directory load failures on the calendar page', async () => {
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
             user: { id: 'user-1', username: 'mira' },
+            sessionStatus: 'authenticated',
             currentView: 'calendar',
             socialError: null
         } as never);
@@ -91,14 +96,14 @@ describe('calendarStore day administration navigation', () => {
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch);
 
         useCalendarStore.setState({
-            token: 'token-123',
             user: { id: 'user-1', username: 'mira' },
+            sessionStatus: 'authenticated',
             currentView: 'friends',
             socialError: null
         } as never);
 
         await useCalendarStore.getState().fetchUsers();
 
-        expect(useCalendarStore.getState().socialError).toBe('Unable to load users');
+        expect(useCalendarStore.getState().socialError).toBe('Anote is unavailable right now. Check your connection and try again.');
     });
 });

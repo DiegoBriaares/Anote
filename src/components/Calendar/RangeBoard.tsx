@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { interpolateText } from '../../i18n/appText';
 import { formatDate } from '../../utils/dateUtils';
 import { eachDayOfInterval } from 'date-fns';
 import { CalendarRange, CheckCircle2, CircleX } from 'lucide-react';
 import clsx from 'clsx';
 import { DEFAULT_POSTPONED_EVENT_DOMAIN, POSTPONED_EVENT_DOMAINS, type PostponedEventDomain } from '../../utils/postponedDomains';
+import { useTranslation } from '../../i18n/languageContext';
 
 interface RangeBoardProps {
     activeDate: Date | null;
@@ -13,25 +14,15 @@ interface RangeBoardProps {
 
 export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
     const { selection, events, viewMode, addEventsBulk, editEvent, addPostponedEventsBulk, deleteEvent } = useCalendarStore();
-    const statusText = getAppText().eventStatus;
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
     const hasSelection = selection.start && selection.end;
     const [sortOrder, setSortOrder] = React.useState<'time' | 'priority'>('time');
     const [copySourceDate, setCopySourceDate] = useState('');
     const [selectedCopyIds, setSelectedCopyIds] = useState<string[]>([]);
-    const [targetDates, setTargetDates] = useState<string[]>([]);
     const [targetDateInput, setTargetDateInput] = useState('');
     const [transferMode, setTransferMode] = useState<'copy' | 'move'>('copy');
     const [postponedView, setPostponedView] = useState<PostponedEventDomain>(DEFAULT_POSTPONED_EVENT_DOMAIN);
-    const dateKey = activeDate ? formatDate(activeDate) : 'range-default';
-    const stateByDateRef = useRef<Record<string, {
-        sortOrder: 'time' | 'priority';
-        copySourceDate: string;
-        selectedCopyIds: string[];
-        targetDates: string[];
-        targetDateInput: string;
-        transferMode: 'copy' | 'move';
-        postponedView: PostponedEventDomain;
-    }>>({});
 
     const days = useMemo(() => {
         if (!selection.start || !selection.end) return [];
@@ -40,73 +31,12 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
         return eachDayOfInterval({ start, end });
     }, [selection.start, selection.end]);
 
-    useEffect(() => {
-        if (days.length === 0) return;
-        const dayKeys = days.map((day) => formatDate(day));
-        const activeKey = activeDate ? formatDate(activeDate) : '';
-        const defaultSource = activeKey && dayKeys.includes(activeKey) ? activeKey : dayKeys[0];
-        let didResetSource = false;
-        setCopySourceDate((current) => {
-            if (current && dayKeys.includes(current)) {
-                return current;
-            }
-            didResetSource = true;
-            return defaultSource;
-        });
-        if (didResetSource) {
-            setSelectedCopyIds([]);
-        }
-        setPostponedView(DEFAULT_POSTPONED_EVENT_DOMAIN);
-    }, [days, activeDate]);
-
-    useEffect(() => {
-        if (days.length === 0) return;
-        const dayKeys = days.map((day) => formatDate(day));
-        if (!copySourceDate || !dayKeys.includes(copySourceDate)) {
-            const activeKey = activeDate ? formatDate(activeDate) : '';
-            const nextSource = activeKey && dayKeys.includes(activeKey) ? activeKey : dayKeys[0];
-            setCopySourceDate(nextSource);
-            setSelectedCopyIds([]);
-        }
-    }, [days, activeDate, copySourceDate]);
-
-    useEffect(() => {
-        const saved = stateByDateRef.current[dateKey];
-        if (!saved) return;
-        const dayKeys = days.map((day) => formatDate(day));
-        if (!saved.copySourceDate || !dayKeys.includes(saved.copySourceDate)) {
-            return;
-        }
-        setSortOrder(saved.sortOrder);
-        setCopySourceDate(saved.copySourceDate);
-        setSelectedCopyIds(saved.selectedCopyIds);
-        setTargetDates(saved.targetDates);
-        setTargetDateInput(saved.targetDateInput);
-        setTransferMode(saved.transferMode);
-        setPostponedView(saved.postponedView);
-    }, [dateKey, days]);
-
-    useEffect(() => {
-        stateByDateRef.current[dateKey] = {
-            sortOrder,
-            copySourceDate,
-            selectedCopyIds,
-            targetDates,
-            targetDateInput,
-            transferMode,
-            postponedView
-        };
-    }, [dateKey, sortOrder, copySourceDate, selectedCopyIds, targetDates, targetDateInput, transferMode, postponedView]);
-
-    useEffect(() => {
-        if (days.length === 0 || !copySourceDate) return;
-        const nextTargets = days
-            .map((day) => formatDate(day))
-            .filter((date) => date !== copySourceDate);
-        const nextTarget = nextTargets[0] || '';
-        setTargetDates(nextTarget ? [nextTarget] : []);
-        setTargetDateInput(nextTarget);
-    }, [days, copySourceDate]);
+    const dayKeys = useMemo(() => days.map((day) => formatDate(day)), [days]);
+    const activeKey = activeDate ? formatDate(activeDate) : '';
+    const defaultSourceDate = activeKey && dayKeys.includes(activeKey) ? activeKey : dayKeys[0] || '';
+    const effectiveSourceDate = copySourceDate && dayKeys.includes(copySourceDate) ? copySourceDate : defaultSourceDate;
+    const defaultTargetDate = dayKeys.find((key) => key !== effectiveSourceDate) || '';
+    const effectiveTargetDate = targetDateInput && targetDateInput !== effectiveSourceDate ? targetDateInput : defaultTargetDate;
 
     const rangeLabel = selection.start && selection.end
         ? (() => {
@@ -119,12 +49,10 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
         : '';
 
     const isReadOnly = viewMode === 'friend';
-    const effectiveTargetDates = targetDates.length > 0
-        ? targetDates
-        : (targetDateInput && targetDateInput !== copySourceDate ? [targetDateInput] : []);
+    const effectiveTargetDates = effectiveTargetDate ? [effectiveTargetDate] : [];
     const sourceEvents = useMemo(() => {
-        if (!copySourceDate) return [];
-        const list = events[copySourceDate] || [];
+        if (!effectiveSourceDate) return [];
+        const list = events[effectiveSourceDate] || [];
         return [...list].sort((a, b) => {
             const priorityValue = (value?: number | null) => {
                 if (value === null || value === undefined) return Number.MAX_SAFE_INTEGER;
@@ -145,17 +73,13 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
             }
             return a.title.localeCompare(b.title);
         });
-    }, [events, copySourceDate, sortOrder]);
+    }, [events, effectiveSourceDate, sortOrder]);
+    const validSourceIds = useMemo(() => new Set(sourceEvents.map((event) => event.id)), [sourceEvents]);
+    const effectiveSelectedCopyIds = selectedCopyIds.filter((id) => validSourceIds.has(id));
 
-    useEffect(() => {
-        if (selectedCopyIds.length === 0) return;
-        const validIds = new Set(sourceEvents.map((event) => event.id));
-        setSelectedCopyIds((prev) => prev.filter((id) => validIds.has(id)));
-    }, [sourceEvents, selectedCopyIds.length]);
-
-    const allSelected = sourceEvents.length > 0 && selectedCopyIds.length === sourceEvents.length;
-    const canTransfer = !isReadOnly && selectedCopyIds.length > 0 && effectiveTargetDates.length > 0;
-    const canPostpone = !isReadOnly && selectedCopyIds.length > 0;
+    const allSelected = sourceEvents.length > 0 && effectiveSelectedCopyIds.length === sourceEvents.length;
+    const canTransfer = !isReadOnly && effectiveSelectedCopyIds.length > 0 && effectiveTargetDates.length > 0;
+    const canPostpone = !isReadOnly && effectiveSelectedCopyIds.length > 0;
 
     const toggleCopySelection = (id: string) => {
         setSelectedCopyIds((prev) => (
@@ -169,8 +93,8 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
     };
 
     const handleTransferEvents = async () => {
-        if (!canTransfer || !copySourceDate) return;
-        const selectedEvents = sourceEvents.filter((event) => selectedCopyIds.includes(event.id));
+        if (!canTransfer || !effectiveSourceDate) return;
+        const selectedEvents = sourceEvents.filter((event) => effectiveSelectedCopyIds.includes(event.id));
         if (selectedEvents.length === 0) return;
         if (effectiveTargetDates.length === 0) return;
         if (transferMode === 'move') {
@@ -183,8 +107,8 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                         chain.push(origin);
                     }
                 });
-                if (copySourceDate && !chain.includes(copySourceDate)) {
-                    chain.push(copySourceDate);
+                if (!chain.includes(effectiveSourceDate)) {
+                    chain.push(effectiveSourceDate);
                 }
                 if (!chain.includes(targetDate)) {
                     chain.push(targetDate);
@@ -202,8 +126,8 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                         chain.push(origin);
                     }
                 });
-                if (copySourceDate && !chain.includes(copySourceDate)) {
-                    chain.push(copySourceDate);
+                if (!chain.includes(effectiveSourceDate)) {
+                    chain.push(effectiveSourceDate);
                 }
                 if (!chain.includes(date)) {
                     chain.push(date);
@@ -228,8 +152,8 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
     };
 
     const handlePostponeEvents = async () => {
-        if (!canPostpone || !copySourceDate) return;
-        const selectedEvents = sourceEvents.filter((event) => selectedCopyIds.includes(event.id));
+        if (!canPostpone || !effectiveSourceDate) return;
+        const selectedEvents = sourceEvents.filter((event) => effectiveSelectedCopyIds.includes(event.id));
         if (selectedEvents.length === 0) return;
         const payload = selectedEvents.map((event) => {
             const chain: string[] = [];
@@ -238,8 +162,8 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                     chain.push(origin);
                 }
             });
-            if (copySourceDate && !chain.includes(copySourceDate)) {
-                chain.push(copySourceDate);
+            if (!chain.includes(effectiveSourceDate)) {
+                chain.push(effectiveSourceDate);
             }
             return {
                 title: event.title,
@@ -265,11 +189,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
 
     const handleTargetDateChange = (value: string) => {
         setTargetDateInput(value);
-        if (!value || value === copySourceDate) {
-            setTargetDates([]);
-            return;
-        }
-        setTargetDates([value]);
+        if (value === effectiveSourceDate) setTargetDateInput('');
     };
 
     if (!hasSelection) return null;
@@ -278,48 +198,49 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
         <div className="w-full board-panel p-5 mt-6 rounded-2xl">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <div className="flex items-center gap-2">
-                    <CalendarRange className="w-4 h-4 text-orange-500" />
-                    <div className="text-sm font-medium text-stone-800 tracking-[0.15em] uppercase">Day Events Management</div>
+                    <CalendarRange className="w-4 h-4 text-orange-500" aria-hidden="true" />
+                    <div className="text-sm font-medium text-stone-800 tracking-[0.15em] uppercase">{text.calendar.eventsManagement}</div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="text-sm font-mono text-orange-600">Window: {rangeLabel}</div>
+                    <div className="text-sm font-mono text-orange-600">{text.calendar.window}: {rangeLabel}</div>
                     <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                        <label htmlFor="range-order" className="tracking-[0.2em]">Order</label>
+                        <label htmlFor="range-order" className="tracking-[0.2em]">{text.common.order}</label>
                         <select
                             id="range-order"
                             value={sortOrder}
                             onChange={(e) => setSortOrder(e.target.value as 'time' | 'priority')}
                             className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white"
                         >
-                            <option value="time">Hour</option>
-                            <option value="priority">Priority</option>
+                            <option value="time">{text.common.hour}</option>
+                            <option value="priority">{text.common.priority}</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                        <label htmlFor="range-transfer" className="tracking-[0.2em]">Action</label>
+                        <label htmlFor="range-transfer" className="tracking-[0.2em]">{text.calendar.action}</label>
                         <select
                             id="range-transfer"
                             value={transferMode}
                             onChange={(e) => setTransferMode(e.target.value as 'copy' | 'move')}
                             className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white"
                         >
-                            <option value="copy">Copy</option>
-                            <option value="move">Move</option>
+                            <option value="copy">{text.common.copy}</option>
+                            <option value="move">{text.common.move}</option>
                         </select>
                     </div>
                 </div>
             </div>
             <div className="mb-5 border border-orange-200 bg-white rounded-xl p-4 shadow-sm">
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">Day Events Management</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">{text.calendar.eventsManagement}</div>
                     <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                        <label htmlFor="range-copy-source" className="tracking-[0.2em]">Source</label>
+                        <label htmlFor="range-copy-source" className="tracking-[0.2em]">{text.calendar.source}</label>
                         <select
                             id="range-copy-source"
-                            value={copySourceDate}
+                            value={effectiveSourceDate}
                             onChange={(e) => {
                                 setCopySourceDate(e.target.value);
                                 setSelectedCopyIds([]);
+                                setTargetDateInput('');
                             }}
                             disabled={isReadOnly}
                             className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white disabled:opacity-60"
@@ -338,7 +259,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                 <div className="mt-3 flex flex-col gap-2">
                     {sourceEvents.length === 0 ? (
                         <div className="text-xs text-stone-400 font-mono">
-                            No events to manage for the selected day.
+                            {text.calendar.noEventsForDay}
                         </div>
                     ) : (
                         sourceEvents.map((event) => (
@@ -353,7 +274,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                             >
                                 <input
                                     type="checkbox"
-                                    checked={selectedCopyIds.includes(event.id)}
+                                    checked={effectiveSelectedCopyIds.includes(event.id)}
                                     onChange={() => toggleCopySelection(event.id)}
                                     disabled={isReadOnly}
                                     className="h-4 w-4 accent-orange-500 disabled:opacity-60"
@@ -397,18 +318,19 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                 </div>
                 <div className="mt-4 border-t border-orange-100 pt-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">
-                        <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">Target</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.3em]">{text.calendar.target}</div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                         <input
                             type="date"
-                            value={targetDateInput}
+                            value={effectiveTargetDate}
+                            aria-label={text.calendar.destination}
                             onChange={(e) => handleTargetDateChange(e.target.value)}
                             disabled={isReadOnly}
                             className="border border-orange-200 rounded-lg px-3 py-2 text-sm text-stone-600 bg-white disabled:opacity-60"
                         />
                         <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 uppercase">
-                            <label htmlFor="postponed-view" className="tracking-[0.2em]">Postponed View</label>
+                            <label htmlFor="postponed-view" className="tracking-[0.2em]">{text.calendar.postponedView}</label>
                             <select
                                 id="postponed-view"
                                 value={postponedView}
@@ -417,7 +339,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                                 className="border border-orange-200 rounded-lg px-2 py-1 text-[11px] text-stone-600 bg-white disabled:opacity-60"
                             >
                                 {POSTPONED_EVENT_DOMAINS.map((domain) => (
-                                    <option key={domain.value} value={domain.value}>{domain.selectLabel}</option>
+                                    <option key={domain.value} value={domain.value}>{domain.value === 'today' ? text.calendar.todayView : domain.value === 'week' ? text.calendar.weekView : text.calendar.allView}</option>
                                 ))}
                             </select>
                         </div>
@@ -430,10 +352,10 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                         disabled={isReadOnly || sourceEvents.length === 0}
                         className="px-3 py-1.5 text-[11px] font-mono border border-orange-200 rounded-lg text-stone-500 hover:text-stone-700 hover:border-orange-400 disabled:opacity-50"
                     >
-                        {allSelected ? 'None' : 'All'}
+                        {allSelected ? text.common.none : text.common.all}
                     </button>
                     <div className="text-[10px] font-mono text-stone-500 uppercase tracking-widest">
-                        Selected {selectedCopyIds.length}
+                        {interpolateText(effectiveSelectedCopyIds.length === 1 ? text.calendar.selectedEvent : text.calendar.selectedEvents, { count: effectiveSelectedCopyIds.length })}
                     </div>
                     <button
                         type="button"
@@ -441,7 +363,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                         disabled={!canTransfer}
                         className="px-4 py-2 bg-orange-400 text-white text-xs font-mono font-bold hover:bg-orange-500 transition-colors rounded-lg disabled:opacity-50"
                     >
-                        {transferMode === 'move' ? 'Move Selected' : 'Copy Selected'}
+                        {transferMode === 'move' ? text.calendar.moveSelected : text.calendar.copySelected}
                     </button>
                     <button
                         type="button"
@@ -449,7 +371,7 @@ export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
                         disabled={!canPostpone}
                         className="px-4 py-2 bg-stone-700 text-white text-xs font-mono font-bold hover:bg-stone-800 transition-colors rounded-lg disabled:opacity-50"
                     >
-                        {transferMode === 'move' ? 'Move to Postponed' : 'Copy to Postponed'}
+                        {transferMode === 'move' ? text.calendar.moveToPostponed : text.calendar.copyToPostponed}
                     </button>
                 </div>
             </div>

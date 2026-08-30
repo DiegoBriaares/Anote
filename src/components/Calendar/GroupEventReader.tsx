@@ -1,8 +1,9 @@
 import React from 'react';
 import { CalendarRange, CheckCircle2, CircleX, Clock, ExternalLink } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { interpolateText } from '../../i18n/appText';
 import clsx from 'clsx';
+import { useTranslation } from '../../i18n/languageContext';
 
 interface GroupEventReaderProps {
     selectedDateKeys: string[];
@@ -24,19 +25,20 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
     selectedDateKeys,
     eventsByDate
 }) => {
-    const statusText = getAppText().eventStatus;
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
     const totalEvents = selectedDateKeys.reduce((count, dateKey) => count + (eventsByDate[dateKey]?.length || 0), 0);
 
     return (
         <div className="mb-8 board-panel rounded-2xl p-4 sm:p-5">
             <div className="mb-4 flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em]">Event Distribution</div>
-                    <div className="text-lg text-stone-800 tracking-[0.16em]">Read Events</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em]">{text.calendar.eventDistribution}</div>
+                    <div className="text-lg text-stone-800 tracking-[0.16em]">{text.calendar.readEvents}</div>
                 </div>
                 <div className="flex items-center gap-3 text-[10px] font-mono text-orange-600 uppercase tracking-[0.2em] flex-wrap">
-                    <span>{selectedDateKeys.length} day{selectedDateKeys.length === 1 ? '' : 's'}</span>
-                    <span>{totalEvents} event{totalEvents === 1 ? '' : 's'}</span>
+                    <span>{interpolateText(selectedDateKeys.length === 1 ? text.calendar.selectedDay : text.calendar.selectedDays, { count: selectedDateKeys.length })}</span>
+                    <span>{interpolateText(totalEvents === 1 ? text.calendar.selectedEvent : text.calendar.selectedEvents, { count: totalEvents })}</span>
                 </div>
             </div>
 
@@ -48,7 +50,7 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
                         <section
                             key={dateKey}
                             className="min-w-0 rounded-xl border border-orange-100 bg-white/75 p-3 shadow-sm"
-                            aria-label={`Events for ${dateKey}`}
+                            aria-label={interpolateText(text.calendar.eventsFor, { date: dateKey })}
                         >
                             <div className="mb-3 flex items-center justify-between gap-2 border-b border-orange-100 pb-2">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -63,7 +65,7 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
                             <div className="flex flex-col gap-2">
                                 {dayEvents.length === 0 ? (
                                     <div className="rounded-lg border border-dashed border-orange-100 px-3 py-6 text-center text-[11px] font-mono text-stone-400">
-                                        No events
+                                        {text.common.noEvents}
                                     </div>
                                 ) : (
                                     dayEvents.map((event) => (
@@ -108,7 +110,7 @@ export const GroupEventReader: React.FC<GroupEventReaderProps> = ({
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         className="rounded-full p-1 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
-                                                        aria-label={`Open ${event.title} link`}
+                                                        aria-label={interpolateText(text.calendar.openEventLink, { name: event.title })}
                                                     >
                                                         <ExternalLink className="h-3.5 w-3.5" />
                                                     </a>

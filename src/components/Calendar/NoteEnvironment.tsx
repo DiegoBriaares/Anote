@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCalendarStore, type CalendarEvent, type Role } from '../../store/calendarStore';
 import { X, Save, FileText, RotateCcw, Link, Paperclip, Eye, Pencil, UploadCloud } from 'lucide-react';
-import { formatFullDate } from '../../utils/dateUtils';
 import { toApiUrl } from '../../utils/api';
 import ReactMarkdown from 'react-markdown';
+import { attachmentsApi } from '../../api/attachments';
+import { useTranslation } from '../../i18n/languageContext';
+import { interpolateText } from '../../i18n/appText';
+import { TextInputDialog } from '../Common/TextInputDialog';
 
 interface NoteEnvironmentProps {
     isOpen: boolean;
@@ -14,27 +17,104 @@ interface NoteEnvironmentProps {
 
 type AttachmentKind = 'pdf' | 'image' | 'text' | 'file';
 
+const TextAttachmentPreview = ({ url }: { url: string }) => {
+    const { text } = useTranslation();
+    const [preview, setPreview] = useState<{ isLoading: boolean; content: string | null; error: boolean }>({ isLoading: true, content: null, error: false });
+
+    useEffect(() => {
+        const controller = new AbortController();
+        attachmentsApi.readText(url, controller.signal)
+            .then((content) => setPreview({ isLoading: false, content, error: false }))
+            .catch((error: unknown) => {
+                if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return;
+                setPreview({ isLoading: false, content: null, error: true });
+            });
+        return () => controller.abort();
+    }, [url]);
+
+    return (
+        <div className="h-full min-h-0 overflow-auto bg-stone-950 p-5">
+            {preview.isLoading && <div className="text-sm text-stone-400">{text.notes.loadingText}</div>}
+            {preview.error && <div className="text-sm text-red-300">{text.notes.textPreviewFailed}</div>}
+            {preview.content !== null && <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-stone-100">{preview.content}</pre>}
+        </div>
+    );
+};
+
 export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClose, event, role }) => {
+    const { language, text } = useTranslation();
     const { eventNotes, fetchEventNotes, saveEventNote, uploadFile } = useCalendarStore();
-    const [content, setContent] = useState('');
+    const noteKey = `${event.id}:${role.id}`;
+    const [contentDraft, setContentDraft] = useState<{ key: string; value: string } | null>(null);
+    const storedContent = eventNotes[event.id]?.[role.id] || '';
+    const content = contentDraft?.key === noteKey ? contentDraft.value : storedContent;
+    const setContent = (value: string) => setContentDraft({ key: noteKey, value });
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [isPreview, setIsPreview] = useState(false);
     const [selectedFile, setSelectedFile] = useState<{ url: string; name: string } | null>(null);
-    const [textPreview, setTextPreview] = useState<{ isLoading: boolean; content: string | null; error: string | null }>({
-        isLoading: false,
-        content: null,
-        error: null
-    });
+    const [linkStep, setLinkStep] = useState<'url' | 'text' | null>(null);
+    const [pendingLinkUrl, setPendingLinkUrl] = useState('');
     const [isDraggingFile, setIsDraggingFile] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const contentRef = useRef(content);
+    const attachmentCloseRef = useRef<HTMLButtonElement>(null);
+    const attachmentDialogRef = useRef<HTMLDivElement>(null);
+    const noteDialogRef = useRef<HTMLDivElement>(null);
+    const onCloseRef = useRef(onClose);
+    const selectedFileRef = useRef(selectedFile);
+    const linkStepRef = useRef(linkStep);
+    onCloseRef.current = onClose;
+    selectedFileRef.current = selectedFile;
+    linkStepRef.current = linkStep;
 
     useEffect(() => {
         contentRef.current = content;
     }, [content]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const handleKeyDown = (keyEvent: KeyboardEvent) => {
+            if (keyEvent.key === 'Escape' && !linkStepRef.current) {
+                if (selectedFileRef.current) {
+                    setSelectedFile(null);
+                } else {
+                    onCloseRef.current();
+                }
+                return;
+            }
+            if (keyEvent.key !== 'Tab' || linkStepRef.current) return;
+            const activeDialog = selectedFileRef.current ? attachmentDialogRef.current : noteDialogRef.current;
+            const controls = activeDialog?.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+            );
+            if (!controls?.length) return;
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (keyEvent.shiftKey && document.activeElement === first) {
+                keyEvent.preventDefault();
+                last.focus();
+            } else if (!keyEvent.shiftKey && document.activeElement === last) {
+                keyEvent.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            previouslyFocused?.focus();
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!selectedFile) return;
+        const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        attachmentCloseRef.current?.focus();
+        return () => previouslyFocused?.focus();
+    }, [selectedFile]);
 
     // Initial load
     useEffect(() => {
@@ -42,15 +122,6 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
             fetchEventNotes(event.id);
         }
     }, [isOpen, event.id, fetchEventNotes]);
-
-    // Update local content when store updates (initial fetch)
-    useEffect(() => {
-        if (eventNotes[event.id] && eventNotes[event.id][role.id]) {
-            setContent(eventNotes[event.id][role.id]);
-        } else {
-            setContent('');
-        }
-    }, [eventNotes, event.id, role.id]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -86,7 +157,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
             return value.map(getTextContent).join('');
         }
 
-        return 'Attachment';
+        return text.notes.attachmentFallback;
     };
 
     const buildAttachmentMarkdown = (file: File, url: string) => {
@@ -124,7 +195,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
         const uploadedMarkdown: string[] = [];
 
         for (const file of filesToUpload) {
-            const url = await uploadFile(file);
+            const url = await uploadFile(file, 'note', event.id);
             if (url) {
                 uploadedMarkdown.push(buildAttachmentMarkdown(file, url));
             }
@@ -168,53 +239,12 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
     };
 
     const handleInsertLink = () => {
-        const url = prompt('Enter URL:');
-        if (!url) return;
-        const text = prompt('Enter link text:', 'link') || 'link';
-
-        insertTextAtCursor(`[${text}](${url})`);
+        setLinkStep('url');
     };
 
     const resolveUrl = (url: string) => {
         return toApiUrl(url);
     };
-
-    useEffect(() => {
-        if (!selectedFile) {
-            setTextPreview({ isLoading: false, content: null, error: null });
-            return;
-        }
-
-        const kind = getAttachmentKind(selectedFile.url, selectedFile.name);
-        if (kind !== 'text') {
-            setTextPreview({ isLoading: false, content: null, error: null });
-            return;
-        }
-
-        let isCancelled = false;
-        setTextPreview({ isLoading: true, content: null, error: null });
-        fetch(selectedFile.url)
-            .then((res) => {
-                if (!res.ok) {
-                    throw new Error('Could not load this file.');
-                }
-                return res.text();
-            })
-            .then((text) => {
-                if (!isCancelled) {
-                    setTextPreview({ isLoading: false, content: text, error: null });
-                }
-            })
-            .catch(() => {
-                if (!isCancelled) {
-                    setTextPreview({ isLoading: false, content: null, error: 'Could not load this text preview.' });
-                }
-            });
-
-        return () => {
-            isCancelled = true;
-        };
-    }, [selectedFile]);
 
     const renderAttachmentViewer = () => {
         if (!selectedFile) return null;
@@ -240,17 +270,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
         }
 
         if (kind === 'text') {
-            return (
-                <div className="h-full min-h-0 overflow-auto bg-stone-950 p-5">
-                    {textPreview.isLoading && <div className="text-sm text-stone-400">Loading text...</div>}
-                    {textPreview.error && <div className="text-sm text-red-300">{textPreview.error}</div>}
-                    {textPreview.content !== null && (
-                        <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-stone-100">
-                            {textPreview.content}
-                        </pre>
-                    )}
-                </div>
-            );
+            return <TextAttachmentPreview key={selectedFile.url} url={selectedFile.url} />;
         }
 
         return (
@@ -258,7 +278,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                 <div>
                     <FileText className="mx-auto mb-4 h-12 w-12 text-stone-400" />
                     <p className="text-sm font-semibold text-stone-700">{selectedFile.name}</p>
-                    <p className="mt-2 text-sm text-stone-500">This file type cannot be previewed inline.</p>
+                    <p className="mt-2 text-sm text-stone-500">{text.notes.noInlinePreview}</p>
                 </div>
             </div>
         );
@@ -267,16 +287,16 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[70] bg-white flex flex-col animate-in fade-in zoom-in-95 duration-200">
+        <div ref={noteDialogRef} role="dialog" aria-modal="true" aria-label={event.title} className="fixed inset-0 z-[70] bg-white flex flex-col animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="h-16 border-b border-stone-200 flex items-center justify-between px-6 bg-stone-50/50 backdrop-blur-md">
                 <div className="flex items-center gap-4">
-                    <button onClick={onClose} className="p-2 -ml-2 hover:bg-stone-200 rounded-full transition-colors text-stone-500">
-                        <X className="w-6 h-6" />
+                    <button type="button" onClick={onClose} aria-label={text.notes.closeEditor} className="p-2 -ml-2 hover:bg-stone-200 rounded-full transition-colors text-stone-500">
+                        <X className="w-6 h-6" aria-hidden="true" />
                     </button>
                     <div>
                         <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-stone-400">
-                            <span>{formatFullDate(new Date(event.date))}</span>
+                            <span>{new Intl.DateTimeFormat(language, { dateStyle: 'full' }).format(new Date(event.date))}</span>
                             <span className="w-1 h-1 bg-stone-300 rounded-full" />
                             <span className="text-orange-500 font-bold">{role.label}</span>
                         </div>
@@ -286,7 +306,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                 <div className="flex items-center gap-2">
                     {lastSaved && (
                         <span className="text-xs text-stone-400 mr-2 animate-in fade-in">
-                            Saved {lastSaved.toLocaleTimeString()}
+                            {interpolateText(text.notes.savedAt, { time: new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(lastSaved) })}
                         </span>
                     )}
                 </div>
@@ -309,7 +329,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                                         const { node, ...linkProps } = props;
                                         void node;
                                         const href = resolveUrl(linkProps.href as string);
-                                        const isFile = href.includes('/uploads/');
+                                        const isFile = href.includes('/uploads/') || href.includes('/attachments/');
                                         const attachmentName = getTextContent(linkProps.children);
                                         const attachmentKind = getAttachmentKind(href, attachmentName);
                                         const isPdf = isFile && (isPdfUrl(href) || attachmentKind === 'pdf');
@@ -321,6 +341,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                                                         <button
                                                             type="button"
                                                             onClick={() => setSelectedFile({ url: href, name: attachmentName })}
+                                                            aria-label={`${text.notes.preview}: ${attachmentName}`}
                                                             className="flex min-w-0 items-center gap-2 text-left text-sm font-semibold text-stone-700 transition-colors hover:text-orange-600"
                                                         >
                                                             <FileText className="h-4 w-4 shrink-0 text-red-500" />
@@ -349,11 +370,11 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                                                         </span>
                                                         <span className="min-w-0">
                                                             <span className="block truncate text-sm font-semibold text-stone-800">{attachmentName}</span>
-                                                            <span className="block text-xs text-stone-400">Uploaded file</span>
+                                                            <span className="block text-xs text-stone-400">{text.notes.uploadedFile}</span>
                                                         </span>
                                                     </span>
                                                     <span className="shrink-0 text-xs font-semibold text-stone-400">
-                                                        Preview
+                                                        {text.notes.preview}
                                                     </span>
                                                 </button>
                                             );
@@ -394,7 +415,7 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                                 {content}
                             </ReactMarkdown>
                             {content.trim() === '' && (
-                                <div className="text-stone-300 italic">No content to preview...</div>
+                                <div className="text-stone-400 italic">{text.notes.noPreview}</div>
                             )}
                         </div>
                     ) : (
@@ -405,7 +426,8 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                             onDrop={handleFileDrop}
                             onDragOver={handleFileDragOver}
                             onDragLeave={handleFileDragLeave}
-                            placeholder={`Write your observations as ${role.label}...`}
+                            aria-label={interpolateText(text.notes.writeAs, { role: role.label })}
+                            placeholder={interpolateText(text.notes.writeAs, { role: role.label })}
                             className="w-full h-full min-h-[50vh] resize-none outline-none text-lg leading-relaxed text-stone-700 placeholder:text-stone-300 font-serif"
                             autoFocus
                         />
@@ -414,23 +436,25 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
 
                 {/* Sidebar */}
                 <div className="w-72 border-l border-stone-200 bg-stone-50 p-4 flex flex-col gap-4 hidden lg:flex">
-                    <div className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Attachments</div>
-                    <div
-                        onClick={() => !isPreview && fileInputRef.current?.click()}
+                    <div className="text-xs font-bold text-stone-500 uppercase tracking-widest mb-2">{text.notes.attachments}</div>
+                    <button
+                        type="button"
+                        disabled={isPreview || isUploading}
+                        onClick={() => fileInputRef.current?.click()}
                         onDrop={handleFileDrop}
                         onDragOver={handleFileDragOver}
                         onDragLeave={handleFileDragLeave}
-                        className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-stone-400 gap-2 transition-colors group ${isPreview ? 'border-stone-200 opacity-50 cursor-not-allowed' : isDraggingFile ? 'border-orange-400 bg-orange-50 text-orange-500 cursor-copy' : 'border-stone-200 hover:border-orange-300 hover:bg-orange-50/10 cursor-pointer'}`}
+                        className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-stone-500 gap-2 transition-colors group ${isPreview ? 'border-stone-200 opacity-50 cursor-not-allowed' : isDraggingFile ? 'border-orange-400 bg-orange-50 text-orange-500 cursor-copy' : 'border-stone-200 hover:border-orange-300 hover:bg-orange-50/10 cursor-pointer'}`}
                     >
                         {isUploading ? <RotateCcw className="w-8 h-8 animate-spin text-orange-400" /> : <UploadCloud className="w-8 h-8 group-hover:text-orange-400 transition-colors" />}
-                        <span className="text-xs text-center">{isUploading ? 'Uploading...' : 'Drag files here'}<br />or click to upload</span>
-                    </div>
+                        <span className="text-xs text-center">{isUploading ? text.notes.uploading : text.notes.dropFiles}<br />{text.notes.clickToUpload}</span>
+                    </button>
 
                     <div className="flex-1"></div>
 
                     <div className="border-t border-stone-200 pt-4">
                         <div className="text-xs text-stone-400 text-center">
-                            Markdown supported
+                            {text.notes.markdownSupported}
                         </div>
                     </div>
                 </div>
@@ -446,55 +470,64 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                             multiple
                         />
                         <button
+                            type="button"
                             onClick={() => setIsPreview(!isPreview)}
                             className={`p-2 rounded-lg transition-colors ${isPreview ? 'bg-orange-100 text-orange-600' : 'hover:bg-stone-100 text-stone-500 hover:text-stone-800'}`}
-                            title={isPreview ? "Edit Mode" : "Preview Mode"}
+                            title={isPreview ? text.notes.editMode : text.notes.previewMode}
+                            aria-label={isPreview ? text.notes.editMode : text.notes.previewMode}
                         >
                             {isPreview ? <Pencil className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                         </button>
                         <div className="w-px h-6 bg-stone-200 mx-2" />
                         <button
+                            type="button"
                             onClick={() => fileInputRef.current?.click()}
                             disabled={isPreview || isUploading}
                             className="p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Attach File"
+                            title={text.notes.attachFile}
+                            aria-label={text.notes.attachFile}
                         >
                             <Paperclip className="w-5 h-5" />
                         </button>
                         <button
+                            type="button"
                             onClick={handleInsertLink}
                             disabled={isPreview}
                             className="p-2 hover:bg-stone-100 rounded-lg text-stone-500 hover:text-stone-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Insert Link"
+                            title={text.notes.insertLink}
+                            aria-label={text.notes.insertLink}
                         >
                             <Link className="w-5 h-5" />
                         </button>
                     </div>
 
                     <button
-                        onClick={handleSave}
+                        type="button"
+                        onClick={() => { void handleSave(); }}
                         disabled={isSaving}
                         className="flex items-center gap-2 px-6 py-2.5 bg-stone-900 text-white rounded-xl hover:bg-black transition-all disabled:opacity-50 shadow-lg shadow-stone-200"
                     >
                         {isSaving ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        <span>Save Note</span>
+                        <span>{isSaving ? text.common.saving : text.notes.saveNote}</span>
                     </button>
                 </div>
 
                 {/* Attachment Viewer */}
                 {selectedFile && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/25 p-5 backdrop-blur-sm animate-in fade-in duration-200">
-                        <div className="flex h-full max-h-[84vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div ref={attachmentDialogRef} role="dialog" aria-modal="true" aria-label={selectedFile.name} className="flex h-full max-h-[84vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
                             <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-stone-200 bg-stone-50 px-4">
                                 <div className="flex min-w-0 items-center gap-2">
                                     <FileText className="h-5 w-5 shrink-0 text-stone-500" />
                                     <span className="truncate text-sm font-semibold text-stone-800">{selectedFile.name}</span>
                                 </div>
                                 <button
+                                    ref={attachmentCloseRef}
                                     type="button"
                                     onClick={() => setSelectedFile(null)}
                                     className="rounded-lg p-2 text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-900"
-                                    title="Close"
+                                    title={text.notes.closeAttachment}
+                                    aria-label={text.notes.closeAttachment}
                                 >
                                     <X className="h-5 w-5" />
                                 </button>
@@ -506,6 +539,38 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
                     </div>
                 )}
             </div>
+            <TextInputDialog
+                open={linkStep === 'url'}
+                title={text.notes.linkUrlTitle}
+                label={text.notes.linkUrlLabel}
+                placeholder={text.notes.linkUrlPlaceholder}
+                confirmLabel={text.common.next}
+                cancelLabel={text.common.cancel}
+                onCancel={() => setLinkStep(null)}
+                onConfirm={(url) => {
+                    setPendingLinkUrl(url);
+                    setLinkStep('text');
+                }}
+                interactionId="note-link-url"
+            />
+            <TextInputDialog
+                open={linkStep === 'text'}
+                title={text.notes.linkTextTitle}
+                label={text.notes.linkTextLabel}
+                initialValue={text.notes.linkTextDefault}
+                confirmLabel={text.common.add}
+                cancelLabel={text.common.cancel}
+                onCancel={() => {
+                    setLinkStep(null);
+                    setPendingLinkUrl('');
+                }}
+                onConfirm={(label) => {
+                    insertTextAtCursor(`[${label}](${pendingLinkUrl})`);
+                    setLinkStep(null);
+                    setPendingLinkUrl('');
+                }}
+                interactionId="note-link-text"
+            />
         </div>
     );
 };

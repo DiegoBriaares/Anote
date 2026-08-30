@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStore, type CalendarEvent } from '../../store/calendarStore';
-import { getAppText } from '../../i18n/appText';
+import { interpolateText } from '../../i18n/appText';
 import { type EventStatus } from '../../utils/eventStatus';
 import { formatDate } from '../../utils/dateUtils';
 import { CheckCircle2, CircleX, Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
 import clsx from 'clsx';
+import { useTranslation } from '../../i18n/languageContext';
 
 interface EventBoardProps {
     selectedDate: Date | null;
@@ -12,7 +13,8 @@ interface EventBoardProps {
 
 export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
     const { events, viewMode, addEvent, deleteEvent, editEvent, setEventStatus, actionError, clearActionError } = useCalendarStore();
-    const statusText = getAppText().eventStatus;
+    const { text } = useTranslation();
+    const statusText = text.eventStatus;
     const [draft, setDraft] = useState({ title: '', time: '', link: '', note: '', priority: '' });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -97,34 +99,34 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
         <div className="w-full board-panel p-4 rounded-2xl">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <div>
-                    <div className="text-[11px] font-mono text-stone-500 tracking-[0.25em] uppercase">Day Events Administration</div>
+                    <div className="text-[11px] font-mono text-stone-500 tracking-[0.25em] uppercase">{text.calendar.eventAdministration}</div>
                     <div className="text-xl text-stone-800 tracking-[0.2em]">{dateStr}</div>
                 </div>
                 <div className="flex items-center gap-3 text-[10px] font-mono text-stone-500 uppercase">
-                    <label className="tracking-[0.2em]" htmlFor="event-order">Order</label>
+                    <label className="tracking-[0.2em]" htmlFor="event-order">{text.common.order}</label>
                     <select
                         id="event-order"
                         value={sortOrder}
                         onChange={(e) => setSortOrder(e.target.value as 'time' | 'priority')}
                         className="bg-white border border-orange-200 text-[11px] text-stone-700 px-2 py-1 focus:outline-none focus:border-orange-400 rounded-lg"
                     >
-                        <option value="time">Hour</option>
-                        <option value="priority">Priority</option>
+                        <option value="time">{text.common.hour}</option>
+                        <option value="priority">{text.common.priority}</option>
                     </select>
                 </div>
                 {viewMode === 'friend' && (
-                    <span className="text-[10px] font-mono text-orange-500 uppercase">Read-only</span>
+                    <span className="text-[10px] font-mono text-orange-500 uppercase">{text.common.readOnly}</span>
                 )}
             </div>
 
             {actionError && (
                 <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-mono text-red-600">
-                    {actionError}
+                    {text.errors.REQUEST_FAILED}
                 </div>
             )}
 
             {dayEvents.length === 0 ? (
-                <div className="text-xs text-stone-500 font-mono">No entries. Add one below.</div>
+                <div className="text-xs text-stone-500 font-mono">{text.calendar.noEventsForDay}</div>
             ) : (
                 <div className="flex flex-col gap-3">
                     {dayEvents.map((event: CalendarEvent) => (
@@ -229,15 +231,16 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                                                 disabled={pendingEventId === event.id}
                                                 className="text-emerald-600 hover:text-emerald-700 flex items-center gap-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
                                             >
-                                                <Edit3 className="w-3 h-3" /> Edit
+                                                <Edit3 className="w-3 h-3" aria-hidden="true" /> {text.common.edit}
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => deleteEvent(event.id)}
+                                                onClick={() => { void deleteEvent(event.id); }}
+                                                aria-label={interpolateText(text.calendar.deleteEvent, { name: event.title })}
                                                 disabled={pendingEventId === event.id}
                                                 className="text-red-500 hover:text-red-600 flex items-center gap-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
                                             >
-                                                <Trash2 className="w-3 h-3" /> Delete
+                                                <Trash2 className="w-3 h-3" aria-hidden="true" /> {text.common.delete}
                                             </button>
                                         </>
                                     )}
@@ -260,20 +263,22 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
 
             {viewMode !== 'friend' && (
                 <div className="mt-4 border-t border-orange-100 pt-4">
-                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em] mb-2">Create / Update</div>
+                    <div className="text-[10px] font-mono text-stone-500 uppercase tracking-[0.25em] mb-2">{editingId ? text.calendar.updateEvent : text.calendar.createEvent}</div>
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                         <input
                             type="text"
+                            aria-label={text.common.title}
                             value={draft.title}
                             onChange={(e) => {
                                 clearActionError();
                                 setDraft({ ...draft, title: e.target.value });
                             }}
-                            placeholder="Title"
+                            placeholder={text.calendar.eventTitlePlaceholder}
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="time"
+                            aria-label={text.common.time}
                             value={draft.time}
                             onChange={(e) => {
                                 clearActionError();
@@ -283,33 +288,36 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                         />
                         <input
                             type="number"
+                            aria-label={text.common.priority}
                             step="1"
                             value={draft.priority}
                             onChange={(e) => {
                                 clearActionError();
                                 setDraft({ ...draft, priority: e.target.value });
                             }}
-                            placeholder="Priority"
+                            placeholder={text.calendar.priorityPlaceholder}
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="url"
+                            aria-label={text.common.link}
                             value={draft.link}
                             onChange={(e) => {
                                 clearActionError();
                                 setDraft({ ...draft, link: e.target.value });
                             }}
-                            placeholder="Link"
+                            placeholder={text.calendar.linkPlaceholder}
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                         <input
                             type="text"
+                            aria-label={text.common.note}
                             value={draft.note}
                             onChange={(e) => {
                                 clearActionError();
                                 setDraft({ ...draft, note: e.target.value });
                             }}
-                            placeholder="Note"
+                            placeholder={text.calendar.notePlaceholder}
                             className="bg-white border border-orange-200 text-sm text-stone-800 px-3 py-2 focus:outline-none focus:border-orange-400"
                         />
                     </div>
@@ -326,7 +334,7 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                                 disabled={isSubmitting}
                                 className="px-3 py-2 text-xs font-mono text-stone-500 hover:text-stone-800 border border-orange-200 hover:border-orange-300"
                             >
-                                Cancel
+                                {text.common.cancel}
                             </button>
                         )}
                         <button
@@ -369,7 +377,7 @@ export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
                             disabled={isSubmitting}
                             className="px-4 py-2 bg-orange-400 text-white text-xs font-mono font-bold hover:bg-orange-500 transition-colors flex items-center gap-2 rounded-lg"
                         >
-                            <Plus className="w-4 h-4" /> {isSubmitting ? 'Saving...' : editingId ? 'Save Changes' : 'Add Entry'}
+                            <Plus className="w-4 h-4" aria-hidden="true" /> {isSubmitting ? text.common.saving : editingId ? text.common.saveChanges : text.calendar.addEvent}
                         </button>
                     </div>
                 </div>

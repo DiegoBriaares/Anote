@@ -164,6 +164,19 @@ const resolveTargetContext = (command, args) => {
     const repoRoot = path.resolve(__dirname, '..');
     const isShowCommand = command === 'show-default-dir';
     const requiresDatabase = command !== 'show-default-dir' && command !== 'set-default-dir';
+    const mutatesProduction = ['make-admin', 'remove-admin', 'change-username'].includes(command);
+    const controlCenterRegistry = path.join(path.dirname(targetDir), 'registry', 'installation.json');
+
+    if (mutatesProduction && dbArg) {
+        const expectedDatabase = path.join(targetDir, 'data', 'calendar.db');
+        const canonicalDatabase = fs.existsSync(dbPath) ? fs.realpathSync(dbPath) : dbPath;
+        const canonicalExpected = fs.existsSync(expectedDatabase)
+            ? fs.realpathSync(expectedDatabase)
+            : expectedDatabase;
+        if (canonicalDatabase !== canonicalExpected) {
+            throw new Error('Mutating user operations require the database owned by --target-dir; choose the matching production directory instead of overriding --db.');
+        }
+    }
 
     if (!isShowCommand && !allowInPlace && repoRoot === targetDir) {
         throw new Error(`Refusing to run production user ops from inside the target directory (${targetDir}). Run from the development repo or pass --allow-in-place.`);
@@ -171,6 +184,10 @@ const resolveTargetContext = (command, args) => {
 
     if (!isShowCommand && !fs.existsSync(targetDir) && !dbArg) {
         throw new Error(`Production directory not found: ${targetDir}`);
+    }
+
+    if (mutatesProduction && fs.existsSync(controlCenterRegistry)) {
+        throw new Error('This Anote installation is managed by Anote Control Center. Use the application and Control Center workflows; legacy production mutation commands are disabled.');
     }
 
     if (requiresDatabase && !fs.existsSync(dbPath)) {

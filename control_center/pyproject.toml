@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anote-control-center"
+version = "0.1.4"
+description = "Offline lifecycle manager for Anote"
+requires-python = ">=3.11"
+dependencies = ["tzdata==2026.3"]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.11,<7"]
+
+[project.scripts]
+anote-control-center = "anote_control_center.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+anote_control_center = ["runtime/*.yaml"]

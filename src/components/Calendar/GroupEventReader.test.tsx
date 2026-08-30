@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import { GroupEventReader } from './GroupEventReader';
 
 describe('GroupEventReader', () => {
     it('renders selected days as independent event columns', () => {
-        render(
+        renderWithLanguage(
             <GroupEventReader
                 selectedDateKeys={['2026-04-23', '2026-04-24']}
                 eventsByDate={{

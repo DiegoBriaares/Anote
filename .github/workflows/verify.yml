@@ -24,11 +24,11 @@ jobs:
       - run: npm run verify
       - name: Validate production composition
         env:
-          SECRET_KEY: ci-non-secret-placeholder
           ANOTE_DATA_DIR: /tmp/anote-ci-data
           ANOTE_IMAGE_TAG: ci
           ANOTE_BIND_ADDRESS: 127.0.0.1
           ANOTE_PUBLIC_PORT: 15173
+          ANOTE_DEFAULT_TIME_ZONE: UTC
         run: docker compose -f compose.production.yaml config --quiet
       - run: docker build -f docker/api.Containerfile -t anote-api:ci .
       - run: docker build -f docker/web.Containerfile -t anote-web:ci .

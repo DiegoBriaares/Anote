@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import userEvent from '@testing-library/user-event';
 import { PostponedRangeBoard } from './PostponedRangeBoard';
 import { useCalendarStore } from '../../store/calendarStore';
@@ -54,13 +55,13 @@ describe('PostponedRangeBoard', () => {
         );
 
         const user = userEvent.setup();
-        const { container } = render(<PostponedRangeBoard />);
+        const { container } = renderWithLanguage(<PostponedRangeBoard />);
         const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement;
 
         fireEvent.change(dateInput, { target: { value: '2026-01-02' } });
         await user.click(screen.getByRole('checkbox'));
         await user.selectOptions(screen.getByLabelText('Action'), 'move');
-        await user.click(screen.getByRole('button', { name: 'Move Selected' }));
+        await user.click(screen.getByRole('button', { name: /Move selected/i }));
 
         expect(addEventsBulk).toHaveBeenCalled();
         expect(deletePostponedEvent).not.toHaveBeenCalled();
@@ -75,12 +76,12 @@ describe('PostponedRangeBoard', () => {
         );
 
         const user = userEvent.setup();
-        const { container } = render(<PostponedRangeBoard />);
+        const { container } = renderWithLanguage(<PostponedRangeBoard />);
         const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement;
 
         fireEvent.change(dateInput, { target: { value: '2026-01-02' } });
         await user.click(screen.getAllByRole('checkbox')[0]);
-        await user.click(screen.getByRole('button', { name: 'Copy Selected' }));
+        await user.click(screen.getByRole('button', { name: /Copy selected/i }));
 
         expect(addEventsBulk).toHaveBeenCalledTimes(1);
         expect(addEventsBulk.mock.calls[0][0][0].completed).toBe(true);
@@ -111,10 +112,10 @@ describe('PostponedRangeBoard', () => {
         );
 
         const user = userEvent.setup();
-        render(<PostponedRangeBoard postponedView="week" />);
+        renderWithLanguage(<PostponedRangeBoard postponedView="week" />);
 
         await user.click(screen.getAllByRole('checkbox')[0]);
-        await user.click(screen.getByRole('button', { name: 'Copy to Postponed' }));
+        await user.click(screen.getByRole('button', { name: /Copy to postponed/i }));
 
         expect(addPostponedEventsBulk).toHaveBeenCalledTimes(1);
         expect(addPostponedEventsBulk.mock.calls[0][0][0].completed).toBe(true);
@@ -145,11 +146,11 @@ describe('PostponedRangeBoard', () => {
         );
 
         const user = userEvent.setup();
-        render(<PostponedRangeBoard postponedView="week" />);
+        renderWithLanguage(<PostponedRangeBoard postponedView="week" />);
 
         await user.click(screen.getAllByRole('checkbox')[0]);
-        await user.selectOptions(screen.getByLabelText('Postponed View'), 'today');
-        await user.click(screen.getByRole('button', { name: 'Copy to Postponed' }));
+        await user.selectOptions(screen.getByLabelText('Postponed list'), 'today');
+        await user.click(screen.getByRole('button', { name: /Copy to postponed/i }));
 
         expect(addPostponedEventsBulk).toHaveBeenCalledTimes(1);
         expect(addPostponedEventsBulk.mock.calls[0][0][0].completed).toBe(true);

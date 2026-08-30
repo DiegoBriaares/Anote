@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithLanguage } from '../test/renderWithLanguage';
 import userEvent from '@testing-library/user-event';
 import { EventBoard } from './EventBoard';
 import { formatDate } from '../../utils/dateUtils';
@@ -58,7 +59,7 @@ describe('EventBoard', () => {
         mockedUseCalendarStore.mockReturnValue(buildState({ setEventStatus }));
 
         const user = userEvent.setup();
-        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+        renderWithLanguage(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
         await user.click(screen.getByRole('button', { name: 'Mark complete' }));
 
@@ -71,7 +72,7 @@ describe('EventBoard', () => {
         mockedUseCalendarStore.mockReturnValue(buildState({ setEventStatus }));
 
         const user = userEvent.setup();
-        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+        renderWithLanguage(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
         await user.click(screen.getByRole('button', { name: 'Mark failed' }));
 
@@ -83,9 +84,9 @@ describe('EventBoard', () => {
             actionError: 'Failed to update event'
         }));
 
-        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+        renderWithLanguage(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
-        expect(screen.getByText('Failed to update event')).toBeTruthy();
+        expect(screen.getByText('That action could not be completed. Try again.')).toBeTruthy();
     });
 
     it('renders completed events with the muted completed styling', () => {
@@ -108,7 +109,7 @@ describe('EventBoard', () => {
             }
         }));
 
-        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+        renderWithLanguage(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
         expect(screen.getByText('Close monthly report').closest('.board-card-completed')).not.toBeNull();
         expect(screen.getByText('Completed')).toBeTruthy();
@@ -120,11 +121,11 @@ describe('EventBoard', () => {
         mockedUseCalendarStore.mockReturnValue(buildState({ addEvent }));
 
         const user = userEvent.setup();
-        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+        renderWithLanguage(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
-        const titleInput = screen.getByPlaceholderText('Title');
+        const titleInput = screen.getByPlaceholderText('What do you want to remember?');
         await user.type(titleInput, 'New planning block');
-        await user.click(screen.getByRole('button', { name: 'Add Entry' }));
+        await user.click(screen.getByRole('button', { name: /Add event/i }));
 
         expect(addEvent).toHaveBeenCalledTimes(1);
         expect((titleInput as HTMLInputElement).value).toBe('New planning block');
@@ -143,7 +144,7 @@ describe('EventBoard', () => {
             }
         }));
 
-        render(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
+        renderWithLanguage(<EventBoard selectedDate={new Date(2026, 3, 23)} />);
 
         expect(screen.getByText('Production rollout').closest('.board-card-failed')).not.toBeNull();
         expect(screen.getByText('Failed').closest('.status-pill-failed')).not.toBeNull();
