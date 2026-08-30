@@ -40,6 +40,15 @@ class NativePackagingContractTests(unittest.TestCase):
         self.assertIn("Invoke-CheckedProcess", workflow)
         self.assertIn("TimeoutSeconds 60", workflow)
 
+    def test_macos_bundle_metadata_and_runtime_share_one_version(self) -> None:
+        build_script = (CONTROL_CENTER_ROOT / "release" / "build-macos.sh").read_text(encoding="utf-8")
+
+        self.assertIn("Set :CFBundleShortVersionString $package_version", build_script)
+        self.assertIn("Add :CFBundleVersion string $package_version", build_script)
+        self.assertIn('bundle_short_version" != "$package_version"', build_script)
+        self.assertIn('bundle_build_version" != "$package_version"', build_script)
+        self.assertIn('codesign --force --deep --sign - "$app_path"', build_script)
+
 
 if __name__ == "__main__":
     unittest.main()

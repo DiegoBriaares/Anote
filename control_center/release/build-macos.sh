@@ -63,8 +63,23 @@ fi
     "$control_center_root/src/anote_control_center/app.py"
 
 executable="$app_path/Contents/MacOS/$product_name"
+info_plist="$app_path/Contents/Info.plist"
 if [[ ! -x "$executable" ]]; then
     echo "The packaged Control Center executable is missing." >&2
+    exit 1
+fi
+if [[ ! -f "$info_plist" ]]; then
+    echo "The packaged Control Center bundle metadata is missing." >&2
+    exit 1
+fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $package_version" "$info_plist"
+if ! /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $package_version" "$info_plist"; then
+    /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $package_version" "$info_plist"
+fi
+bundle_short_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
+bundle_build_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info_plist")"
+if [[ "$bundle_short_version" != "$package_version" || "$bundle_build_version" != "$package_version" ]]; then
+    echo "The macOS bundle identity does not match the Control Center version." >&2
     exit 1
 fi
 if find "$app_path" -type f \( -name '*.anote-release' -o -name '*.anote-checkpoint' -o -name '*.db' -o -name 'production.env' -o -name 'installation.json' -o -name 'journal.json' -o -name '*.tar' \) -print -quit | grep -q .; then
@@ -82,6 +97,8 @@ if [[ -n "$signing_identity" ]]; then
     /usr/bin/codesign --force --deep --options runtime --timestamp --sign "$signing_identity" "$app_path"
     /usr/bin/codesign --verify --deep --strict --verbose=2 "$app_path"
 else
+    /usr/bin/codesign --force --deep --sign - "$app_path"
+    /usr/bin/codesign --verify --deep --strict --verbose=2 "$app_path"
     echo "NOTICE: producing an unsigned macOS Control Center bundle." >&2
 fi
 
