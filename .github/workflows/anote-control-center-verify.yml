@@ -1,0 +1,41 @@
+name: Anote Control Center verify
+
+on:
+  pull_request:
+    paths:
+      - "control_center/**"
+      - "scripts/release/**"
+      - ".github/workflows/anote-control-center-*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "control_center/**"
+      - "scripts/release/**"
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macos-arm64
+          - os: windows-2025
+            platform: windows-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Compile and test owners
+        shell: bash
+        run: |
+          python -m compileall -q control_center/src control_center/tests scripts/release
+          PYTHONPATH=control_center/src python -m unittest discover -s control_center/tests -v
+      - name: Payload-free self-check
+        shell: bash
+        run: PYTHONPATH=control_center/src python -m anote_control_center.cli --self-check --host-platform "${{ matrix.platform }}"

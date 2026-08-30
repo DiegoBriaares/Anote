@@ -1,0 +1,114 @@
+name: Anote Control Center native packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      require_signing:
+        description: Fail unless native code-signing and notarization inputs are configured
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "anote-control-center-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    env:
+      REQUIRE_SIGNING: ${{ (github.event_name == 'push' || inputs.require_signing) && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Verify native Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+      - name: Import Apple signing and notarization credentials
+        if: ${{ github.event_name == 'push' || inputs.require_signing }}
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          for value in "$CERTIFICATE_BASE64" "$CERTIFICATE_PASSWORD" "$SIGNING_IDENTITY" "$NOTARY_KEY_BASE64" "$NOTARY_KEY_ID" "$NOTARY_ISSUER_ID"; do test -n "$value" || { echo "Apple signing inputs are incomplete." >&2; exit 1; }; done
+          keychain="$RUNNER_TEMP/anote-control-center.keychain-db"
+          certificate="$RUNNER_TEMP/anote-control-center.p12"
+          notary_key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$notary_key"
+          security create-keychain -p temporary "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p temporary "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k temporary "$keychain"
+          security list-keychains -d user -s "$keychain"
+          echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "APPLE_NOTARY_KEY_PATH=$notary_key" >> "$GITHUB_ENV"
+          echo "APPLE_NOTARY_KEY_ID=$NOTARY_KEY_ID" >> "$GITHUB_ENV"
+          echo "APPLE_NOTARY_ISSUER_ID=$NOTARY_ISSUER_ID" >> "$GITHUB_ENV"
+      - name: Build, inspect, and self-check Apple Silicon bundle
+        run: control_center/release/build-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anote-control-center-macos-arm64
+          path: control_center/dist/Anote-Control-Center-macOS-Apple-Silicon.dmg
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned installer compiler
+        run: choco install innosetup --version=6.7.1 --allow-downgrade --yes --no-progress
+      - name: Import Windows signing certificate
+        if: ${{ github.event_name == 'push' || inputs.require_signing }}
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERTIFICATE_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERTIFICATE_PASSWORD }}
+          TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64) -or [string]::IsNullOrWhiteSpace($env:PFX_PASSWORD) -or [string]::IsNullOrWhiteSpace($env:TIMESTAMP_URL)) { throw "Windows signing inputs are incomplete." }
+          $pfx = Join-Path $env:RUNNER_TEMP "anote-control-center.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $certificate -or $null -eq $signTool) { throw "Windows signing tools could not be prepared." }
+          Add-Content $env:GITHUB_ENV "WINDOWS_SIGN_CERTIFICATE_SHA1=$($certificate.Thumbprint)"
+          Add-Content $env:GITHUB_ENV "WINDOWS_SIGNTOOL_PATH=$($signTool.FullName)"
+          Add-Content $env:GITHUB_ENV "WINDOWS_SIGN_TIMESTAMP_URL=$env:TIMESTAMP_URL"
+      - name: Build, inspect, and self-check Windows installer
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name == 'push' || inputs.require_signing }}' -eq 'true') {
+            ./control_center/release/build-windows.ps1 -RequireSigning
+          } else {
+            ./control_center/release/build-windows.ps1
+          }
+      - name: Install, self-check, and uninstall unsigned development package
+        if: ${{ github.event_name != 'push' && !inputs.require_signing }}
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:GITHUB_WORKSPACE "control_center\dist\Anote-Control-Center-Windows11-x64-Setup.exe"
+          $installRoot = Join-Path $env:RUNNER_TEMP "Anote Control Center"
+          $install = Start-Process -FilePath $installer -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installRoot`"") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Development installer failed." }
+          $executable = Join-Path $installRoot "Anote Control Center.exe"
+          $check = Start-Process -FilePath $executable -ArgumentList "--self-check" -Wait -PassThru
+          if ($check.ExitCode -ne 0) { throw "Installed application self-check failed." }
+          $uninstall = Start-Process -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $executable)) { throw "Development installer did not uninstall cleanly." }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anote-control-center-windows-x64
+          path: control_center/dist/Anote-Control-Center-Windows11-x64-Setup.exe
+          if-no-files-found: error

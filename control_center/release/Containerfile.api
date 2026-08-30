@@ -1,0 +1,22 @@
+ARG NODE_BASE_IMAGE=node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
+FROM ${NODE_BASE_IMAGE}
+
+ARG ANOTE_RELEASE_ID
+ARG ANOTE_RELEASE_VERSION
+ARG ANOTE_SOURCE_COMMIT
+LABEL org.opencontainers.image.title="Anote API" \
+      org.opencontainers.image.version="${ANOTE_RELEASE_VERSION}" \
+      org.opencontainers.image.revision="${ANOTE_SOURCE_COMMIT}" \
+      com.anote.release.id="${ANOTE_RELEASE_ID}"
+
+ENV NODE_ENV=production
+WORKDIR /app/server
+
+COPY --chown=node:node server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY --chown=node:node server/ ./
+
+EXPOSE 3001
+USER node
+CMD ["node", "index.js"]

@@ -1,0 +1,95 @@
+name: Anote native application release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Anote semantic version (without anote-v prefix)
+        required: true
+        type: string
+  push:
+    tags:
+      - "anote-v[0-9]*"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then value="${GITHUB_REF_NAME#anote-v}"; else value="$REQUESTED"; fi
+          [[ "$value" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.-]+)?$ ]]
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+  native:
+    needs: contract
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x86_64
+            host_platform: windows-amd64
+            artifact: anote-release-linux-amd64
+          - runner: ubuntu-24.04-arm
+            architecture: aarch64
+            host_platform: macos-arm64
+            artifact: anote-release-linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Prove native build architecture
+        env:
+          EXPECTED: ${{ matrix.architecture }}
+        run: test "$(uname -m)" = "$EXPECTED" || { echo "Unexpected native runner $(uname -m)" >&2; exit 1; }
+      - name: Build and reverify exact native OCI package
+        env:
+          VERSION: ${{ needs.contract.outputs.version }}
+          HOST_PLATFORM: ${{ matrix.host_platform }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/anote-release"
+          python scripts/release/build_anote_release.py --version "$VERSION" --host-platform "$HOST_PLATFORM" --output "$RUNNER_TEMP/anote-release/anote-$VERSION-$HOST_PLATFORM.anote-release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/anote-release/*.anote-release
+          if-no-files-found: error
+          retention-days: 14
+
+  pair:
+    needs: [contract, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: anote-release-linux-*
+          path: ${{ runner.temp }}/native-pair
+          merge-multiple: true
+      - name: Prove one logical release and two native OCI identities
+        env:
+          VERSION: ${{ needs.contract.outputs.version }}
+        run: |
+          python scripts/release/verify_anote_release_pair.py --amd64 "$RUNNER_TEMP/native-pair/anote-$VERSION-windows-amd64.anote-release" --arm64 "$RUNNER_TEMP/native-pair/anote-$VERSION-macos-arm64.anote-release" | tee "$RUNNER_TEMP/native-pair/native-pair-identity.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anote-${{ needs.contract.outputs.version }}-native-pair-evidence
+          path: ${{ runner.temp }}/native-pair/native-pair-identity.json
+          if-no-files-found: error
+          retention-days: 14
