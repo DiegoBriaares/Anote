@@ -8,6 +8,7 @@ import tempfile
 
 from . import __version__
 from .application import load_application
+from .docker_runtime import docker_executable_candidates
 from .errors import ControlCenterError
 from .i18n import validate_catalogs
 from .lifecycle import validate_timezone
@@ -40,8 +41,22 @@ def main(arguments: list[str] | None = None) -> int:
     try:
         platform_identity = _platform(options.host_platform)
         if options.self_check:
+            selected_platform = platform_identity or _platform(
+                "windows-amd64" if sys.platform == "win32" else "macos-arm64",
+            )
             validate_catalogs()
             validate_timezone("America/Mexico_City")
+            docker_candidates = docker_executable_candidates(
+                system_name="Windows" if selected_platform.host_os == "windows" else "Darwin",
+                environment={"ProgramFiles": r"C:\Program Files"},
+            )
+            expected_docker = (
+                r"C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+                if selected_platform.host_os == "windows"
+                else "/usr/local/bin/docker"
+            )
+            if expected_docker not in docker_candidates:
+                raise ControlCenterError("Docker Desktop discovery contract is incomplete.", code="self_check_failed")
             compose = resources.files("anote_control_center").joinpath("runtime/compose.yaml")
             content = compose.read_text(encoding="utf-8")
             if "cap_drop:" not in content or "ANOTE_RELEASE_ID" not in content:

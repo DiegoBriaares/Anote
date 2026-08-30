@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from anote_control_center.docker_runtime import CommandResult, DockerRuntime
+from anote_control_center.docker_runtime import (
+    CommandResult,
+    DockerRuntime,
+    SubprocessExecutor,
+    resolve_docker_executable,
+)
 from anote_control_center.errors import RuntimeCommandError
 from anote_control_center.model import Installation
 from anote_control_center.platform_paths import ManagedPaths
@@ -67,6 +74,48 @@ def container_row(
 
 
 class DockerRuntimeTests(unittest.TestCase):
+    def test_macos_resolver_finds_docker_outside_finder_path(self) -> None:
+        inspected: list[str] = []
+
+        def only_desktop_cli(candidate: str) -> str | None:
+            inspected.append(candidate)
+            return candidate if candidate == "/usr/local/bin/docker" else None
+
+        resolved = resolve_docker_executable(
+            system_name="Darwin",
+            environment={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"},
+            which=only_desktop_cli,
+        )
+
+        self.assertEqual("/usr/local/bin/docker", resolved)
+        self.assertEqual(("docker", "/usr/local/bin/docker"), tuple(inspected[:2]))
+
+    def test_windows_resolver_finds_docker_outside_desktop_path(self) -> None:
+        expected = r"C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+        resolved = resolve_docker_executable(
+            system_name="Windows",
+            environment={"PATH": r"C:\Windows\System32", "ProgramFiles": r"C:\Program Files"},
+            which=lambda candidate: candidate if candidate == expected else None,
+        )
+
+        self.assertEqual(expected, resolved)
+
+    def test_subprocess_executor_uses_resolved_docker_executable(self) -> None:
+        completed = subprocess.CompletedProcess([], 0, b"ready", b"")
+        with patch("anote_control_center.docker_runtime.subprocess.run", return_value=completed) as run:
+            result = SubprocessExecutor(docker_executable="/usr/local/bin/docker").run(
+                ["docker", "version"],
+            )
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("ready", result.stdout)
+        self.assertEqual(["/usr/local/bin/docker", "version"], run.call_args.args[0])
+
+    def test_missing_docker_cli_has_specific_safe_error(self) -> None:
+        with self.assertRaises(RuntimeCommandError) as raised:
+            resolve_docker_executable(system_name="Darwin", which=lambda _candidate: None)
+        self.assertEqual("docker_cli_missing", raised.exception.code)
+
     def test_loaded_image_accepts_the_verified_top_level_oci_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image = RuntimeImage(

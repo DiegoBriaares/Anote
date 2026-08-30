@@ -31,6 +31,7 @@ class FakeRuntime:
         self.fail_retire = False
         self.bootstrap_payload: dict[str, str] | None = None
         self.legacy: LegacyRuntime | None = None
+        self.ready_error_code: str | None = None
         self.loaded_image_ids = {"api": "sha256:" + "7" * 64, "web": "sha256:" + "8" * 64}
 
     def load_release_images(self, release: object) -> dict[str, str]:
@@ -125,7 +126,8 @@ class FakeRuntime:
             raise RuntimeCommandError("injected retirement failure", code="docker_command_failed")
 
     def require_ready(self, _manifest: object | None = None) -> None:
-        return None
+        if self.ready_error_code is not None:
+            raise RuntimeCommandError("injected readiness failure", code=self.ready_error_code)
 
 
 class LifecycleApplicationTests(unittest.TestCase):
@@ -160,6 +162,17 @@ class LifecycleApplicationTests(unittest.TestCase):
             self.assertNotIn("America/Mexico_City", json.dumps(runtime.bootstrap_payload))
             self.assertLess(runtime.events.index("command:node migrate.js"), runtime.events.index("command:node bootstrap-admin.js"))
             self.assertEqual("stop", runtime.events[-1])
+
+    def test_diagnostics_distinguish_missing_docker_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths, registry, runtime, _service = self.environment(Path(directory))
+            runtime.ready_error_code = "docker_cli_missing"
+            application = ControlCenterApplication(paths=paths, platform=MAC, runtime=runtime)  # type: ignore[arg-type]
+
+            diagnostics = json.loads(application.diagnostics())
+
+            self.assertEqual("unavailable", diagnostics["docker"])
+            self.assertEqual("docker_cli_missing", diagnostics["docker_error_code"])
 
     def test_start_records_dirty_before_docker_and_stop_requires_new_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
