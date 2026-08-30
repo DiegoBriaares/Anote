@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import os
 from pathlib import Path
+from queue import Empty, Queue
 import subprocess
 import threading
 import tkinter as tk
@@ -58,7 +59,12 @@ class ControlCenterWindow:
         self.root.minsize(760, 600)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self._build()
-        self._run_async(self._discover_releases, success_message=False, cancellable=False)
+        self._run_async(
+            self._discover_releases,
+            on_success=self._accept_discovered_releases,
+            success_message=False,
+            cancellable=False,
+        )
 
     def _build(self) -> None:
         selected_tab = 0
@@ -223,9 +229,13 @@ class ControlCenterWindow:
         self.language_choice.set(self.translator.text("language.spanish" if self.translator.language == "es" else "language.english"))
         self._build()
 
-    def _discover_releases(self) -> None:
-        candidates = self.application.releases.discover()
-        self.root.after(0, lambda: self._accept_candidates(candidates))
+    def _discover_releases(self) -> tuple[ReleaseCandidate, ...]:
+        return self.application.releases.discover()
+
+    def _accept_discovered_releases(self, result: object) -> None:
+        if not isinstance(result, tuple) or not all(isinstance(item, ReleaseCandidate) for item in result):
+            raise RuntimeError("Release discovery returned an invalid result.")
+        self._accept_candidates(result)
 
     def _accept_candidates(self, candidates: tuple[ReleaseCandidate, ...]) -> None:
         previous = self.release_choice.get()
@@ -421,12 +431,18 @@ class ControlCenterWindow:
         self.status.set(self.translator.text("diagnostics.title"))
 
     def _refresh_releases(self) -> None:
-        self._run_async(self._discover_releases, success_message=False, cancellable=False)
+        self._run_async(
+            self._discover_releases,
+            on_success=self._accept_discovered_releases,
+            success_message=False,
+            cancellable=False,
+        )
 
     def _run_async(
         self,
         operation: Callable[[], object],
         *,
+        on_success: Callable[[object], None] | None = None,
         success_message: bool = True,
         cancellable: bool = True,
     ) -> None:
@@ -444,21 +460,43 @@ class ControlCenterWindow:
             self.progress.configure(value=35 if cancellable else 50)
             self.status.set(self.translator.text("status.protected" if cancellable else "status.working"))
             self._set_controls()
+            results: Queue[tuple[object | None, Exception | None]] = Queue(maxsize=1)
 
             def worker() -> None:
                 try:
-                    operation()
+                    results.put((operation(), None))
                 except Exception as error:
-                    self.root.after(0, lambda: self._finish_error(error))
-                else:
-                    self.root.after(0, lambda: self._finish_success(success_message))
+                    results.put((None, error))
 
             threading.Thread(target=worker, daemon=True, name="anote-control-center-operation").start()
+            self.root.after(25, lambda: self._poll_operation(results, on_success, success_message))
 
         if cancellable:
             self._pending_operation = self.root.after(750, begin)
         else:
             begin()
+
+    def _poll_operation(
+        self,
+        results: Queue[tuple[object | None, Exception | None]],
+        on_success: Callable[[object], None] | None,
+        success_message: bool,
+    ) -> None:
+        try:
+            value, error = results.get_nowait()
+        except Empty:
+            self.root.after(25, lambda: self._poll_operation(results, on_success, success_message))
+            return
+        if error is not None:
+            self._finish_error(error)
+            return
+        try:
+            if on_success is not None:
+                on_success(value)
+        except Exception as callback_error:
+            self._finish_error(callback_error)
+            return
+        self._finish_success(success_message)
 
     def _cancel_pending(self) -> None:
         if not self.busy or not self.cancellable or self._pending_operation is None:

@@ -54,14 +54,25 @@ Final repository evidence on 2026-08-30 is:
   transaction, session/origin, authorization, attachment and automatic-program
   owner evidence. The initial JavaScript chunk was 349.59 kB and the lazy note
   surface 132.44 kB, with no bundle-size warning.
-- **CC-GATE:** the Control Center owner suite passed 48/48 tests. The CLI
+- **CC-GATE:** the Control Center owner suite passed 51/51 tests. The CLI
   payload-free self-checks and native-pair identity verifier passed in isolated
   roots without contacting a live installation. Native macOS packaging passed;
   the Windows package remains subject to the independently fallible native gate
   in Section 6.
 - **MAC-PACKAGE-GATE:** the native macOS PyInstaller build, embedded self-check,
-  arm64 Mach-O inspection and package inspection passed. This evidence does not
-  substitute for the external gates listed in Section 6.
+  arm64 Mach-O inspection and package inspection passed for Control Center
+  0.1.4. The unsigned-policy disclosure was emitted as required.
+- **MAC-LIFECYCLE-GATE:** the exact packaged 0.1.4 application discovered the
+  existing Anote 1.0.0 arm64 release from isolated inboxes. Computer Use drove
+  standby preparation, application of the production-derived baseline
+  checkpoint, explicit start/promotion, same-origin browser readiness on port
+  15174, and the retryable current-release refusal path. The same native owner
+  then stopped the source, created a sequence-2 checkpoint, completed safe
+  uninstall and exact retained reinstall, and erased/recovered only its
+  disposable root. A second isolated root completed fresh source bootstrap,
+  migration and stopped readiness on port 15175, published its sequence-1
+  checkpoint, and erased through the journaled recovery path. No check used the
+  live Anote root, project, data, port or containers.
 - **LEGACY-DATA-GATE:** a new read-only-copy exercise with the review-corrected
   migration moved the operator-selected `cal-ap` dataset to schema 5: 38 active
   plus five private recovery notes conserved all 43 source rows, no generic
@@ -150,6 +161,7 @@ results.
 | OPS-004 Production transfer format absent | Backups are local recovery artifacts; no platform-neutral self-contained dataset/checkpoint lineage exists. | Moving data between amd64/arm64 hosts either transfers raw live WAL state or loses uploads/ordering. | Verified SQLite backup plus canonical uploads `.anote-checkpoint`, logical release/lineage guards and staged swap. | **Closed.** The checkpoint codec uses SQLite backup, physical session scrubbing, canonical uploads, database/schema/digest/privacy checks, whole-package owned staging, live-runtime stopped proof, lineage guards and staged rollback. CC-GATE includes typed recovery/unreferenced-file round trip, raw session-marker absence, corrupt/private verifier refusal, nested link/reparse refusal, running-state refusal, validation rollback and same-installation refusal. |
 | OPS-005 Legacy adoption cannot trust original Compose file | Current production labels may identify a temporary release checkout; only running container/image/mount state is durable. | Adoption invokes a missing path or destroys the only restartable legacy runtime before validation. | Capture exact legacy runtime, preserve it stopped, use a uniquely named managed project, commit only after validation, rollback by captured IDs/images/data. | **Closed.** Adoption captures inspected container/image/mount/network identity, rejects unsupported dependents, journals rollback state and commits managed identity before retiring exact legacy containers. CC-GATE includes missing-source-independent adoption and failure/recovery histories; live disposable Docker remains an external Section 6 gate. |
 | OPS-006 Destructive scope is not registry-owned | Current production root has private sibling archives/development artifacts outside the live `production` subtree. | Name-based recursive erase can destroy unrelated user data. | Canonical registry-owned relative targets, path containment/link guards, separate safe uninstall and typed `ERASE ANOTE`. | **Closed.** Validated relative registry paths, root/link guards, exact-resource Docker identities and separate retain-data/typed-erase intents own destructive scope. CC-GATE includes symlink/intermediate-link, unrelated-sibling, exact-image and registry-scoped uninstall/erase evidence. |
+| OPS-007 Desktop worker completion crossed the Tk thread boundary | Control Center 0.1.3 called `root.after` from worker threads and captured an exception variable in a deferred lambda. Python clears that variable after the `except` suite, so a rejected preflight left the UI permanently busy without a worker or recovery journal. | A safe refusal appeared to be a protected installation for unlimited time; the operator could neither see the localized reason nor retry normally. | Workers publish one bounded result through a thread-safe queue; the Tk owner polls and performs every widget/callback transition on the main thread. | **Closed.** The GUI operation owner now delivers success, typed failure and release-discovery results exclusively on the Tk thread. Focused owner tests prove failure returns the UI to a retryable state, success delivers its value before completion, and no worker invokes the Tk scheduler. The 0.1.4 native macOS bundle was exercised against the verified Anote 1.0.0 package in an isolated root; final evidence is recorded above. |
 
 ## 4. Requirements-to-owner-to-evidence matrix
 
@@ -199,8 +211,12 @@ record must state which gates actually ran for the exact commit:
    Docker image load and exact readiness-identity validation.
 3. Windows 11 x64 installer install/repair/uninstall, embedded self-check,
    Docker Desktop lifecycle and human EN/ES, keyboard and layout acceptance.
-4. Native packaged UI/Computer Use review and the remaining macOS Docker
-   lifecycle history.
+4. Remaining native packaged UI/Computer Use review and macOS Docker histories:
+   successful legacy adoption requires a disposable legacy project that cannot
+   collide with the live `anote-production` project, and update/rollback requires
+   a second compatible application release. The 0.1.4 isolated setup,
+   checkpoint, start/stop, retained reinstall, refusal, erase and recovery
+   histories passed as recorded in `MAC-LIFECYCLE-GATE`.
 5. Signing, notarization and publication, when the selected release policy
    requires them.
 
