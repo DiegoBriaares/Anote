@@ -111,6 +111,36 @@ describe('server-owned programs', () => {
         expect(useCalendarStore.getState().programs[0]?.revision).toBe(4);
     });
 
+    it.each([
+        ['bulk save', () => useCalendarStore.getState().savePrograms([program])],
+        ['create', () => useCalendarStore.getState().createProgram({
+            name: program.name,
+            enabled: program.enabled,
+            activationTime: program.activationTime,
+            targetDayOffset: program.targetDayOffset,
+            timeZone: program.timeZone
+        })],
+        ['update', () => useCalendarStore.getState().updateProgram(program.id, program.revision, { name: 'Changed' })],
+        ['delete', () => useCalendarStore.getState().deleteProgram(program.id, program.revision)],
+        ['manual run', () => useCalendarStore.getState().runProgram(program.id, program.revision)]
+    ])('resets the expired session after a 401 from %s', async (_name, command) => {
+        useCalendarStore.setState({ ...authenticatedState, programs: [program] });
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({
+            error: { code: 'AUTHENTICATION_REQUIRED' },
+            requestId: 'expired-session'
+        }, 401));
+
+        await command();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(useCalendarStore.getState()).toMatchObject({
+            user: null,
+            sessionStatus: 'anonymous',
+            programs: [],
+            actionError: null
+        });
+    });
+
     it('observes an automatic run and closes the cookie session without owning the clock', async () => {
         const automaticRun = {
             id: 'run-2', programId: program.id, sourceDate: '2026-06-20', targetDate: '2026-06-21',

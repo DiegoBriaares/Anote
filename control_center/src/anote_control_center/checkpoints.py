@@ -5,6 +5,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import sqlite3
 import stat
@@ -42,6 +43,14 @@ WINDOWS_RESERVED_NAMES = frozenset({
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 })
+STAGED_CHECKPOINT_PATTERN = re.compile(r"checkpoint\.package-[0-9a-f]{12}\.anote-checkpoint")
+
+
+def checkpoint_staging_path(paths: ManagedPaths, name: str) -> Path:
+    """Resolve one journaled checkpoint staging name inside managed production storage."""
+    if not isinstance(name, str) or STAGED_CHECKPOINT_PATTERN.fullmatch(name) is None:
+        raise ContractError("Checkpoint recovery staging identity is invalid.", code="recovery_failed")
+    return paths.assert_safe(paths.production / name)
 
 
 def _validate_portable_upload_path(path: PurePosixPath) -> None:
@@ -877,11 +886,16 @@ class CheckpointService:
         required_space = checkpoint.manifest.database_size + checkpoint.manifest.uploads_size + checkpoint.manifest.upload_bytes
         if shutil.disk_usage(self.paths.production).free < required_space:
             raise ContractError("There is not enough free space to apply this checkpoint safely.", code="insufficient_disk_space")
-        package_copy = self.paths.production / f"checkpoint.package-{os.urandom(6).hex()}.anote-checkpoint"
-        stage_verified_checkpoint(checkpoint, package_copy)
+        package_copy = checkpoint_staging_path(
+            self.paths,
+            f"checkpoint.package-{os.urandom(6).hex()}.anote-checkpoint",
+        )
         operation = OperationRecord(
             os.urandom(12).hex(), "apply_checkpoint", "extracting", installation.installation_id,
-            self.clock(), {"checkpoint_id": checkpoint.manifest.checkpoint_id},
+            self.clock(), {
+                "checkpoint_id": checkpoint.manifest.checkpoint_id,
+                "checkpoint_staging_name": package_copy.name,
+            },
         )
         staging = self.paths.production / f"data.checkpoint-{os.urandom(6).hex()}"
         previous = self.paths.production / f"data.previous-{os.urandom(6).hex()}"
@@ -892,6 +906,7 @@ class CheckpointService:
         try:
             self.journal.save(operation)
             journal_started = True
+            stage_verified_checkpoint(checkpoint, package_copy)
             ensure_private_directory(staging, managed_paths=self.paths)
             with zipfile.ZipFile(package_copy) as archive:
                 with archive.open("calendar.db") as source, (staging / "calendar.db").open("xb") as output:

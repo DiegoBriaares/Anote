@@ -11,7 +11,7 @@ import tempfile
 import time
 from typing import Callable
 
-from .checkpoints import Backup, CheckpointService, SnapshotService, VerifiedCheckpoint
+from .checkpoints import Backup, CheckpointService, SnapshotService, VerifiedCheckpoint, checkpoint_staging_path
 from .docker_runtime import DockerRuntime, LegacyContainer, LegacyRuntime, RuntimeConfiguration
 from .errors import ContractError, RuntimeStillActiveError
 from .model import Installation
@@ -724,6 +724,9 @@ class LifecycleService:
             if record.kind == "apply_checkpoint":
                 if installation is None:
                     raise ContractError("Checkpoint recovery is missing its installation registry.", code="recovery_failed")
+                staged_name = record.details.get("checkpoint_staging_name")
+                if staged_name:
+                    checkpoint_staging_path(self.paths, staged_name).unlink(missing_ok=True)
                 previous = sorted(self.paths.production.glob("data.previous-*"))
                 if len(previous) > 1:
                     raise ContractError("Checkpoint recovery found ambiguous previous data.", code="recovery_failed")

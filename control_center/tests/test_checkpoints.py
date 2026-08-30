@@ -236,6 +236,40 @@ class CheckpointTests(unittest.TestCase):
                 connection.close()
             self.assertEqual(original, standby_registry.load())
 
+    def test_apply_journals_checkpoint_staging_before_copying_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_paths = ManagedPaths(root / "source")
+            source_registry = InstallationRegistry(source_paths)
+            source_registry.save(install("source", "checkpoint_required", installation_id="1" * 32))
+            create_database(source_paths.database)
+            checkpoint = CheckpointService(source_paths, source_registry, clock=lambda: 200).create(
+                root / "transfer.anote-checkpoint", prove_stopped=lambda _installation: True,
+            )
+
+            standby_paths = ManagedPaths(root / "standby")
+            standby_registry = InstallationRegistry(standby_paths)
+            standby_registry.save(install("standby", "awaiting_checkpoint", installation_id="2" * 32))
+            journal = OperationJournal(standby_paths)
+
+            def interrupt_copy(_checkpoint: object, destination: Path) -> None:
+                record = journal.load()
+                self.assertIsNotNone(record)
+                self.assertEqual(destination.name, record.details["checkpoint_staging_name"])  # type: ignore[union-attr]
+                raise RuntimeError("injected staging failure")
+
+            with (
+                patch("anote_control_center.checkpoints.stage_verified_checkpoint", side_effect=interrupt_copy),
+                self.assertRaisesRegex(RuntimeError, "staging failure"),
+            ):
+                CheckpointService(standby_paths, standby_registry, clock=lambda: 300).apply(
+                    checkpoint,
+                    write_release(root / "release").manifest,
+                    prove_stopped=lambda _installation: True,
+                )
+            self.assertEqual("recovery_required", journal.load().phase)  # type: ignore[union-attr]
+            self.assertEqual([], list(standby_paths.production.glob("checkpoint.package-*")))
+
     def test_apply_refuses_an_externally_running_standby_without_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

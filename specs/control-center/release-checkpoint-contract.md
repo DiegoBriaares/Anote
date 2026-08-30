@@ -192,6 +192,12 @@ mutation and records operation ID/kind, prior/target registry identities,
 immutable owned target set, backup/checkpoint ID, durable phase, timestamps and
 safe recovery data. Secrets and business content are forbidden.
 
+Stale-lock reclamation is permitted only when process death is positively
+established. POSIX hosts may use signal-zero probing; Windows must use a
+read-only process query handle and must never map liveness probing to process
+termination. Access denial or any indeterminate result preserves the lock and
+requires recovery instead of admitting another writer.
+
 Each operation defines which phases are pre-destructive, reversible, validated
 and committed. On process restart, Control Center offers/resumes the named
 recovery before any unrelated mutation. Registry commit happens only after the
@@ -270,10 +276,12 @@ Lineage rules are:
   running state or dirty ambiguity refuses before target replacement.
 
 Apply rechecks actual Docker stopped state under the shared operation lock,
-then copies the selected package into owned staging while hashing every byte.
-Only that package identity is reopened. Both extracted database and uploads
+generates and validates one owned staging name, and journals that exact relative
+identity before copying any package byte. The copy hashes every byte. Recovery
+removes only the journaled staging child, including a partial copy left by
+process or power loss. Only that package identity is reopened. Both extracted database and uploads
 digests are rechecked before database integrity/schema/privacy and upload
-inventory validation. It then journals destructive intent, atomically swaps the
+inventory validation. It then advances the journal to destructive intent, atomically swaps the
 complete data directory, and records lineage. A source-path replacement,
 nested upload link/junction/reparse point, or running writer refuses before
 replacement. Failure before swap preserves old data; failure after swap restores

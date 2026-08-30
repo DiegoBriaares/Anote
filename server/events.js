@@ -48,6 +48,22 @@ const mergeAutomaticProgramProvenance = (clientResources, storedResources) => {
     return Object.keys(client).length === 0 ? null : JSON.stringify(client);
 };
 
+const resourcesForSharedCopy = (resources) => {
+    if (resources === null || resources === undefined || resources === '') return null;
+    let parsed;
+    try {
+        parsed = typeof resources === 'string' ? JSON.parse(resources) : resources;
+    } catch {
+        throw new ApiError(409, 'invalid_event_resources');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new ApiError(409, 'invalid_event_resources');
+    }
+    const copied = { ...parsed };
+    delete copied.automaticProgramArrivalDate;
+    return JSON.stringify(copied);
+};
+
 const normalizePriority = (value) => {
     if (value === null || value === undefined || value === '') return null;
     const number = Number(value);
@@ -375,5 +391,6 @@ module.exports = {
     eventDto,
     expectedRevision,
     normalizeEvent,
+    resourcesForSharedCopy,
     safeEventLink
 };

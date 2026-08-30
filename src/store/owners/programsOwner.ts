@@ -14,14 +14,21 @@ const actionError = (error: unknown) => error instanceof ApiError
     ? getApiErrorText(error.code)
     : getAppText().serviceUnavailable;
 
+const handleSessionError = (error: unknown, logoutAndReset: OwnerContext['logoutAndReset']) => {
+    if (error instanceof ApiError && error.status === 401) {
+        logoutAndReset();
+        return true;
+    }
+    return false;
+};
+
 export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext): ProgramsOwner => ({
     fetchPrograms: async () => {
         if (!get().user) return;
         try {
             set({ programs: await programsApi.list() });
         } catch (error) {
-            if (error instanceof ApiError && error.status === 401) logoutAndReset();
-            else set({ actionError: actionError(error) });
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
         }
     },
 
@@ -40,6 +47,7 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
             set({ programs: updated, actionError: null });
             return true;
         } catch (error) {
+            if (handleSessionError(error, logoutAndReset)) return false;
             set({ actionError: actionError(error) });
             await get().fetchPrograms();
             return false;
@@ -52,7 +60,7 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
             set((state) => ({ programs: [...state.programs, created] }));
             return created;
         } catch (error) {
-            set({ actionError: actionError(error) });
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
             return null;
         }
     },
@@ -65,7 +73,7 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
             }));
             return updated;
         } catch (error) {
-            set({ actionError: actionError(error) });
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
             return null;
         }
     },
@@ -76,7 +84,7 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
             set((state) => ({ programs: state.programs.filter((program) => program.id !== id) }));
             return true;
         } catch (error) {
-            set({ actionError: actionError(error) });
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
             return false;
         }
     },
@@ -88,7 +96,7 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
             await Promise.all([get().fetchEvents(), get().fetchPrograms()]);
             return run;
         } catch (error) {
-            set({ actionError: actionError(error) });
+            if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
             return null;
         }
     },
@@ -108,7 +116,7 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
                 count: latestRun.movedEventCount
             }));
         } catch (error) {
-            if (error instanceof ApiError && error.status === 401) logoutAndReset();
+            handleSessionError(error, logoutAndReset);
         }
     }
 });

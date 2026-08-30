@@ -5,14 +5,54 @@ from dataclasses import asdict, dataclass
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import time
 from typing import Any, Callable
-import re
 
 from .errors import ContractError
 from .model import Installation
 from .platform_paths import ManagedPaths
+
+
+def _windows_process_liveness(pid: int) -> bool | None:
+    """Probe a Windows process without sending a signal or terminating it."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False if ctypes.get_last_error() == 87 else None  # ERROR_INVALID_PARAMETER
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return None
+            return exit_code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def process_liveness(pid: int) -> bool | None:
+    """Return true/false when liveness is proven, or None when it is unknowable."""
+    if os.name == "nt":
+        return _windows_process_liveness(pid)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        return None
 
 
 def ensure_private_directory(path: Path, *, managed_paths: ManagedPaths | None = None) -> None:
@@ -140,7 +180,7 @@ class OperationRecord:
 
     SAFE_DETAIL_KEYS = frozenset({
         "api_image_digest", "api_image_tag", "backup_id", "bind_address", "change",
-        "checkpoint_id", "checkpoint_package_sha256", "checkpoint_parent_id", "checkpoint_sequence", "container_architecture", "created_at",
+        "checkpoint_id", "checkpoint_package_sha256", "checkpoint_parent_id", "checkpoint_sequence", "checkpoint_staging_name", "container_architecture", "created_at",
         "data_schema", "dataset_id", "destination", "host_architecture", "host_os",
         "legacy_api_env_digest", "legacy_api_id", "legacy_api_image", "legacy_api_ref",
         "legacy_containers", "legacy_project",
@@ -213,9 +253,16 @@ class OperationJournal:
 class OperationLock(AbstractContextManager["OperationLock"]):
     """One crash-detecting filesystem lock for every mutating lifecycle operation."""
 
-    def __init__(self, paths: ManagedPaths, *, now: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self,
+        paths: ManagedPaths,
+        *,
+        now: Callable[[], float] = time.time,
+        process_probe: Callable[[int], bool | None] = process_liveness,
+    ) -> None:
         self.paths = paths
         self.now = now
+        self.process_probe = process_probe
         self._token = f"{os.getpid()}-{os.urandom(8).hex()}"
         self._owned = False
 
@@ -250,9 +297,8 @@ class OperationLock(AbstractContextManager["OperationLock"]):
             pid = raw["pid"]
             if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
                 return False
-            os.kill(pid, 0)
-            return False
-        except ProcessLookupError:
+            if self.process_probe(pid) is not False:
+                return False
             self.paths.operation_lock.unlink(missing_ok=True)
             return True
         except (PermissionError, OSError, ContractError):

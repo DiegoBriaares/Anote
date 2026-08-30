@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const express = require('express');
 
-const { safeEventLink } = require('./events');
+const { resourcesForSharedCopy, safeEventLink } = require('./events');
 const { ApiError } = require('./http');
 const { isDateKey } = require('./time');
 const { parsePreferences } = require('./users');
@@ -68,9 +68,13 @@ const createSocialService = ({ db, now = () => new Date() }) => {
             ORDER BY date, start_time, title
         `).all(ownerId, ...dateKeys, ...(eventIds || []));
         if (eventIds && source.length !== eventIds.length) throw new ApiError(400, 'invalid_event_selection');
+        const shareable = source.map((event) => ({
+            ...event,
+            resources: resourcesForSharedCopy(event.resources)
+        }));
         const copies = [];
         for (const friendId of friendIds) {
-            for (const event of source) copies.push({ ...event, id: crypto.randomUUID(), ownerId: friendId });
+            for (const event of shareable) copies.push({ ...event, id: crypto.randomUUID(), ownerId: friendId });
         }
         const insert = db.prepare(`
             INSERT INTO events (

@@ -13,7 +13,7 @@ from anote_control_center.errors import ContractError, RuntimeCommandError
 from anote_control_center.i18n import CATALOGS, validate_catalogs
 from anote_control_center.lifecycle import ERASE_CONFIRMATION, LifecycleService
 from anote_control_center.platform_paths import ManagedPaths
-from anote_control_center.storage import InstallationRegistry
+from anote_control_center.storage import InstallationRegistry, OperationRecord
 
 from helpers import MAC, write_release
 
@@ -248,6 +248,27 @@ class LifecycleApplicationTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "no longer matches"):
                 service.apply_checkpoint(checkpoint, installed_release)
             self.assertEqual(before_events, runtime.events)
+            self.assertIsNone(service.journal.load())
+
+    def test_checkpoint_recovery_removes_the_exact_journaled_partial_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _release, paths, registry, _runtime, service = self.fresh(root)
+            installed = registry.load()
+            assert installed is not None
+            staged_name = "checkpoint.package-0123456789ab.anote-checkpoint"
+            staged = paths.production / staged_name
+            staged.write_bytes(b"partial checkpoint bytes")
+            service.journal.save(OperationRecord(
+                "checkpoint-crash", "apply_checkpoint", "extracting",
+                installed.installation_id, 100,
+                {"checkpoint_id": "cp-pending", "checkpoint_staging_name": staged_name},
+            ))
+
+            recovered = service.recover_interrupted()
+
+            self.assertEqual(installed, recovered)
+            self.assertFalse(staged.exists())
             self.assertIsNone(service.journal.load())
 
     def test_update_failure_restores_previous_release_data_and_stopped_state(self) -> None:

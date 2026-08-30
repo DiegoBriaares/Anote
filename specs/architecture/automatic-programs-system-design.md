@@ -66,6 +66,11 @@ interpret it. It exists so a later same-day occurrence can distinguish an event
 that just arrived through catch-up from an event that was already scheduled on
 that day, even when the worker batch ends or the process restarts.
 
+Ownership transfer does not transfer scheduler provenance. When an event is
+shared to another user, the event owner preserves ordinary resource history but
+removes `automaticProgramArrivalDate` from the new copy; the recipient's
+scheduler may establish its own marker only through a committed program run.
+
 The program service owns validation, CRUD, execution, ledger creation and the
 next occurrence. The scheduler owns only wake-up and bounded due-work
 selection; it calls the service. The frontend program owner calls the API and
@@ -202,6 +207,7 @@ Manual runs never request sign-out.
 | PROG-RUN-003 | enabled, current revision, source not claimed | manual run | program service transaction | same atomic result, trigger manual | stale/foreign/future-invalid: no mutation |
 | PROG-MISS-001 | due source before observed local day | worker run | timezone/schedule owner | pending source events target observed local date with durable arrival provenance; original events on that date remain eligible while catch-up arrivals cannot cascade | invalid clock/timezone: no mutation and retry remains due |
 | PROG-NOTIFY-001 | unacknowledged automatic run, open client | observe/acknowledge | notification and auth owners | localized notice then session revoked | client failure leaves notification retryable; run remains committed |
+| PROG-SHARE-001 | event with automatic arrival provenance is shared | share event | event/social owners | recipient copy preserves ordinary resources and removes server-owned arrival provenance | invalid stored resources abort the complete share transaction |
 | PROG-MIG-001 | legacy profile definitions | schema migration | migration/program owner | normalized future schedules and unrelated preferences preserved | any invalid persistence step rolls back user migration |
 
 Safety properties:

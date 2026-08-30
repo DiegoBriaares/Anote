@@ -859,6 +859,13 @@ describe('session and request boundary', () => {
             }] })
         });
         expect(eventResponse.status).toBe(201);
+        db.prepare('UPDATE events SET resources = ? WHERE id = ?').run(
+            JSON.stringify({
+                automaticProgramArrivalDate: '2026-01-01',
+                originDates: ['2025-12-31']
+            }),
+            'private-event'
+        );
         const adminEventsResponse = await fetch(`${baseUrl}/admin/events`, { headers: { cookie } });
         expect(adminEventsResponse.status).toBe(200);
         const adminEvent = (await adminEventsResponse.json()).data
@@ -960,6 +967,21 @@ describe('session and request boundary', () => {
             headers: { cookie: viewerCookie, origin: baseUrl }
         });
         expect(addFriend.status).toBe(201);
+        const sharedEvents = await fetch(`${baseUrl}/friends/share-events`, {
+            method: 'POST',
+            headers: { cookie, 'content-type': 'application/json', origin: baseUrl },
+            body: JSON.stringify({
+                friendIds: ['viewer'],
+                dateKeys: ['2026-01-01'],
+                eventIds: ['private-event']
+            })
+        });
+        expect(sharedEvents.status).toBe(200);
+        const sharedResources = db.prepare(`
+            SELECT resources FROM events
+            WHERE user_id = 'viewer' AND title = 'Private'
+        `).get();
+        expect(JSON.parse(sharedResources.resources)).toEqual({ originDates: ['2025-12-31'] });
         const friendEvents = await fetch(`${baseUrl}/friends/admin/events`, { headers: { cookie: viewerCookie } });
         const friendPayload = await friendEvents.json();
         expect(friendPayload.data[0]).not.toHaveProperty('note');

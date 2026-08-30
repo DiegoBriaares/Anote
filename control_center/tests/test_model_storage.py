@@ -4,7 +4,9 @@ from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
+from anote_control_center import storage
 from anote_control_center.errors import ContractError
 from anote_control_center.model import ALLOWED_TRANSITIONS, Installation
 from anote_control_center.platform_paths import ManagedPaths
@@ -85,6 +87,33 @@ class ModelStorageTests(unittest.TestCase):
                 with self.assertRaisesRegex(ContractError, "Another"):
                     with OperationLock(paths):
                         self.fail("unreachable")
+
+    def test_operation_lock_reclaims_only_a_proven_dead_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = ManagedPaths(Path(directory) / "state")
+            paths.operations.mkdir(parents=True)
+            paths.operation_lock.write_text(
+                '{"schema": 1, "pid": 4242, "token": "stale", "started_at": 1}\n',
+                encoding="utf-8",
+            )
+            with OperationLock(paths, process_probe=lambda _pid: False):
+                lock = paths.operation_lock.read_text(encoding="utf-8")
+                self.assertIn(str(storage.os.getpid()), lock)
+
+            with OperationLock(paths):
+                with self.assertRaisesRegex(ContractError, "Another"):
+                    with OperationLock(paths, process_probe=lambda _pid: None):
+                        self.fail("unreachable")
+
+    def test_windows_liveness_dispatch_never_uses_os_kill(self) -> None:
+        with (
+            patch("anote_control_center.storage.os.name", "nt"),
+            patch("anote_control_center.storage._windows_process_liveness", return_value=True) as windows_probe,
+            patch("anote_control_center.storage.os.kill") as signal_probe,
+        ):
+            self.assertTrue(storage.process_liveness(4242))
+        windows_probe.assert_called_once_with(4242)
+        signal_probe.assert_not_called()
 
     def test_managed_root_refuses_a_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

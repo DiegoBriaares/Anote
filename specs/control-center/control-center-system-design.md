@@ -59,6 +59,12 @@ ports and dialogs so owner tests can use deterministic fakes. There is no
 dependency-injection framework. Common-path command ordering, subprocess cost,
 timeouts, cleanup and recovery remain visible in each service.
 
+The operation lock's process adapter is observational: Windows uses process
+query access, never `os.kill`, while POSIX uses signal zero. Only a proven-dead
+owner is reclaimed; permission or probe ambiguity fails closed. Any staged
+external input is named and journaled before its first byte is copied so crash
+recovery has one exact cleanup target.
+
 The GUI executes long work on one worker thread, publishes bounded progress,
 and disables conflicting commands. Cancellation is accepted only before a
 phase that can mutate runtime/data; afterward the action becomes complete or

@@ -149,7 +149,9 @@ The typed API client is the only browser transport owner. It always uses
 relative `/api`, `credentials: 'same-origin'`, parses the stable envelope, and
 turns status/error codes into a closed error type. A 401 invalidates the session
 once through the auth owner; other state owners do not implement their own
-logout rules.
+logout rules. This applies uniformly to reads and every mutation command; an
+owner must not retain authenticated state or issue a reconciliation read after
+the server has rejected the session.
 
 Focused state owners may coordinate a user history but must not become a second
 server. In particular, authorization, optimistic-revision acceptance,
