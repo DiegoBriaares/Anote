@@ -13,6 +13,8 @@ references:
 
 - [Architecture assessment and closure ledger](anote-architecture-assessment.md)
 - [Authoritative specifications](../../specs/index.md)
+- [English login acceptance evidence](evidence/anote-login-en.jpg)
+- [Spanish calendar acceptance evidence](evidence/anote-calendar-es.jpg)
 
 The assessment is evidence and disposition history. The specification graph is
 the source of truth for implementation behavior.

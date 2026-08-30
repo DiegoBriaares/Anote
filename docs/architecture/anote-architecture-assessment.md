@@ -54,7 +54,7 @@ Final repository evidence on 2026-08-30 is:
   transaction, session/origin, authorization, attachment and automatic-program
   owner evidence. The initial JavaScript chunk was 348.80 kB and the lazy note
   surface 132.44 kB, with no bundle-size warning.
-- **CC-GATE:** the Control Center owner suite passed 36/36 tests. The macOS-arm64
+- **CC-GATE:** the Control Center owner suite passed 38/38 tests. The macOS-arm64
   and Windows-amd64 payload-free self-checks and native-pair identity verifier
   passed in isolated roots without contacting a live installation.
 - **MAC-PACKAGE-GATE:** the native macOS PyInstaller build, embedded self-check,

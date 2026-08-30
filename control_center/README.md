@@ -19,6 +19,11 @@ The self-check uses a temporary isolated state root and never contacts Docker. `
 - Windows x64: `control_center/release/build-windows.ps1` builds a pinned-PyInstaller directory and per-user Inno Setup installer. `-RequireSigning` fails unless all Authenticode inputs are valid.
 - Application releases: `scripts/release/build_anote_release.py` requires a clean worktree and exact HEAD identity. Build both native packages, then run `scripts/release/verify_anote_release_pair.py` to prove their shared logical identity and architecture-specific OCI identities.
 
+Native tag workflows sign when a complete credential set is configured. A
+partial credential set, or an explicit required-signing run without complete
+credentials, fails closed. Otherwise the workflow and release notes must
+disclose that the native package is unsigned.
+
 No package may contain an application release, checkpoint, database, environment file, registry, journal, or image archive.
 
 ## Stable interactions and operation phases

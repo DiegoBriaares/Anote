@@ -15,10 +15,33 @@ permissions:
   contents: read
 
 jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - id: version
+        name: Match tag and bundled version
+        run: |
+          bundled="$(python -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("control_center/pyproject.toml").read_text())["project"]["version"])')"
+          [[ "$bundled" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            tagged="${GITHUB_REF_NAME#anote-control-center-v}"
+            test "$tagged" = "$bundled" || { echo "Tag version $tagged does not match bundled version $bundled." >&2; exit 1; }
+          fi
+          echo "value=$bundled" >> "$GITHUB_OUTPUT"
+      - name: Compile and test lifecycle owners
+        run: |
+          python -m compileall -q control_center/src control_center/tests scripts/release
+          PYTHONPATH=control_center/src python -m unittest discover -s control_center/tests -v
+
   macos:
+    needs: contract
     runs-on: macos-15
-    env:
-      REQUIRE_SIGNING: ${{ (github.event_name == 'push' || inputs.require_signing) && '1' || '0' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -26,8 +49,39 @@ jobs:
           python-version: "3.11"
       - name: Verify native Apple Silicon runner
         run: test "$(uname -m)" = arm64
+      - name: Resolve Apple publication signing policy
+        id: signing
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          REQUIRE_SIGNING_REQUESTED: ${{ inputs.require_signing && '1' || '0' }}
+        run: |
+          configured=0
+          for value in "$CERTIFICATE_BASE64" "$CERTIFICATE_PASSWORD" "$SIGNING_IDENTITY" "$NOTARY_KEY_BASE64" "$NOTARY_KEY_ID" "$NOTARY_ISSUER_ID"; do
+            test -n "$value" && configured=$((configured + 1))
+          done
+          if [ "$configured" != 0 ] && [ "$configured" != 6 ]; then
+            echo "Apple signing inputs are partially configured; refusing an unsigned fallback." >&2
+            exit 1
+          fi
+          if [ "$REQUIRE_SIGNING_REQUESTED" = 1 ] && [ "$configured" != 6 ]; then
+            echo "Apple signing was required but no complete credential set is configured." >&2
+            exit 1
+          fi
+          if [ "$configured" = 6 ]; then
+            echo "configured=1" >> "$GITHUB_OUTPUT"
+            echo "### Apple package: signed and notarized" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=0" >> "$GITHUB_OUTPUT"
+            echo "### Apple package: unsigned" >> "$GITHUB_STEP_SUMMARY"
+            echo "No signing credentials are configured. Publication must disclose this status." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Import Apple signing and notarization credentials
-        if: ${{ github.event_name == 'push' || inputs.require_signing }}
+        if: ${{ steps.signing.outputs.configured == '1' }}
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
@@ -36,12 +90,11 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
-          for value in "$CERTIFICATE_BASE64" "$CERTIFICATE_PASSWORD" "$SIGNING_IDENTITY" "$NOTARY_KEY_BASE64" "$NOTARY_KEY_ID" "$NOTARY_ISSUER_ID"; do test -n "$value" || { echo "Apple signing inputs are incomplete." >&2; exit 1; }; done
           keychain="$RUNNER_TEMP/anote-control-center.keychain-db"
           certificate="$RUNNER_TEMP/anote-control-center.p12"
           notary_key="$RUNNER_TEMP/AuthKey.p8"
-          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$notary_key"
+          printf '%s' "$CERTIFICATE_BASE64" | /usr/bin/base64 -D > "$certificate"
+          printf '%s' "$NOTARY_KEY_BASE64" | /usr/bin/base64 -D > "$notary_key"
           security create-keychain -p temporary "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p temporary "$keychain"
@@ -53,6 +106,8 @@ jobs:
           echo "APPLE_NOTARY_KEY_ID=$NOTARY_KEY_ID" >> "$GITHUB_ENV"
           echo "APPLE_NOTARY_ISSUER_ID=$NOTARY_ISSUER_ID" >> "$GITHUB_ENV"
       - name: Build, inspect, and self-check Apple Silicon bundle
+        env:
+          REQUIRE_SIGNING: ${{ steps.signing.outputs.configured }}
         run: control_center/release/build-macos.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -61,6 +116,7 @@ jobs:
           if-no-files-found: error
 
   windows:
+    needs: contract
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v5
@@ -69,15 +125,35 @@ jobs:
           python-version: "3.12"
       - name: Install pinned installer compiler
         run: choco install innosetup --version=6.7.1 --allow-downgrade --yes --no-progress
+      - name: Resolve Windows publication signing policy
+        id: signing
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERTIFICATE_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERTIFICATE_PASSWORD }}
+          TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+          REQUIRE_SIGNING_REQUESTED: ${{ inputs.require_signing && '1' || '0' }}
+        run: |
+          $values = @($env:PFX_BASE64, $env:PFX_PASSWORD, $env:TIMESTAMP_URL)
+          $configured = @($values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+          if ($configured -ne 0 -and $configured -ne 3) { throw "Windows signing inputs are partially configured; refusing an unsigned fallback." }
+          if ($env:REQUIRE_SIGNING_REQUESTED -eq '1' -and $configured -ne 3) { throw "Windows signing was required but no complete credential set is configured." }
+          if ($configured -eq 3) {
+            Add-Content $env:GITHUB_OUTPUT "configured=1"
+            Add-Content $env:GITHUB_STEP_SUMMARY "### Windows package: Authenticode signed"
+          } else {
+            Add-Content $env:GITHUB_OUTPUT "configured=0"
+            Add-Content $env:GITHUB_STEP_SUMMARY "### Windows package: unsigned"
+            Add-Content $env:GITHUB_STEP_SUMMARY "No signing credentials are configured. Publication must disclose this status."
+          }
       - name: Import Windows signing certificate
-        if: ${{ github.event_name == 'push' || inputs.require_signing }}
+        if: ${{ steps.signing.outputs.configured == '1' }}
         shell: pwsh
         env:
           PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERTIFICATE_PFX_BASE64 }}
           PFX_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERTIFICATE_PASSWORD }}
           TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:PFX_BASE64) -or [string]::IsNullOrWhiteSpace($env:PFX_PASSWORD) -or [string]::IsNullOrWhiteSpace($env:TIMESTAMP_URL)) { throw "Windows signing inputs are incomplete." }
           $pfx = Join-Path $env:RUNNER_TEMP "anote-control-center.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
           $certificate = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
@@ -89,24 +165,23 @@ jobs:
       - name: Build, inspect, and self-check Windows installer
         shell: pwsh
         run: |
-          if ('${{ github.event_name == 'push' || inputs.require_signing }}' -eq 'true') {
+          if ('${{ steps.signing.outputs.configured }}' -eq '1') {
             ./control_center/release/build-windows.ps1 -RequireSigning
           } else {
             ./control_center/release/build-windows.ps1
           }
-      - name: Install, self-check, and uninstall unsigned development package
-        if: ${{ github.event_name != 'push' && !inputs.require_signing }}
+      - name: Install, self-check, and uninstall exact package
         shell: pwsh
         run: |
           $installer = Join-Path $env:GITHUB_WORKSPACE "control_center\dist\Anote-Control-Center-Windows11-x64-Setup.exe"
           $installRoot = Join-Path $env:RUNNER_TEMP "Anote Control Center"
           $install = Start-Process -FilePath $installer -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installRoot`"") -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Development installer failed." }
+          if ($install.ExitCode -ne 0) { throw "Installer failed." }
           $executable = Join-Path $installRoot "Anote Control Center.exe"
           $check = Start-Process -FilePath $executable -ArgumentList "--self-check" -Wait -PassThru
           if ($check.ExitCode -ne 0) { throw "Installed application self-check failed." }
           $uninstall = Start-Process -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
-          if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $executable)) { throw "Development installer did not uninstall cleanly." }
+          if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $executable)) { throw "Installer did not uninstall cleanly." }
       - uses: actions/upload-artifact@v4
         with:
           name: anote-control-center-windows-x64
