@@ -84,15 +84,19 @@ function App() {
     }, [fetchAppConfig, currentView]);
 
     useEffect(() => {
-        if (user) bootstrap();
-    }, [bootstrap, user]);
-
-    useEffect(() => {
         if (!user) return;
-        pollProgramRunNotifications();
-        const interval = window.setInterval(pollProgramRunNotifications, 30_000);
-        return () => window.clearInterval(interval);
-    }, [pollProgramRunNotifications, user]);
+        let cancelled = false;
+        let interval: number | null = null;
+        void bootstrap().then(() => {
+            if (cancelled || useCalendarStore.getState().user?.id !== user.id) return;
+            void pollProgramRunNotifications();
+            interval = window.setInterval(pollProgramRunNotifications, 30_000);
+        });
+        return () => {
+            cancelled = true;
+            if (interval !== null) window.clearInterval(interval);
+        };
+    }, [bootstrap, pollProgramRunNotifications, user]);
 
     useEffect(() => {
         const handlePointerDown = (event: MouseEvent) => {

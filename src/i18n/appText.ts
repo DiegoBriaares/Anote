@@ -393,12 +393,35 @@ const spanish: AppText = {
 
 const messages: Record<AnoteLanguage, AppText> = { en: english, es: spanish };
 
+export const LANGUAGE_STORAGE_KEY = 'anote-language';
+
 export const resolveAnoteLanguage = (language?: string): AnoteLanguage => {
     const runtimeLanguage = language ?? (typeof navigator === 'undefined' ? 'en' : navigator.language);
     return runtimeLanguage.toLowerCase().startsWith('es') ? 'es' : 'en';
 };
 
-export const getAppText = (language?: string) => messages[resolveAnoteLanguage(language)];
+const readStoredLanguage = (): AnoteLanguage => {
+    try {
+        return resolveAnoteLanguage(localStorage.getItem(LANGUAGE_STORAGE_KEY) || undefined);
+    } catch {
+        return resolveAnoteLanguage();
+    }
+};
+
+let currentLanguage = readStoredLanguage();
+
+export const setRuntimeLanguage = (language: AnoteLanguage) => {
+    currentLanguage = language;
+    try {
+        localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    } catch {
+        // Runtime language still changes when browser storage is unavailable.
+    }
+};
+
+export const getAppText = (language?: string) => messages[
+    language === undefined ? currentLanguage : resolveAnoteLanguage(language)
+];
 
 export const interpolateText = (value: string, replacements: Record<string, string | number>) =>
     Object.entries(replacements).reduce(

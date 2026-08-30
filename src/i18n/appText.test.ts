@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getAppText, resolveAnoteLanguage } from './appText';
+import { getApiErrorText, getAppText, resolveAnoteLanguage, setRuntimeLanguage } from './appText';
 
 describe('user-facing connection messages', () => {
     it('selects Spanish for Spanish browser locales', () => {
@@ -22,6 +22,14 @@ describe('user-facing connection messages', () => {
             markComplete: 'Marcar como completado',
             markFailed: 'Marcar como fallido'
         });
+    });
+
+    it('shares the selected runtime language with stores and API errors', () => {
+        setRuntimeLanguage('es');
+        expect(getAppText().serviceUnavailable).toContain('Revisa tu conexión');
+        expect(getApiErrorText('SESSION_REQUIRED')).toContain('Tu sesión terminó');
+        setRuntimeLanguage('en');
+        expect(getApiErrorText('SESSION_REQUIRED')).toContain('Your session ended');
     });
 
     it('does not expose internal API or port instructions', () => {

@@ -24,4 +24,27 @@ describe('Control Center lifecycle ownership guard', () => {
         expect(result.stderr).toContain('managed by Anote Control Center');
         expect(result.stderr).not.toContain('Database not found');
     });
+
+    it('cannot bypass enrollment by pairing a managed database with an unrelated target', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'anote-user-op-db-guard-'));
+        const managedProduction = path.join(root, 'managed', 'production');
+        const unrelatedProduction = path.join(root, 'unrelated', 'production');
+        fs.mkdirSync(path.join(root, 'managed', 'registry'), { recursive: true });
+        fs.mkdirSync(path.join(managedProduction, 'data'), { recursive: true });
+        fs.mkdirSync(path.join(unrelatedProduction, 'data'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'managed', 'registry', 'installation.json'), '{}');
+        const managedDatabase = path.join(managedProduction, 'data', 'calendar.db');
+        fs.writeFileSync(managedDatabase, 'not opened');
+
+        const result = spawnSync(process.execPath, [
+            path.resolve('scripts/prod_user_ops.cjs'),
+            'make-admin',
+            '--username=owner',
+            `--target-dir=${unrelatedProduction}`,
+            `--db=${managedDatabase}`
+        ], { encoding: 'utf8' });
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain('require the database owned by --target-dir');
+    });
 });

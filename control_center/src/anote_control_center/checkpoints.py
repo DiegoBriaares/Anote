@@ -579,16 +579,31 @@ class CheckpointService:
             raise ContractError("Docker still reports Anote running; stop it before creating a checkpoint.", code="stop_required")
         self.paths.assert_safe(self.paths.database, allow_missing=False)
         self.paths.assert_safe(self.paths.uploads)
-        if destination.suffix != ".anote-checkpoint" or destination.exists():
+        ensure_private_directory(destination.parent)
+        if (
+            destination.suffix != ".anote-checkpoint" or destination.exists() or destination.is_symlink()
+            or is_link_or_junction(destination.parent)
+        ):
             raise ContractError("Choose a new .anote-checkpoint destination.", code="checkpoint_destination_invalid")
+        destination = destination.parent.resolve(strict=True) / destination.name
         operation = OperationRecord(
             os.urandom(12).hex(), "create_checkpoint", "snapshotting", installation.installation_id,
-            self.clock(), {"destination": destination.name},
+            self.clock(), {
+                "destination": str(destination),
+                "state": installation.state,
+                "release_id": installation.release_id,
+                "version": installation.version,
+                "source_commit": installation.source_commit,
+                "data_schema": str(installation.data_schema),
+                "dataset_id": installation.dataset_id or "",
+                "checkpoint_parent_id": installation.last_checkpoint_id or "",
+                "checkpoint_sequence": str(installation.checkpoint_sequence),
+            },
         )
         self.journal.save(operation)
         ensure_private_directory(self.paths.root, managed_paths=self.paths)
         staging = Path(tempfile.mkdtemp(prefix="checkpoint.", dir=self.paths.root))
-        temporary = destination.with_name(f".{destination.name}.{os.urandom(4).hex()}.tmp")
+        temporary = destination.with_name(f".{destination.name}.{operation.operation_id}.tmp")
         published = False
         committed = False
         try:
@@ -612,11 +627,19 @@ class CheckpointService:
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
-            ensure_private_directory(destination.parent)
             with zipfile.ZipFile(temporary, "x", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
                 archive.writestr("manifest.json", manifest_bytes)
                 archive.write(database, "calendar.db")
                 archive.write(uploads, "uploads.tar")
+            operation = replace(operation, phase="package_prepared", details={
+                **operation.details,
+                "checkpoint_id": checkpoint_id,
+                "dataset_id": dataset_id,
+                "checkpoint_parent_id": manifest.parent_checkpoint_id or "",
+                "checkpoint_sequence": str(sequence),
+                "checkpoint_package_sha256": file_sha256(temporary),
+            })
+            self.journal.save(operation)
             os.replace(temporary, destination)
             published = True
             verified = self.verify(destination)
@@ -640,6 +663,106 @@ class CheckpointService:
         finally:
             temporary.unlink(missing_ok=True)
             shutil.rmtree(staging, ignore_errors=True)
+
+    def recover_create(self, record: OperationRecord) -> Installation:
+        """Converge the publish/registry crash window without losing a valid package."""
+        installation = self._installation()
+        if record.installation_id != installation.installation_id:
+            raise ContractError("Checkpoint recovery installation identity differs.", code="recovery_failed")
+        try:
+            destination = Path(record.details["destination"])
+            if (
+                not destination.is_absolute() or destination.suffix != ".anote-checkpoint"
+                or is_link_or_junction(destination.parent)
+                or destination.parent.resolve(strict=True) / destination.name != destination
+            ):
+                raise ValueError("unsafe destination")
+        except (KeyError, OSError, ValueError) as error:
+            raise ContractError("Checkpoint recovery destination is unsafe.", code="recovery_failed") from error
+        temporary = destination.with_name(f".{destination.name}.{record.operation_id}.tmp")
+        checkpoint_id = record.details.get("checkpoint_id")
+        if not checkpoint_id:
+            if temporary.exists() and temporary.is_file() and not temporary.is_symlink():
+                temporary.unlink()
+            self.journal.clear()
+            return installation
+        if not destination.exists():
+            if temporary.exists() and temporary.is_file() and not temporary.is_symlink():
+                temporary.unlink()
+            self.journal.clear()
+            return installation
+        try:
+            verified = self.verify(destination)
+            expected = (
+                checkpoint_id,
+                record.details["dataset_id"],
+                record.details.get("checkpoint_parent_id") or None,
+                int(record.details["checkpoint_sequence"]),
+                record.details["release_id"],
+                record.details["version"],
+                record.details["source_commit"],
+                int(record.details["data_schema"]),
+                record.details["checkpoint_package_sha256"],
+            )
+        except (ContractError, KeyError, ValueError) as error:
+            raise ContractError("Published checkpoint cannot be proven from its recovery journal.", code="recovery_failed") from error
+        observed = (
+            verified.manifest.checkpoint_id,
+            verified.manifest.dataset_id,
+            verified.manifest.parent_checkpoint_id,
+            verified.manifest.sequence,
+            verified.manifest.release_id,
+            verified.manifest.version,
+            verified.manifest.source_commit,
+            verified.manifest.data_schema,
+            verified.package_sha256,
+        )
+        if observed != expected:
+            raise ContractError("Published checkpoint differs from its recovery journal.", code="recovery_failed")
+        committed = (
+            installation.dataset_id,
+            installation.last_checkpoint_id,
+            installation.checkpoint_parent_id,
+            installation.checkpoint_sequence,
+        ) == (
+            verified.manifest.dataset_id,
+            verified.manifest.checkpoint_id,
+            verified.manifest.parent_checkpoint_id,
+            verified.manifest.sequence,
+        )
+        if not committed:
+            prior = (
+                installation.state,
+                installation.release_id,
+                installation.version,
+                installation.source_commit,
+                installation.data_schema,
+                installation.last_checkpoint_id,
+                installation.checkpoint_sequence,
+            )
+            expected_prior = (
+                record.details["state"],
+                record.details["release_id"],
+                record.details["version"],
+                record.details["source_commit"],
+                int(record.details["data_schema"]),
+                record.details.get("checkpoint_parent_id") or None,
+                int(record.details["checkpoint_sequence"]) - 1,
+            )
+            if prior != expected_prior:
+                raise ContractError("Checkpoint recovery lineage is inconsistent.", code="recovery_failed")
+            installation = replace(
+                installation,
+                state="ready_stopped",
+                dataset_id=verified.manifest.dataset_id,
+                last_checkpoint_id=verified.manifest.checkpoint_id,
+                checkpoint_parent_id=verified.manifest.parent_checkpoint_id,
+                checkpoint_sequence=verified.manifest.sequence,
+                updated_at=self.clock(),
+            )
+            self.registry.save(installation)
+        self.journal.clear()
+        return installation
 
     def verify(self, path: Path) -> VerifiedCheckpoint:
         if path.is_symlink():

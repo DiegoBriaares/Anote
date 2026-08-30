@@ -167,6 +167,17 @@ const resolveTargetContext = (command, args) => {
     const mutatesProduction = ['make-admin', 'remove-admin', 'change-username'].includes(command);
     const controlCenterRegistry = path.join(path.dirname(targetDir), 'registry', 'installation.json');
 
+    if (mutatesProduction && dbArg) {
+        const expectedDatabase = path.join(targetDir, 'data', 'calendar.db');
+        const canonicalDatabase = fs.existsSync(dbPath) ? fs.realpathSync(dbPath) : dbPath;
+        const canonicalExpected = fs.existsSync(expectedDatabase)
+            ? fs.realpathSync(expectedDatabase)
+            : expectedDatabase;
+        if (canonicalDatabase !== canonicalExpected) {
+            throw new Error('Mutating user operations require the database owned by --target-dir; choose the matching production directory instead of overriding --db.');
+        }
+    }
+
     if (!isShowCommand && !allowInPlace && repoRoot === targetDir) {
         throw new Error(`Refusing to run production user ops from inside the target directory (${targetDir}). Run from the development repo or pass --allow-in-place.`);
     }

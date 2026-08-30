@@ -33,6 +33,12 @@ const createRuntime = ({ config, database, now = () => new Date(), scheduler = t
             isProduction: config.isProduction,
             now
         });
+        if (db.prepare(`
+            SELECT 1 FROM app_config
+            WHERE key = 'legacy_ownership_recovery_required' AND value = 'true'
+        `).get()) {
+            throw new Error('Legacy ownership recovery is required before Anote can start');
+        }
     } catch (error) {
         if (ownsDatabase) closeDatabase(db);
         throw error;

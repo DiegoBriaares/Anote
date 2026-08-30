@@ -182,6 +182,74 @@ class LifecycleApplicationTests(unittest.TestCase):
             self.assertFalse(runtime.running)
             self.assertIsNone(service.journal.load())
 
+    def test_checkpoint_publish_crash_recovers_source_lineage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _release, _paths, registry, _runtime, service = self.fresh(root)
+            destination = root / "published.anote-checkpoint"
+            original_save = registry.save
+
+            def interrupt_lineage_save(installation: object) -> None:
+                if getattr(installation, "state", None) == "ready_stopped":
+                    raise SystemExit("injected process interruption")
+                original_save(installation)  # type: ignore[arg-type]
+
+            registry.save = interrupt_lineage_save  # type: ignore[method-assign]
+            with self.assertRaises(SystemExit):
+                service.create_checkpoint(destination)
+            registry.save = original_save  # type: ignore[method-assign]
+
+            self.assertTrue(destination.exists())
+            self.assertEqual("checkpoint_required", registry.load().state)  # type: ignore[union-attr]
+            recovered = service.recover_interrupted()
+            verified = service.checkpoints.verify(destination)
+            self.assertEqual(verified.manifest.checkpoint_id, recovered.last_checkpoint_id)  # type: ignore[union-attr]
+            self.assertEqual("ready_stopped", recovered.state)  # type: ignore[union-attr]
+            self.assertIsNone(service.journal.load())
+
+    def test_standby_stage_rejects_unsupported_schema_before_runtime_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release, _paths, registry, runtime, service = self.fresh(root)
+            service.create_checkpoint(root / "baseline.anote-checkpoint")
+            installed = registry.load()
+            assert installed is not None
+            registry.save(replace(installed, role="standby"))
+            incompatible = write_release(
+                root / "incompatible", version="1.1.0", commit="b" * 40,
+                minimum_data_schema=2, maximum_data_schema=9,
+            )
+            before_events = list(runtime.events)
+            with self.assertRaisesRegex(ContractError, "data schema"):
+                service.update(incompatible)
+            self.assertEqual(before_events, runtime.events)
+            self.assertEqual(replace(installed, role="standby"), registry.load())
+            self.assertIsNone(service.journal.load())
+            del release
+
+    def test_checkpoint_apply_rebinds_selected_release_under_operation_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            installed_release, _paths, registry, runtime, service = self.fresh(root)
+            checkpoint = service.create_checkpoint(root / "baseline.anote-checkpoint")
+            installed = registry.load()
+            assert installed is not None
+            replacement_release = write_release(root / "replacement", version="1.1.0", commit="b" * 40)
+            registry.save(replace(
+                installed,
+                role="standby",
+                state="awaiting_checkpoint",
+                release_id=replacement_release.manifest.release_id,
+                version=replacement_release.manifest.version,
+                source_commit=replacement_release.manifest.source_commit,
+                package_sha256=replacement_release.package_sha256,
+            ))
+            before_events = list(runtime.events)
+            with self.assertRaisesRegex(ContractError, "no longer matches"):
+                service.apply_checkpoint(checkpoint, installed_release)
+            self.assertEqual(before_events, runtime.events)
+            self.assertIsNone(service.journal.load())
+
     def test_update_failure_restores_previous_release_data_and_stopped_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

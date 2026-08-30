@@ -1,9 +1,15 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-
 const { isTime, isTimeZone, nextOccurrence } = require('./time');
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
+
+const LEGACY_CHECKSUMS = new Map([
+    [1, '5bfa9d644af52dd9bbe1e76a89d1d44ee2b6d54aa1d6adaf778b4cf784e1b64b'],
+    [2, '6a734680eb1a9a52f9d03b572d87bd492d1c8cafffbfa58345f39012f9317162'],
+    [3, 'cf4d7ec4865e5da0c1cb046ddafa648c473797266155884675b0e424d11c2ea6'],
+    [4, '23fcf4bbb0ca79fd9e01391287910a0fc2a1f9d9c48fb501dfe711cd51337f9a']
+]);
 
 const tableColumns = (db, table) => new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name));
 
@@ -15,6 +21,82 @@ const addColumn = (db, table, definition) => {
     if (!tableColumns(db, table).has(name)) {
         db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
     }
+};
+
+const ensureLegacyOwnedRecovery = (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS legacy_owned_row_recovery (
+        id TEXT PRIMARY KEY,
+        source_table TEXT NOT NULL,
+        source_ordinal INTEGER NOT NULL,
+        source_identity TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64),
+        reason_code TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'unresolved' CHECK (state = 'unresolved'),
+        revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+        UNIQUE (source_table, source_ordinal)
+    );
+    CREATE INDEX IF NOT EXISTS idx_legacy_owned_recovery_state
+    ON legacy_owned_row_recovery(state, source_table, id);
+`);
+
+const quarantineLegacyRows = (db, table, joins, where, reasonCode, parameters = [], removeRows = true) => {
+    ensureLegacyOwnedRecovery(db);
+    const columns = [...tableColumns(db, table)];
+    const representations = columns.flatMap((column, index) => [
+        `typeof(owned."${column}") AS type_${index}`,
+        `quote(owned."${column}") AS sql_${index}`
+    ]).join(', ');
+    const rows = db.prepare(`
+        SELECT owned.rowid AS source_rowid${representations ? `, ${representations}` : ''}
+        FROM ${table} owned ${joins} WHERE ${where} ORDER BY owned.rowid
+    `).all(...parameters);
+    const nextOrdinal = db.prepare(`
+        SELECT COALESCE(MAX(source_ordinal), 0) + 1 AS value
+        FROM legacy_owned_row_recovery WHERE source_table = ?
+    `);
+    const insert = db.prepare(`
+        INSERT OR IGNORE INTO legacy_owned_row_recovery (
+            id, source_table, source_ordinal, source_identity, payload_json,
+            payload_sha256, reason_code, state, revision
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'unresolved', 1)
+    `);
+    const remove = removeRows ? db.prepare(`DELETE FROM ${table} WHERE rowid = ?`) : null;
+    let ordinal = nextOrdinal.get(table).value;
+    for (const row of rows) {
+        const payload = Object.fromEntries(columns.map((column, index) => [column, {
+            type: row[`type_${index}`], sql: row[`sql_${index}`]
+        }]));
+        const payloadJson = JSON.stringify(payload);
+        const sourceIdentity = `${table}:rowid:${row.source_rowid}`;
+        const digest = crypto.createHash('sha256').update(payloadJson).digest('hex');
+        const idDigest = crypto.createHash('sha256').update(`${sourceIdentity}:${payloadJson}`).digest('hex');
+        insert.run(`legacy-row-${idDigest}`, table, ordinal, sourceIdentity, payloadJson, digest, reasonCode);
+        remove?.run(row.source_rowid);
+        ordinal += 1;
+    }
+    return rows.length;
+};
+
+const quarantineUnownedLegacyRows = (db) => {
+    quarantineLegacyRows(
+        db, 'subroles',
+        'LEFT JOIN users u ON u.id = owned.user_id LEFT JOIN roles r ON r.id = owned.role_id AND r.user_id = owned.user_id',
+        'owned.user_id IS NULL OR u.id IS NULL OR r.id IS NULL',
+        'unproven_user_or_role_owner', [], false
+    );
+    for (const table of ['events', 'postponed_events', 'roles', 'daily_facts_v2', 'day_backgrounds_v2']) {
+        quarantineLegacyRows(
+            db, table, 'LEFT JOIN users u ON u.id = owned.user_id',
+            'owned.user_id IS NULL OR u.id IS NULL', 'unproven_user_owner', [], false
+        );
+    }
+    quarantineLegacyRows(
+        db, 'friendships',
+        'LEFT JOIN users a ON a.id = owned.user_a LEFT JOIN users b ON b.id = owned.user_b',
+        'owned.user_a IS NULL OR owned.user_b IS NULL OR a.id IS NULL OR b.id IS NULL OR owned.user_a = owned.user_b',
+        'unproven_friendship_participant', [], false
+    );
 };
 
 const ensureBaseSchema = (db) => {
@@ -141,31 +223,32 @@ const ensureLegacyColumns = (db) => {
     }
     addColumn(db, 'events', 'unlock_date TEXT');
 
+    quarantineUnownedLegacyRows(db);
     const ownedTables = ['events', 'postponed_events', 'roles', 'subroles', 'daily_facts_v2', 'day_backgrounds_v2'];
     const missingOwners = new Set();
     for (const table of ownedTables) {
-        if (!tableColumns(db, table).has('user_id')) continue;
         for (const row of db.prepare(`
             SELECT DISTINCT owned.user_id
             FROM ${table} owned LEFT JOIN users u ON u.id = owned.user_id
             WHERE owned.user_id IS NOT NULL AND u.id IS NULL
         `).all()) missingOwners.add(row.user_id);
     }
-    if (tableColumns(db, 'friendships').has('user_a')) {
-        for (const row of db.prepare(`
-            SELECT user_a AS user_id FROM friendships WHERE user_a IS NOT NULL
-            UNION SELECT user_b AS user_id FROM friendships WHERE user_b IS NOT NULL
-        `).all()) {
-            if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(row.user_id)) missingOwners.add(row.user_id);
+    for (const row of db.prepare(`
+        SELECT user_a AS user_id FROM friendships f LEFT JOIN users u ON u.id = f.user_a
+        WHERE f.user_a IS NOT NULL AND u.id IS NULL
+        UNION
+        SELECT user_b AS user_id FROM friendships f LEFT JOIN users u ON u.id = f.user_b
+        WHERE f.user_b IS NOT NULL AND u.id IS NULL
+    `).all()) missingOwners.add(row.user_id);
+    const temporaryOwners = [];
+    if (missingOwners.size > 0) {
+        const disabledPassword = bcrypt.hashSync(crypto.randomBytes(32).toString('base64url'), 12);
+        for (const id of missingOwners) {
+            const suffix = crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
+            db.prepare('INSERT INTO users (id, username, password, preferences, is_admin) VALUES (?, ?, ?, ?, 0)')
+                .run(id, `migration-parent-${suffix}`, disabledPassword, '{}');
+            temporaryOwners.push(id);
         }
-    }
-    const disabledPassword = missingOwners.size > 0
-        ? bcrypt.hashSync(crypto.randomBytes(32).toString('base64url'), 12)
-        : null;
-    for (const id of missingOwners) {
-        const suffix = crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
-        db.prepare('INSERT INTO users (id, username, password, preferences, is_admin) VALUES (?, ?, ?, ?, 0)')
-            .run(id, `legacy-${suffix}`, disabledPassword, '{}');
     }
     db.exec(`
         UPDATE events SET revision = 1 WHERE revision IS NULL OR revision < 1;
@@ -177,6 +260,7 @@ const ensureLegacyColumns = (db) => {
         UPDATE postponed_events SET failed = 0 WHERE failed IS NULL;
         UPDATE postponed_events SET completed = 0 WHERE completed = 1 AND failed = 1;
     `);
+    return temporaryOwners;
 };
 
 const rebuildLegacyEvents = (db, table) => {
@@ -226,24 +310,27 @@ const repairLegacySubroleOwners = (db) => {
     // A partially initialized legacy schema may have just created the empty
     // target subroles table while roles is still awaiting its composite key.
     // Avoid preparing an UPDATE against that temporarily mismatched FK.
-    if (invalid.length === 0) return;
+    if (invalid.length === 0) return [];
     const insertRole = db.prepare(`
         INSERT OR IGNORE INTO roles (id, user_id, label, color, is_enabled, order_index)
         VALUES (?, ?, 'Imported subrole parent', NULL, 1, ?)
     `);
     const updateSubrole = db.prepare('UPDATE subroles SET role_id = ? WHERE id = ?');
     const maxOrder = db.prepare('SELECT MAX(order_index) AS value FROM roles WHERE user_id = ?');
+    const repaired = [];
     for (const row of invalid) {
         const repairedRoleId = `imported-${crypto.createHash('sha256')
             .update(`${row.user_id}:${row.role_id}`)
             .digest('hex').slice(0, 32)}`;
-        insertRole.run(repairedRoleId, row.user_id, (maxOrder.get(row.user_id).value ?? -1) + 1);
+        const inserted = insertRole.run(repairedRoleId, row.user_id, (maxOrder.get(row.user_id).value ?? -1) + 1);
         updateSubrole.run(repairedRoleId, row.id);
+        repaired.push({ subroleId: row.id, roleId: repairedRoleId, insertedRole: inserted.changes === 1 });
     }
+    return repaired;
 };
 
 const rebuildLegacyRoles = (db) => {
-    repairLegacySubroleOwners(db);
+    const temporaryRepairs = repairLegacySubroleOwners(db);
     if (!hasForeignKey(db, 'roles', 'user_id', 'users')) {
         db.exec(`
             CREATE TABLE roles_hardened (
@@ -285,6 +372,12 @@ const rebuildLegacyRoles = (db) => {
             DROP TABLE subroles;
             ALTER TABLE subroles_hardened RENAME TO subroles;
         `);
+    }
+    const deleteSubrole = db.prepare('DELETE FROM subroles WHERE id = ?');
+    const deleteRole = db.prepare('DELETE FROM roles WHERE id = ?');
+    for (const repair of temporaryRepairs) {
+        deleteSubrole.run(repair.subroleId);
+        if (repair.insertedRole) deleteRole.run(repair.roleId);
     }
 };
 
@@ -427,11 +520,6 @@ const normalizeEventNotesSchema = (db) => {
     const selectRole = db.prepare('SELECT user_id FROM roles WHERE id = ?');
     const roleOwnerSnapshot = new Map(db.prepare('SELECT id, user_id FROM roles ORDER BY id').all()
         .map((role) => [String(role.id), role.user_id]));
-    const maxRoleOrder = db.prepare('SELECT MAX(order_index) AS value FROM roles WHERE user_id = ?');
-    const insertRole = db.prepare(`
-        INSERT OR IGNORE INTO roles (id, user_id, label, color, is_enabled, order_index)
-        VALUES (?, ?, ?, NULL, 1, ?)
-    `);
     const insertNoteFromLegacy = db.prepare(`
         INSERT INTO event_notes (event_id, role_id, owner_user_id, content, updated_at)
         SELECT ?, ?, ?, source_content, COALESCE(source_updated_at, 0)
@@ -445,7 +533,7 @@ const normalizeEventNotesSchema = (db) => {
             state, revision
         )
         SELECT ?, migration_ordinal, source_event_id, source_role_id, source_content,
-               source_updated_at, typeof(source_content), ?, 'missing_event',
+               source_updated_at, typeof(source_content), ?, ?,
                ?, ?, 'unresolved', 1
         FROM event_notes_legacy_migration WHERE migration_ordinal = ?
     `);
@@ -453,10 +541,15 @@ const normalizeEventNotesSchema = (db) => {
     let recoveryCount = 0;
     for (const row of legacyRows) {
         const event = selectEvent.get(row.event_id);
-        if (!event) {
-            const candidateOwnerId = row.role_id === null
-                ? null
-                : roleOwnerSnapshot.get(row.role_id) ?? null;
+        const role = row.role_id === null ? null : selectRole.get(row.role_id);
+        if (!event || !role || role.user_id !== event.user_id) {
+            const candidateOwnerId = role?.user_id ?? event?.user_id ?? null;
+            const ownershipBasis = role
+                ? 'role_owner_hint'
+                : event
+                    ? 'event_owner_hint'
+                    : 'none';
+            const reasonCode = event ? 'unproven_role_owner' : 'missing_event';
             const canonicalPayload = JSON.stringify({
                 ordinal: row.ordinal,
                 eventId: { type: row.event_id_type, sql: row.event_id_sql },
@@ -471,25 +564,15 @@ const normalizeEventNotesSchema = (db) => {
             insertRecoveryNote.run(
                 recoveryId,
                 payloadSha256,
+                reasonCode,
                 candidateOwnerId,
-                candidateOwnerId ? 'role_owner_hint' : 'none',
+                ownershipBasis,
                 row.ordinal
             );
             recoveryCount += 1;
             continue;
         }
-        let roleId = row.role_id ?? 'legacy';
-        const role = selectRole.get(roleId);
-        if (!role || role.user_id !== event.user_id) {
-            if (role) {
-                roleId = `imported-${crypto.createHash('sha256')
-                    .update(JSON.stringify([event.user_id, row.role_id]))
-                    .digest('hex')}`;
-            }
-            const order = (maxRoleOrder.get(event.user_id).value ?? -1) + 1;
-            insertRole.run(roleId, event.user_id, 'Imported note role', order);
-        }
-        insertNoteFromLegacy.run(row.event_id, roleId, event.user_id, row.ordinal);
+        insertNoteFromLegacy.run(row.event_id, row.role_id, event.user_id, row.ordinal);
         activeCount += 1;
     }
     if (activeCount + recoveryCount !== legacyRows.length) {
@@ -576,9 +659,9 @@ const ensureSecurityAndAutomationSchema = (db) => {
             source_content_type TEXT NOT NULL
                 CHECK (source_content_type IN ('null', 'text', 'blob', 'integer', 'real')),
             payload_sha256 TEXT NOT NULL CHECK (length(payload_sha256) = 64),
-            reason_code TEXT NOT NULL CHECK (reason_code = 'missing_event'),
+            reason_code TEXT NOT NULL CHECK (reason_code IN ('missing_event', 'unproven_role_owner')),
             candidate_owner_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-            ownership_basis TEXT NOT NULL CHECK (ownership_basis IN ('role_owner_hint', 'none')),
+            ownership_basis TEXT NOT NULL CHECK (ownership_basis IN ('role_owner_hint', 'event_owner_hint', 'none')),
             state TEXT NOT NULL DEFAULT 'unresolved' CHECK (state = 'unresolved'),
             revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0)
         );
@@ -732,6 +815,44 @@ const migratePreferencePrograms = (db, defaultTimeZone, now, isProduction) => {
     }
 };
 
+const flagPreviouslyPublishedOwnershipRisk = (db) => {
+    ensureLegacyOwnedRecovery(db);
+    const usedPublishedMigration = db.prepare('SELECT checksum FROM schema_migrations WHERE version = 1').get()?.checksum
+        === LEGACY_CHECKSUMS.get(1);
+    if (!usedPublishedMigration) return;
+    const syntheticUsers = db.prepare('SELECT id, username FROM users ORDER BY id').all()
+        .filter((user) => user.username === `legacy-${crypto.createHash('sha256')
+            .update(String(user.id)).digest('hex').slice(0, 16)}`);
+    const importedNoteRoles = db.prepare(`
+        SELECT COUNT(*) AS count FROM event_notes n JOIN roles r ON r.id = n.role_id
+        WHERE r.label = 'Imported note role'
+    `).get().count;
+    if (syntheticUsers.length === 0 && importedNoteRoles === 0) return;
+    for (const user of syntheticUsers) {
+        for (const table of ['events', 'postponed_events', 'roles', 'subroles', 'daily_facts_v2', 'day_backgrounds_v2', 'user_role_events']) {
+            quarantineLegacyRows(db, table, '', 'owned.user_id = ?', 'historical_unproven_user_owner', [user.id], false);
+        }
+        for (const table of ['event_notes', 'attachments', 'programs', 'program_runs']) {
+            quarantineLegacyRows(db, table, '', 'owned.owner_user_id = ?', 'historical_unproven_user_owner', [user.id], false);
+        }
+        quarantineLegacyRows(
+            db, 'friendships', '', 'owned.user_a = ? OR owned.user_b = ?',
+            'historical_unproven_user_owner', [user.id, user.id], false
+        );
+    }
+    quarantineLegacyRows(
+        db, 'event_notes', 'JOIN roles r ON r.id = owned.role_id',
+        "r.label = 'Imported note role'", 'historical_unproven_role_owner', [], false
+    );
+    // Historical schema-4 builds did not record enough provenance to distinguish
+    // generated parents from an extraordinarily similar real account or role.
+    // Refuse service startup instead of deleting or exposing ambiguous data.
+    db.prepare(`
+        INSERT OR REPLACE INTO app_config (key, value)
+        VALUES ('legacy_ownership_recovery_required', 'true')
+    `).run();
+};
+
 const migrations = [
     {
         version: 1,
@@ -739,6 +860,9 @@ const migrations = [
         checksumSources: [
             ensureBaseSchema,
             ensureLegacyColumns,
+            ensureLegacyOwnedRecovery,
+            quarantineLegacyRows,
+            quarantineUnownedLegacyRows,
             addColumn,
             hasForeignKey,
             rebuildLegacyEvents,
@@ -750,8 +874,10 @@ const migrations = [
         ],
         run(db) {
             ensureBaseSchema(db);
-            ensureLegacyColumns(db);
+            const temporaryOwners = ensureLegacyColumns(db);
             rebuildLegacyOwnedSchemas(db);
+            const deleteTemporaryOwner = db.prepare('DELETE FROM users WHERE id = ?');
+            for (const id of temporaryOwners) deleteTemporaryOwner.run(id);
         }
     },
     {
@@ -787,6 +913,15 @@ const migrations = [
         run(db, context) {
             migratePreferencePrograms(db, context.defaultTimeZone, context.now(), context.isProduction);
             db.prepare('DELETE FROM sessions').run();
+        }
+    },
+    {
+        version: 5,
+        name: 'quarantine-unproven-legacy-ownership',
+        checksumSources: [ensureLegacyOwnedRecovery, flagPreviouslyPublishedOwnershipRisk],
+        run(db) {
+            ensureLegacyOwnedRecovery(db);
+            flagPreviouslyPublishedOwnershipRisk(db);
         }
     }
 ];
@@ -828,7 +963,9 @@ const migrateDatabase = (db, context = {}) => {
         if (row.version > SCHEMA_VERSION) throw new Error(`Database schema ${row.version} is newer than this application`);
         if (row.version !== index + 1) throw new Error('Database migration history has a gap');
         const definition = migrations[row.version - 1];
-        if (!definition || row.name !== definition.name || row.checksum !== migrationChecksum(definition)) {
+        const checksumAccepted = row.checksum === migrationChecksum(definition)
+            || LEGACY_CHECKSUMS.get(row.version) === row.checksum;
+        if (!definition || row.name !== definition.name || !checksumAccepted) {
             throw new Error(`Database migration identity drift at version ${row.version}`);
         }
     }

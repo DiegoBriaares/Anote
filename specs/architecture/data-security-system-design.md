@@ -68,18 +68,25 @@ Minimum relational rules include:
   owner/purpose and due programs have matching indexes.
 
 Legacy rows that cannot satisfy the new graph are never silently deleted and
-never made valid by invented business data. In particular, a legacy event-note
-row whose event no longer exists is moved, in the same migration transaction,
+never left operational through invented business data. Orphan events,
+postponed events, roles, subroles, friendships and calendar metadata move to
+`legacy_owned_row_recovery`, which preserves every source column as a typed SQL
+literal plus canonical digest. Temporary technical parents may exist only
+inside the same migration transaction when SQLite requires them to rebuild a
+historic foreign-key shape; their exact IDs and dependent rows are removed
+before commit, after the original row is conserved privately.
+
+A legacy event-note row whose event is absent, whose role is absent, or whose
+role owner differs from the event owner moves in the same migration transaction
 to `legacy_event_note_recovery`. That private table preserves the source event
 and role IDs, SQLite content value and storage class, source timestamp, a stable
 source ordinal, canonical payload digest, reason, and revision. SQL-native
 staging preserves NULL, BLOB, integral REAL and full-width INTEGER values
 without JavaScript-number coercion; operational fallback values are derived
-separately. A role-owner snapshot taken before note repair may be recorded only
-as `role_owner_hint`; a role synthesized for another valid row can never become
-retroactive ownership evidence. The hint supports a future explicit recovery
-decision but is not an authorization fact. A missing or NULL role yields no
-owner hint and does not cause data loss.
+separately. A pre-migration event or role owner may be recorded only as an
+`event_owner_hint` or `role_owner_hint`. A hint supports a future explicit
+recovery decision but is not an authorization fact; migration never synthesizes
+a role to turn the hint into access.
 
 The migration asserts the conservation equation
 `valid event_notes + recovery rows = legacy event_notes` before dropping the
@@ -87,6 +94,12 @@ legacy table. The recovery partition has no browser, ordinary API,
 administrator raw-table, log, or diagnostics surface. Future recovery requires
 a separately specified ownership-proof workflow; neither an administrator nor
 a guessed role relationship may read or assign private note content by default.
+Already-published schema-4 migration checksums are accepted as explicit legacy
+identities. If such a database contains rows matching its old generated-parent
+pattern, schema 5 copies the affected ownership graph into private recovery and
+sets a fail-closed startup flag. It does not delete ambiguous historical data
+or expose it while provenance remains unprovable.
+
 Replay uses canonical typed tuples rather than delimiter-concatenated IDs, so
 ambiguous strings and identical duplicate payloads remain collision-safe and
 cannot duplicate a preserved row.

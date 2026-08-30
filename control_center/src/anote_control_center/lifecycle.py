@@ -383,6 +383,8 @@ class LifecycleService:
         if installation.state not in {"ready_stopped", "awaiting_checkpoint"} or self.runtime.is_running(installation):
             raise ContractError("Only a clean stopped standby can stage a release.", code="stop_required")
         self._require_update_change(installation, release, confirm_non_newer)
+        if not release.manifest.supports_data_schema(installation.data_schema):
+            raise ContractError("Release does not support the installed data schema.", code="incompatible_data_schema")
         configuration = self.runtime.read_configuration()
         work_name = f"standby-update.{secrets.token_hex(8)}"
         record = self._record("stage_standby_update", "preflight", installation, {
@@ -497,9 +499,27 @@ class LifecycleService:
         *,
         confirm_full_replace: bool = False,
     ) -> Installation:
-        release.assert_current()
         with OperationLock(self.paths):
             self._require_clean_journal()
+            installation = self._require_installation()
+            release.assert_current()
+            selected_identity = (
+                release.manifest.release_id,
+                release.manifest.version,
+                release.manifest.source_commit,
+                release.package_sha256,
+            )
+            installed_identity = (
+                installation.release_id,
+                installation.version,
+                installation.source_commit,
+                installation.package_sha256,
+            )
+            if selected_identity != installed_identity:
+                raise ContractError(
+                    "Selected release no longer matches the installed standby release.",
+                    code="checkpoint_incompatible",
+                )
 
             def validate(installation: Installation) -> int:
                 try:
@@ -782,8 +802,7 @@ class LifecycleService:
                 for candidate in self.paths.root.glob("checkpoint.*"):
                     if candidate.is_dir() and not candidate.is_symlink():
                         shutil.rmtree(candidate)
-                self.journal.clear()
-                return installation
+                return self.checkpoints.recover_create(record)
 
             raise ContractError("Interrupted operation type is unsupported.", code="recovery_failed")
 

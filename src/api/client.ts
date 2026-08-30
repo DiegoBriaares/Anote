@@ -4,6 +4,19 @@ const HAS_SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:/i;
 
 export const API_ROOT = '/api';
 
+let sessionRequestController = new AbortController();
+
+export const beginSessionRequestGeneration = () => {
+    sessionRequestController.abort();
+    sessionRequestController = new AbortController();
+    return sessionRequestController.signal;
+};
+
+export const invalidateSessionRequests = () => {
+    sessionRequestController.abort();
+    sessionRequestController = new AbortController();
+};
+
 export type ApiErrorBody = {
     code: string;
     details?: Record<string, unknown>;
@@ -51,8 +64,14 @@ const sendRequest = async (path: string, init: RequestInit): Promise<Response> =
     if (!headers.has('Accept')) headers.set('Accept', 'application/json');
     if (!headers.has('X-Request-ID')) headers.set('X-Request-ID', crypto.randomUUID());
     try {
-        return await fetch(toApiUrl(path), { ...init, credentials: 'same-origin', headers });
-    } catch {
+        return await fetch(toApiUrl(path), {
+            ...init,
+            credentials: 'same-origin',
+            headers,
+            signal: init.signal || sessionRequestController.signal
+        });
+    } catch (error) {
+        if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') throw error;
         throw new ApiError({ code: 'SERVICE_UNAVAILABLE', message: getAppText().serviceUnavailable, status: 0 });
     }
 };

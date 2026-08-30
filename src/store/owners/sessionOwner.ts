@@ -1,5 +1,5 @@
 import { authApi, normalizeSessionUser } from '../../api/auth';
-import { ApiError } from '../../api/client';
+import { ApiError, beginSessionRequestGeneration } from '../../api/client';
 import { getApiErrorText, getAppText } from '../../i18n/appText';
 import { normalizeApiAssetUrl } from '../../utils/api';
 import { storage } from '../../utils/storage';
@@ -25,8 +25,10 @@ export const createSessionOwner = ({ set, logoutAndReset }: OwnerContext): Sessi
     restoreSession: async () => {
         // Legacy bearer credentials are never reused after the session migration.
         storage.removeItem('token');
+        const signal = beginSessionRequestGeneration();
         try {
             const user = normalizeUser((await authApi.session()).user);
+            if (signal.aborted) return;
             storage.setItem('user', JSON.stringify(user));
             set({
                 user,
@@ -36,14 +38,16 @@ export const createSessionOwner = ({ set, logoutAndReset }: OwnerContext): Sessi
                 viewingPreferences: null
             });
         } catch {
-            logoutAndReset();
+            if (!signal.aborted) logoutAndReset();
         }
     },
 
     login: async (username, password) => {
+        const signal = beginSessionRequestGeneration();
         set({ isLoading: true, error: null });
         try {
             const user = normalizeUser((await authApi.login(username, password)).user);
+            if (signal.aborted) return;
             storage.setItem('user', JSON.stringify(user));
             set({
                 user,
@@ -55,6 +59,7 @@ export const createSessionOwner = ({ set, logoutAndReset }: OwnerContext): Sessi
                 viewingPreferences: null
             });
         } catch (error) {
+            if (signal.aborted) return;
             set({
                 error: error instanceof ApiError ? getApiErrorText(error.code) : getAppText().serviceUnavailable,
                 isLoading: false
@@ -63,9 +68,11 @@ export const createSessionOwner = ({ set, logoutAndReset }: OwnerContext): Sessi
     },
 
     register: async (username, password) => {
+        const signal = beginSessionRequestGeneration();
         set({ isLoading: true, error: null });
         try {
             const user = normalizeUser((await authApi.register(username, password)).user);
+            if (signal.aborted) return;
             storage.setItem('user', JSON.stringify(user));
             set({
                 user,
@@ -77,6 +84,7 @@ export const createSessionOwner = ({ set, logoutAndReset }: OwnerContext): Sessi
                 viewingPreferences: null
             });
         } catch (error) {
+            if (signal.aborted) return;
             set({
                 error: error instanceof ApiError ? getApiErrorText(error.code) : getAppText().serviceUnavailable,
                 isLoading: false
@@ -85,10 +93,11 @@ export const createSessionOwner = ({ set, logoutAndReset }: OwnerContext): Sessi
     },
 
     logout: async () => {
+        const signal = beginSessionRequestGeneration();
         try {
             await authApi.logout();
         } finally {
-            logoutAndReset();
+            if (!signal.aborted) logoutAndReset();
         }
     }
 });

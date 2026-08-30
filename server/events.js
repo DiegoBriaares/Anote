@@ -27,9 +27,25 @@ const normalizeResources = (value) => {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new ApiError(400, 'invalid_event_resources');
     }
+    // Automatic-program provenance is owned exclusively by the program service.
+    delete parsed.automaticProgramArrivalDate;
     const encoded = JSON.stringify(parsed);
     if (encoded.length > 100_000) throw new ApiError(400, 'event_resources_too_large');
     return encoded;
+};
+
+const mergeAutomaticProgramProvenance = (clientResources, storedResources) => {
+    const client = clientResources ? JSON.parse(clientResources) : {};
+    let stored = {};
+    try {
+        stored = storedResources ? JSON.parse(storedResources) : {};
+    } catch {
+        throw new ApiError(409, 'invalid_event_resources');
+    }
+    if (typeof stored.automaticProgramArrivalDate === 'string') {
+        client.automaticProgramArrivalDate = stored.automaticProgramArrivalDate;
+    }
+    return Object.keys(client).length === 0 ? null : JSON.stringify(client);
 };
 
 const normalizePriority = (value) => {
@@ -184,22 +200,30 @@ const createEventService = ({ db, now = () => new Date() }) => {
         const event = normalizeEvent({ ...raw, id }, { postponed });
         const table = postponed ? 'postponed_events' : 'events';
         const unlock = postponed ? '' : ', unlock_date = ?';
-        const values = [
-            event.title, event.date, event.startTime, event.priority, event.note,
-            event.link, event.completed, event.failed, now().getTime(),
-            event.resources
-        ];
-        if (!postponed) values.push(event.unlockDate);
-        values.push(id, ownerId, revision);
-        const result = db.prepare(`
-            UPDATE ${table}
-            SET title = ?, date = ?, start_time = ?, priority = ?, note = ?,
-                link = ?, completed = ?, failed = ?, updated_at = ?,
-                resources = ?${unlock}, revision = revision + 1
-            WHERE id = ? AND user_id = ? AND revision = ?
-        `).run(...values);
-        if (result.changes !== 1) throw new ApiError(409, 'event_conflict_or_missing');
-        return revision + 1;
+        const write = db.transaction(() => {
+            const current = db.prepare(`SELECT resources FROM ${table} WHERE id = ? AND user_id = ? AND revision = ?`)
+                .get(id, ownerId, revision);
+            if (!current) throw new ApiError(409, 'event_conflict_or_missing');
+            const resources = postponed
+                ? event.resources
+                : mergeAutomaticProgramProvenance(event.resources, current.resources);
+            const values = [
+                event.title, event.date, event.startTime, event.priority, event.note,
+                event.link, event.completed, event.failed, now().getTime(), resources
+            ];
+            if (!postponed) values.push(event.unlockDate);
+            values.push(id, ownerId, revision);
+            const result = db.prepare(`
+                UPDATE ${table}
+                SET title = ?, date = ?, start_time = ?, priority = ?, note = ?,
+                    link = ?, completed = ?, failed = ?, updated_at = ?,
+                    resources = ?${unlock}, revision = revision + 1
+                WHERE id = ? AND user_id = ? AND revision = ?
+            `).run(...values);
+            if (result.changes !== 1) throw new ApiError(409, 'event_conflict_or_missing');
+            return revision + 1;
+        });
+        return write.immediate();
     };
 
     const updateStatus = (ownerId, id, status, revision, postponed = false) => {

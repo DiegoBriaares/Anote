@@ -99,27 +99,29 @@ const createUserService = ({ db }) => {
     };
 
     const update = async (id, changes) => {
-        const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-        if (!existing) throw new ApiError(404, 'user_not_found');
-        const username = changes.username === undefined ? existing.username : validateUsername(changes.username);
-        const nextAdmin = changes.isAdmin === undefined ? existing.is_admin === 1 : changes.isAdmin === true;
-        if (existing.is_admin === 1 && !nextAdmin
-            && db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count <= 1) {
-            throw new ApiError(409, 'last_admin_required');
-        }
-        let passwordHash = existing.password;
-        if (changes.password !== undefined) {
-            passwordHash = await bcrypt.hash(validatePassword(changes.password), 12);
-        }
+        const requestedUsername = changes.username === undefined ? undefined : validateUsername(changes.username);
+        const requestedPasswordHash = changes.password === undefined
+            ? undefined
+            : await bcrypt.hash(validatePassword(changes.password), 12);
         try {
-            db.transaction(() => {
+            const write = db.transaction(() => {
+                const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+                if (!existing) throw new ApiError(404, 'user_not_found');
+                const username = requestedUsername ?? existing.username;
+                const passwordHash = requestedPasswordHash ?? existing.password;
+                const nextAdmin = changes.isAdmin === undefined ? existing.is_admin === 1 : changes.isAdmin === true;
+                if (existing.is_admin === 1 && !nextAdmin
+                    && db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count <= 1) {
+                    throw new ApiError(409, 'last_admin_required');
+                }
                 if (usernameIsUnavailable(username, id)) throw new ApiError(409, 'username_unavailable');
                 db.prepare('UPDATE users SET username = ?, password = ?, is_admin = ? WHERE id = ?')
                     .run(username, passwordHash, nextAdmin ? 1 : 0, id);
                 if (changes.password !== undefined || (existing.is_admin === 1 && !nextAdmin)) {
                     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
                 }
-            }).immediate();
+            });
+            write.immediate();
         } catch (error) {
             if (error.code?.startsWith('SQLITE_CONSTRAINT')) throw new ApiError(409, 'username_unavailable');
             throw error;

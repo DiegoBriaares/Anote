@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+
+import { invalidateSessionRequests } from '../api/client';
 import { formatDate } from '../utils/dateUtils';
 import type { EventStatus } from '../utils/eventStatus';
 import { storage } from '../utils/storage';
@@ -190,6 +192,7 @@ export interface CalendarState {
 
 export const useCalendarStore = create<CalendarState>((set, get) => {
     const logoutAndReset = (message?: unknown) => {
+        invalidateSessionRequests();
         storage.removeItem('token');
         storage.removeItem('user');
         storage.removeItem('profile');

@@ -128,7 +128,9 @@ describe('fail-closed schema migrations', () => {
 
         expect(version).toBe(SCHEMA_VERSION);
         expect(db.prepare('SELECT title, revision FROM events WHERE id = ?').get('e1')).toEqual({ title: 'Keep me', revision: 1 });
-        expect(db.prepare('SELECT role_id, content FROM event_notes').get()).toEqual({ role_id: 'role-legacy', content: 'note' });
+        expect(db.prepare('SELECT role_id, content FROM event_notes').get()).toBeUndefined();
+        expect(db.prepare('SELECT source_content AS content, reason_code AS reason FROM legacy_event_note_recovery').get())
+            .toEqual({ content: 'note', reason: 'unproven_role_owner' });
         const programs = db.prepare('SELECT id, owner_user_id, time_zone FROM programs ORDER BY owner_user_id').all();
         const importedId = `imported-${crypto.createHash('sha256')
             .update(JSON.stringify(['u2', 'to-tomorrow-program', 0, 0]))
@@ -213,18 +215,18 @@ describe('fail-closed schema migrations', () => {
             .toBe('Preserved postponed event');
         expect(db.prepare('SELECT content FROM event_notes WHERE event_id = ?').get('e1').content).toBe('preserved note');
         expect(db.prepare('SELECT user_a, user_b FROM friendships ORDER BY user_a, user_b').all()).toEqual([
-            { user_a: 'orphan-user', user_b: 'u1' },
             { user_a: 'u1', user_b: 'u2' }
         ]);
-        const repairedSubrole = db.prepare(`
-            SELECT s.role_id, s.user_id, r.user_id AS role_owner
-            FROM subroles s JOIN roles r ON r.id = s.role_id
-            WHERE s.id = 's1'
-        `).get();
-        expect(repairedSubrole.user_id).toBe('u2');
-        expect(repairedSubrole.role_owner).toBe('u2');
+        expect(db.prepare("SELECT 1 FROM subroles WHERE id = 's1'").get()).toBeUndefined();
+        expect(db.prepare(`
+            SELECT source_table AS sourceTable, reason_code AS reason
+            FROM legacy_owned_row_recovery ORDER BY source_table
+        `).all()).toEqual([
+            { sourceTable: 'friendships', reason: 'unproven_friendship_participant' },
+            { sourceTable: 'subroles', reason: 'unproven_user_or_role_owner' }
+        ]);
         expect(db.prepare("SELECT value FROM app_config WHERE key = 'registration_enabled'").get().value).toBe('true');
-        expect(db.prepare("SELECT username FROM users WHERE id = 'orphan-user'").get().username).toMatch(/^legacy-/);
+        expect(db.prepare("SELECT username FROM users WHERE id = 'orphan-user'").get()).toBeUndefined();
         closeDatabase(db);
     });
 
@@ -254,8 +256,7 @@ describe('fail-closed schema migrations', () => {
         `);
 
         expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
-        expect(db.prepare('SELECT event_id AS eventId, content FROM event_notes').get())
-            .toEqual({ eventId: 'a-valid-event', content: 'active' });
+        expect(db.prepare('SELECT event_id AS eventId, content FROM event_notes').get()).toBeUndefined();
         expect(db.prepare('SELECT COUNT(*) AS count FROM events').get().count).toBe(1);
         const recoveryRows = db.prepare(`
             SELECT source_event_id AS eventId, source_role_id AS roleId,
@@ -284,19 +285,23 @@ describe('fail-closed schema migrations', () => {
         expect(byEvent.get('z-orphan-with-imported-role')).toMatchObject({
             roleId: 'ghost-role', candidateOwnerId: null, ownershipBasis: 'none'
         });
+        expect(byEvent.get('a-valid-event')).toMatchObject({
+            roleId: 'ghost-role', candidateOwnerId: 'u1', ownershipBasis: 'event_owner_hint'
+        });
         const recoveryIdentities = db.prepare(`
             SELECT id, payload_sha256 AS digest, migration_ordinal AS ordinal,
                    reason_code AS reasonCode, state, revision
             FROM legacy_event_note_recovery
         `).all();
-        expect(recoveryIdentities).toHaveLength(8);
-        expect(new Set(recoveryIdentities.map((row: { id: string }) => row.id)).size).toBe(8);
-        expect(new Set(recoveryIdentities.map((row: { digest: string }) => row.digest)).size).toBe(8);
-        expect(new Set(recoveryIdentities.map((row: { ordinal: number }) => row.ordinal)).size).toBe(8);
+        expect(recoveryIdentities).toHaveLength(9);
+        expect(new Set(recoveryIdentities.map((row: { id: string }) => row.id)).size).toBe(9);
+        expect(new Set(recoveryIdentities.map((row: { digest: string }) => row.digest)).size).toBe(9);
+        expect(new Set(recoveryIdentities.map((row: { ordinal: number }) => row.ordinal)).size).toBe(9);
         expect(recoveryIdentities.every((row: {
             id: string; digest: string; reasonCode: string; state: string; revision: number;
         }) => row.id.length === 76 && row.digest.length === 64
-            && row.reasonCode === 'missing_event' && row.state === 'unresolved' && row.revision === 1)).toBe(true);
+            && ['missing_event', 'unproven_role_owner'].includes(row.reasonCode)
+            && row.state === 'unresolved' && row.revision === 1)).toBe(true);
         expect(db.pragma('foreign_key_check')).toEqual([]);
         expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
         expect(db.prepare(`
@@ -375,6 +380,46 @@ describe('event transaction and revision ownership', () => {
             { id: 'a', date: '2026-01-01' },
             { id: 'b', date: '2026-01-01' }
         ]);
+        closeDatabase(db);
+    });
+
+    it('preserves server-owned automatic provenance across ordinary event edits', () => {
+        const { db } = createTestDatabase();
+        insertUser(db, 'u1');
+        const events = createEventService({ db });
+        events.createMany('u1', [{
+            id: 'owned-marker', title: 'Original', date: '2026-01-02',
+            resources: { automaticProgramArrivalDate: 'client-forgery', originDates: ['2026-01-01'] }
+        }]);
+        expect(JSON.parse(db.prepare('SELECT resources FROM events WHERE id = ?').get('owned-marker').resources))
+            .toEqual({ originDates: ['2026-01-01'] });
+        db.prepare('UPDATE events SET resources = ? WHERE id = ?').run(
+            JSON.stringify({ automaticProgramArrivalDate: '2026-01-02' }),
+            'owned-marker'
+        );
+
+        expect(events.update('u1', 'owned-marker', {
+            title: 'Edited', date: '2026-01-02', resources: { originDates: ['2026-01-01'] }
+        }, 1)).toBe(2);
+        expect(JSON.parse(db.prepare('SELECT resources FROM events WHERE id = ?').get('owned-marker').resources))
+            .toEqual({ originDates: ['2026-01-01'], automaticProgramArrivalDate: '2026-01-02' });
+        closeDatabase(db);
+    });
+
+    it('serializes concurrent administrator demotions inside the last-admin transaction', async () => {
+        const { db } = createTestDatabase();
+        insertUser(db, 'a1');
+        insertUser(db, 'a2');
+        db.prepare("UPDATE users SET is_admin = 1 WHERE id IN ('a1', 'a2')").run();
+        const users = createUserService({ db });
+
+        const results = await Promise.allSettled([
+            users.update('a1', { isAdmin: false, password: 'first secure password' }),
+            users.update('a2', { isAdmin: false, password: 'second secure password' })
+        ]);
+        expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+        expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+        expect(db.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').get().count).toBe(1);
         closeDatabase(db);
     });
 

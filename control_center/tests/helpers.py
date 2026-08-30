@@ -109,6 +109,8 @@ def write_release(
     platform: PlatformIdentity = MAC,
     release_id: str = "anote",
     signing_key: bytes | None = None,
+    minimum_data_schema: int = 0,
+    maximum_data_schema: int = 99,
 ) -> VerifiedRelease:
     root.mkdir(parents=True, exist_ok=True)
     tag_suffix = f"{version}-{commit[:8]}-{platform.container_architecture}"
@@ -137,8 +139,8 @@ def write_release(
             "source_commit": commit,
             "minimum_control_center_version": "0.1.0",
             "minimum_installed_version": "0.0.0",
-            "minimum_data_schema": 0,
-            "maximum_data_schema": 99,
+            "minimum_data_schema": minimum_data_schema,
+            "maximum_data_schema": maximum_data_schema,
         },
         "platform": {
             "host_os": platform.host_os,

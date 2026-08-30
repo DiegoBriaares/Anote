@@ -1,8 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, apiRequest, apiText, jsonBody } from './client';
+import { ApiError, apiRequest, apiText, beginSessionRequestGeneration, jsonBody } from './client';
 
 describe('same-origin API client', () => {
+    it('aborts protected requests when the session generation changes', async () => {
+        vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        })));
+        const pending = apiRequest('/events');
+        beginSessionRequestGeneration();
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    });
     afterEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
