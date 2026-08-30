@@ -175,6 +175,7 @@ jobs:
           Add-Content $env:GITHUB_ENV "WINDOWS_SIGN_TIMESTAMP_URL=$env:TIMESTAMP_URL"
       - name: Build, inspect, and self-check Windows installer
         shell: pwsh
+        timeout-minutes: 10
         run: |
           if ('${{ steps.signing.outputs.configured }}' -eq '1') {
             ./control_center/release/build-windows.ps1 -RequireSigning
@@ -183,16 +184,30 @@ jobs:
           }
       - name: Install, self-check, and uninstall exact package
         shell: pwsh
+        timeout-minutes: 5
         run: |
+          function Invoke-CheckedProcess {
+            param(
+              [string] $FilePath,
+              [string[]] $ArgumentList,
+              [string] $Label,
+              [int] $TimeoutSeconds
+            )
+            $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -PassThru
+            if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              throw "$Label timed out."
+            }
+            $process.Refresh()
+            if ($process.ExitCode -ne 0) { throw "$Label failed with exit code $($process.ExitCode)." }
+          }
           $installer = Join-Path $env:GITHUB_WORKSPACE "control_center\dist\Anote-Control-Center-Windows11-x64-Setup.exe"
           $installRoot = Join-Path $env:RUNNER_TEMP "Anote Control Center"
-          $install = Start-Process -FilePath $installer -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installRoot`"") -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Installer failed." }
+          Invoke-CheckedProcess -FilePath $installer -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installRoot`"") -Label "Installer" -TimeoutSeconds 120
           $executable = Join-Path $installRoot "Anote Control Center.exe"
-          $check = Start-Process -FilePath $executable -ArgumentList "--self-check" -Wait -PassThru
-          if ($check.ExitCode -ne 0) { throw "Installed application self-check failed." }
-          $uninstall = Start-Process -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
-          if ($uninstall.ExitCode -ne 0 -or (Test-Path -LiteralPath $executable)) { throw "Installer did not uninstall cleanly." }
+          Invoke-CheckedProcess -FilePath $executable -ArgumentList @("--self-check") -Label "Installed application self-check" -TimeoutSeconds 60
+          Invoke-CheckedProcess -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Label "Uninstaller" -TimeoutSeconds 120
+          if (Test-Path -LiteralPath $executable) { throw "Installer did not uninstall cleanly." }
       - name: Record Windows package result
         shell: pwsh
         env:

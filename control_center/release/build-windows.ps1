@@ -16,9 +16,10 @@ $executablePath = Join-Path $appPath "$productName.exe"
 $installerPath = Join-Path $distPath "Anote-Control-Center-Windows11-x64-Setup.exe"
 $versionFile = Join-Path $buildRoot "version-info.txt"
 $runtimeCompose = Join-Path $controlCenterRoot "src\anote_control_center\runtime\compose.yaml"
+$bootstrapPython = (Get-Command python -CommandType Application -ErrorAction Stop).Source
 
 $readVersion = "import pathlib,sys,tomllib; print(tomllib.loads(pathlib.Path(sys.argv[1]).read_text())['project']['version'])"
-$packageVersion = [string] (& py -3 -c $readVersion (Join-Path $controlCenterRoot "pyproject.toml"))
+$packageVersion = [string] (& $bootstrapPython -c $readVersion (Join-Path $controlCenterRoot "pyproject.toml"))
 if ($LASTEXITCODE -ne 0) { throw "Could not read the Control Center version." }
 $packageVersion = $packageVersion.Trim()
 if ($packageVersion -notmatch '^\d+\.\d+\.\d+$') { throw "Control Center version must have three numeric components." }
@@ -33,7 +34,7 @@ VSVersionInfo(ffi=FixedFileInfo(filevers=($tuple), prodvers=($tuple), mask=0x3f,
 [System.IO.File]::WriteAllText($versionFile, $metadata, [System.Text.UTF8Encoding]::new($false))
 
 if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
-    & py -3 -m venv $venvPath
+    & $bootstrapPython -m venv $venvPath
     if ($LASTEXITCODE -ne 0) { throw "Could not create the packaging environment." }
 }
 & $venvPython -m pip install --disable-pip-version-check "pyinstaller==$pyInstallerVersion"
@@ -70,7 +71,12 @@ if ($configured) {
     Write-Warning "Producing an unsigned Windows Control Center installer."
 }
 
-$check = Start-Process -FilePath $executablePath -ArgumentList "--self-check" -Wait -PassThru
+$check = Start-Process -FilePath $executablePath -ArgumentList "--self-check" -PassThru
+if (-not $check.WaitForExit(60000)) {
+    Stop-Process -Id $check.Id -Force -ErrorAction SilentlyContinue
+    throw "The packaged executable self-check timed out."
+}
+$check.Refresh()
 if ($check.ExitCode -ne 0) { throw "The packaged executable failed its self-check." }
 $iscc = @(
     (Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue)
