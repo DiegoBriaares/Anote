@@ -152,8 +152,11 @@ The typed API client is the only browser transport owner. It always uses
 relative `/api`, `credentials: 'same-origin'`, parses the stable envelope, and
 turns status/error codes into a closed error type. Its correlation-ID generator
 uses `randomUUID`, random bytes, or a non-secret monotonic fallback in that
-order, so an insecure-context browser cannot fail before issuing a request. A
-401 invalidates the session
+order, so an insecure-context browser cannot fail before issuing a request.
+Correlation labels are transport-only and may never become persisted domain
+identities. Event creation omits `id`, `revision`, and `version`; the API creates
+the durable event ID with its OS-backed cryptographic UUID owner, and the next
+authoritative read replaces the browser draft. A 401 invalidates the session
 once through the auth owner; other state owners do not implement their own
 logout rules. This applies uniformly to reads and every mutation command; an
 owner must not retain authenticated state or issue a reconciliation read after

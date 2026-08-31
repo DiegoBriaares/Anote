@@ -77,6 +77,38 @@ describe('calendarStore day administration navigation', () => {
         expect(useCalendarStore.getState().actionError).toBe('That action could not be completed. Try again.');
     });
 
+    it('leaves durable event identity to the API', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                message: 'success',
+                data: [{ id: 'server-event-1', revision: 1, version: 1 }]
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                message: 'success',
+                data: [{
+                    id: 'server-event-1',
+                    title: 'New planning block',
+                    date: '2026-04-23',
+                    revision: 1
+                }]
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+        useCalendarStore.setState({
+            user: { id: 'user-1', username: 'mira' },
+            sessionStatus: 'authenticated',
+            viewMode: 'self',
+            events: {}
+        } as never);
+
+        expect(await useCalendarStore.getState().addEvent(new Date(2026, 3, 23), {
+            title: 'New planning block'
+        })).toBe(true);
+
+        const createBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+        expect(createBody.events[0]).not.toHaveProperty('id');
+        expect(useCalendarStore.getState().events['2026-04-23'][0].id).toBe('server-event-1');
+    });
+
     it('does not show user directory load failures on the calendar page', async () => {
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch);
 
