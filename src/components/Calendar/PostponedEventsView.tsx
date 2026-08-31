@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { CalendarRange, CornerDownLeft } from 'lucide-react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { PostponedEventBoard } from './PostponedEventBoard';
@@ -8,7 +9,10 @@ import { DEFAULT_POSTPONED_EVENT_DOMAIN, type PostponedEventDomain } from '../..
 import { useTranslation } from '../../i18n/languageContext';
 
 export const PostponedEventsView: React.FC = () => {
-    const { fetchPostponedEvents, navigateToCalendar } = useCalendarStore();
+    const { fetchPostponedEvents, navigateToCalendar } = useCalendarStore(useShallow((state) => ({
+        fetchPostponedEvents: state.fetchPostponedEvents,
+        navigateToCalendar: state.navigateToCalendar
+    })));
     const [postponedView, setPostponedView] = useState<PostponedEventDomain>(DEFAULT_POSTPONED_EVENT_DOMAIN);
     const { text } = useTranslation();
 

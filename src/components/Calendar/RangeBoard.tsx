@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore } from '../../store/calendarStore';
 import { interpolateText } from '../../i18n/appText';
 import { formatDate } from '../../utils/dateUtils';
@@ -13,7 +14,15 @@ interface RangeBoardProps {
 }
 
 export const RangeBoard: React.FC<RangeBoardProps> = ({ activeDate }) => {
-    const { selection, events, viewMode, addEventsBulk, editEvent, addPostponedEventsBulk, deleteEvent } = useCalendarStore();
+    const { selection, events, viewMode, addEventsBulk, editEvent, addPostponedEventsBulk, deleteEvent } = useCalendarStore(useShallow((state) => ({
+        selection: state.selection,
+        events: state.events,
+        viewMode: state.viewMode,
+        addEventsBulk: state.addEventsBulk,
+        editEvent: state.editEvent,
+        addPostponedEventsBulk: state.addPostponedEventsBulk,
+        deleteEvent: state.deleteEvent
+    })));
     const { text } = useTranslation();
     const statusText = text.eventStatus;
     const hasSelection = selection.start && selection.end;

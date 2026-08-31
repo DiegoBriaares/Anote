@@ -3,35 +3,10 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <link rel="icon" type="image/svg+xml" href="/anote.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Aggressive cache prevention -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, max-age=0" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="-1" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>Anote</title>
-  <!-- Immediate cache clearing before anything else loads -->
-  <script>
-    (function () {
-      // Clear any service workers immediately
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-          registrations.forEach(function (registration) {
-            registration.unregister();
-          });
-        });
-      }
-      // Clear cache storage
-      if ('caches' in window) {
-        caches.keys().then(function (names) {
-          names.forEach(function (name) {
-            caches.delete(name);
-          });
-        });
-      }
-    })();
-  </script>
 </head>
 
 <body>

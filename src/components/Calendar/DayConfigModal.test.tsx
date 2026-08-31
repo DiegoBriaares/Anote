@@ -21,11 +21,12 @@ describe('DayConfigModal', () => {
     it('keeps a rejected day-setting draft open for correction or retry', async () => {
         const saveDaySettings = vi.fn().mockResolvedValue(false);
         const onClose = vi.fn();
-        mockedUseCalendarStore.mockReturnValue({
+        const state = {
             dailyFacts: {},
             dayBackgrounds: {},
             saveDaySettings
-        });
+        };
+        mockedUseCalendarStore.mockImplementation((selector: (current: typeof state) => unknown) => selector(state));
         const user = userEvent.setup();
         renderWithLanguage(<DayConfigModal date={new Date('2026-08-30T12:00:00Z')} isOpen onClose={onClose} />);
 

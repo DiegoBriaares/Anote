@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Clock3, Play, Plus, Save, Trash2 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 
 import type { Program } from '../../api/contracts';
 import type { ProgramInput } from '../../api/programs';
@@ -18,7 +19,15 @@ export const ProgramsPanel = () => {
         deleteProgram,
         runProgram,
         navigateToCalendar
-    } = useCalendarStore();
+    } = useCalendarStore(useShallow((state) => ({
+        programs: state.programs,
+        actionError: state.actionError,
+        savePrograms: state.savePrograms,
+        createProgram: state.createProgram,
+        deleteProgram: state.deleteProgram,
+        runProgram: state.runProgram,
+        navigateToCalendar: state.navigateToCalendar
+    })));
     const { text } = useTranslation();
     const [edits, setEdits] = useState<Record<string, Partial<ProgramInput>>>({});
     const [message, setMessage] = useState<string | null>(null);

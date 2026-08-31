@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore } from '../../store/calendarStore';
 import { interpolateText } from '../../i18n/appText';
 import { CalendarRange, CheckCircle2, CircleX } from 'lucide-react';
@@ -17,7 +18,13 @@ interface PostponedRangeBoardProps {
 }
 
 export const PostponedRangeBoard: React.FC<PostponedRangeBoardProps> = ({ postponedView }) => {
-    const { postponedEvents, viewMode, addEventsBulk, addPostponedEventsBulk, deletePostponedEvent } = useCalendarStore();
+    const { postponedEvents, viewMode, addEventsBulk, addPostponedEventsBulk, deletePostponedEvent } = useCalendarStore(useShallow((state) => ({
+        postponedEvents: state.postponedEvents,
+        viewMode: state.viewMode,
+        addEventsBulk: state.addEventsBulk,
+        addPostponedEventsBulk: state.addPostponedEventsBulk,
+        deletePostponedEvent: state.deletePostponedEvent
+    })));
     const { text } = useTranslation();
     const statusText = text.eventStatus;
     const [sortOrderByView, setSortOrderByView] = React.useState<Record<PostponedEventDomain, 'time' | 'priority'>>({

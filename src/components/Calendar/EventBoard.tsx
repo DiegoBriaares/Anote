@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore, type CalendarEvent } from '../../store/calendarStore';
 import { interpolateText } from '../../i18n/appText';
 import { type EventStatus } from '../../utils/eventStatus';
@@ -12,7 +13,16 @@ interface EventBoardProps {
 }
 
 export const EventBoard: React.FC<EventBoardProps> = ({ selectedDate }) => {
-    const { events, viewMode, addEvent, deleteEvent, editEvent, setEventStatus, actionError, clearActionError } = useCalendarStore();
+    const { events, viewMode, addEvent, deleteEvent, editEvent, setEventStatus, actionError, clearActionError } = useCalendarStore(useShallow((state) => ({
+        events: state.events,
+        viewMode: state.viewMode,
+        addEvent: state.addEvent,
+        deleteEvent: state.deleteEvent,
+        editEvent: state.editEvent,
+        setEventStatus: state.setEventStatus,
+        actionError: state.actionError,
+        clearActionError: state.clearActionError
+    })));
     const { text } = useTranslation();
     const statusText = text.eventStatus;
     const [draft, setDraft] = useState({ title: '', time: '', link: '', note: '', priority: '' });

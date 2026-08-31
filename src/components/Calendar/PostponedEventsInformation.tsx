@@ -10,7 +10,7 @@ interface PostponedEventsInformationProps {
 }
 
 export const PostponedEventsInformation: React.FC<PostponedEventsInformationProps> = ({ postponedView }) => {
-    const { postponedEvents } = useCalendarStore();
+    const postponedEvents = useCalendarStore((state) => state.postponedEvents);
     const { text } = useTranslation();
     const statusText = text.eventStatus;
     const [expandedByView, setExpandedByView] = useState<Record<PostponedEventDomain, string[]>>({ today: [], week: [], all: [] });

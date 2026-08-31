@@ -1,11 +1,23 @@
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore } from '../../store/calendarStore';
 import { UserPlus, UserMinus, Users, Shield, Eye, ArrowLeftCircle, ArrowLeft } from 'lucide-react';
 import { useTranslation } from '../../i18n/languageContext';
 import { interpolateText } from '../../i18n/appText';
 
 export const SocialPanel: React.FC = () => {
-    const { users, friends, addFriend, removeFriend, socialError, user, fetchFriendEvents, viewOwnCalendar, viewMode, navigateToCalendar } = useCalendarStore();
+    const { users, friends, addFriend, removeFriend, socialError, user, fetchFriendEvents, viewOwnCalendar, viewMode, navigateToCalendar } = useCalendarStore(useShallow((state) => ({
+        users: state.users,
+        friends: state.friends,
+        addFriend: state.addFriend,
+        removeFriend: state.removeFriend,
+        socialError: state.socialError,
+        user: state.user,
+        fetchFriendEvents: state.fetchFriendEvents,
+        viewOwnCalendar: state.viewOwnCalendar,
+        viewMode: state.viewMode,
+        navigateToCalendar: state.navigateToCalendar
+    })));
     const { text } = useTranslation();
 
     if (!user) return null;

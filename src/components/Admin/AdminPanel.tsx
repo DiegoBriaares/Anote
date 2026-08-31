@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore, type AppConfig } from '../../store/calendarStore';
 import { Save, RotateCcw, ArrowLeft, Check, AlertTriangle, Eye, Sparkles, Trash2, Calendar, Settings, User as UserIcon, Users, CheckSquare, Square, Tags } from 'lucide-react';
 import { format } from 'date-fns';
@@ -32,7 +33,20 @@ export const AdminPanel: React.FC = () => {
         adminEvents, fetchAdminEvents, adminDeleteEvents,
         adminUsers, fetchAdminUsers, adminDeleteUsers,
         adminRoles, fetchAdminRoles
-    } = useCalendarStore();
+    } = useCalendarStore(useShallow((state) => ({
+        appConfig: state.appConfig,
+        updateAppConfig: state.updateAppConfig,
+        fetchAppConfig: state.fetchAppConfig,
+        navigateToCalendar: state.navigateToCalendar,
+        adminEvents: state.adminEvents,
+        fetchAdminEvents: state.fetchAdminEvents,
+        adminDeleteEvents: state.adminDeleteEvents,
+        adminUsers: state.adminUsers,
+        fetchAdminUsers: state.fetchAdminUsers,
+        adminDeleteUsers: state.adminDeleteUsers,
+        adminRoles: state.adminRoles,
+        fetchAdminRoles: state.fetchAdminRoles
+    })));
 
     const [activeTab, setActiveTab] = useState<AdminTab>('config');
 
