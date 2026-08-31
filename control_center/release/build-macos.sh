@@ -13,6 +13,10 @@ app_path="$dist_root/$product_name.app"
 dmg_path="$dist_root/Anote-Control-Center-macOS-Apple-Silicon.dmg"
 dmg_root="$build_root/dmg-root"
 runtime_compose="$control_center_root/src/anote_control_center/runtime/compose.yaml"
+icon_source="$repository_root/public/anote.svg"
+icon_root="$build_root/icons"
+iconset="$icon_root/AnoteControlCenter.iconset"
+icon_file="$icon_root/AnoteControlCenter.icns"
 
 # Homebrew Python links pyexpat to Homebrew expat, while macOS strips DYLD
 # variables before this script's system-shell entrypoint. Restore the
@@ -47,6 +51,20 @@ if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 mkdir -p "$build_root" "$dist_root"
+"$packaging_python" "$control_center_root/release/generate-icons.py" --source "$icon_source" --output "$icon_root"
+rm -rf "$iconset"
+mkdir -p "$iconset"
+cp "$icon_root/icon-16.png" "$iconset/icon_16x16.png"
+cp "$icon_root/icon-32.png" "$iconset/icon_16x16@2x.png"
+cp "$icon_root/icon-32.png" "$iconset/icon_32x32.png"
+cp "$icon_root/icon-64.png" "$iconset/icon_32x32@2x.png"
+cp "$icon_root/icon-128.png" "$iconset/icon_128x128.png"
+cp "$icon_root/icon-256.png" "$iconset/icon_128x128@2x.png"
+cp "$icon_root/icon-256.png" "$iconset/icon_256x256.png"
+cp "$icon_root/icon-512.png" "$iconset/icon_256x256@2x.png"
+cp "$icon_root/icon-512.png" "$iconset/icon_512x512.png"
+cp "$icon_root/icon-1024.png" "$iconset/icon_512x512@2x.png"
+/usr/bin/iconutil --convert icns --output "$icon_file" "$iconset"
 if [[ ! -x "$venv_root/bin/python" ]]; then
     "$packaging_python" -m venv "$venv_root"
 fi
@@ -57,11 +75,13 @@ fi
     --name "$product_name" \
     --osx-bundle-identifier "com.anote.control-center" \
     --target-architecture arm64 \
+    --icon "$icon_file" \
     --distpath "$dist_root" \
     --workpath "$build_root/pyinstaller" \
     --specpath "$build_root/pyinstaller" \
     --paths "$control_center_root/src" \
     --add-data "$runtime_compose:anote_control_center/runtime" \
+    --add-data "$icon_root/icon-128.png:anote_control_center/assets" \
     "$control_center_root/src/anote_control_center/app.py"
 
 executable="$app_path/Contents/MacOS/$product_name"

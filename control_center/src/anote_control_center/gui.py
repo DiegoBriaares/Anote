@@ -35,6 +35,10 @@ def _detected_timezone() -> str:
     return "UTC"
 
 
+def _window_icon_path() -> Path:
+    return Path(__file__).resolve().parent / "assets" / "icon-128.png"
+
+
 class ControlCenterWindow:
     def __init__(self, application: ControlCenterApplication, root: tk.Tk | None = None) -> None:
         self.application = application
@@ -59,6 +63,14 @@ class ControlCenterWindow:
         self.setup_guidance = tk.StringVar()
         self.root.geometry("900x680")
         self.root.minsize(760, 600)
+        self._window_icon: tk.PhotoImage | None = None
+        icon_path = _window_icon_path()
+        if icon_path.is_file():
+            try:
+                self._window_icon = tk.PhotoImage(file=icon_path)
+                self.root.iconphoto(True, self._window_icon)
+            except tk.TclError:
+                self._window_icon = None
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self._build()
         self._run_async(

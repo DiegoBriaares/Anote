@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import tomllib
 import unittest
 
@@ -11,6 +14,29 @@ CONTROL_CENTER_ROOT = REPOSITORY_ROOT / "control_center"
 
 
 class NativePackagingContractTests(unittest.TestCase):
+    def test_calendar_icon_is_reproducible_and_wired_to_both_native_packages(self) -> None:
+        generator = CONTROL_CENTER_ROOT / "release" / "generate-icons.py"
+        source = REPOSITORY_ROOT / "public" / "anote.svg"
+        windows = (CONTROL_CENTER_ROOT / "release" / "build-windows.ps1").read_text(encoding="utf-8")
+        macos = (CONTROL_CENTER_ROOT / "release" / "build-macos.sh").read_text(encoding="utf-8")
+        installer = (CONTROL_CENTER_ROOT / "release" / "control-center.iss").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix="anote-icon-test-") as directory:
+            output = Path(directory)
+            subprocess.run(
+                [sys.executable, str(generator), "--source", str(source), "--output", str(output)],
+                check=True,
+                timeout=15,
+            )
+            self.assertTrue((output / "icon-128.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertTrue((output / "anote-control-center.ico").read_bytes().startswith(b"\x00\x00\x01\x00"))
+
+        for build in (windows, macos):
+            self.assertIn("generate-icons.py", build)
+            self.assertIn("--icon", build)
+            self.assertIn("icon-128.png", build)
+        self.assertIn("iconutil --convert icns", macos)
+        self.assertIn("SetupIconFile={#IconFile}", installer)
+
     def test_runtime_and_distribution_versions_match(self) -> None:
         project = tomllib.loads((CONTROL_CENTER_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         package_path = CONTROL_CENTER_ROOT / "src" / "anote_control_center" / "__init__.py"
