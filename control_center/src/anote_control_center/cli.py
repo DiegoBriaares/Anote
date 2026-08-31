@@ -60,7 +60,11 @@ def main(arguments: list[str] | None = None) -> int:
                 raise ControlCenterError("Docker Desktop discovery contract is incomplete.", code="self_check_failed")
             compose = resources.files("anote_control_center").joinpath("runtime/compose.yaml")
             content = compose.read_text(encoding="utf-8")
-            if "cap_drop:" not in content or "ANOTE_RELEASE_ID" not in content:
+            if (
+                "cap_drop:" not in content
+                or "ANOTE_RELEASE_ID" not in content
+                or "ANOTE_POSIX_MODE_ENFORCEMENT" not in content
+            ):
                 raise ControlCenterError("Bundled runtime contract is incomplete.", code="self_check_failed")
             if getattr(sys, "frozen", False):
                 required_icons = ["icon-128.png", "icon-512.png"]

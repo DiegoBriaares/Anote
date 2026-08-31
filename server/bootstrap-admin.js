@@ -15,7 +15,9 @@ const main = async () => {
     }
     const username = typeof payload.username === 'string' ? payload.username.trim() : '';
     const password = payload.password;
-    const db = createDatabase(config.databasePath);
+    const db = createDatabase(config.databasePath, {
+        posixModeEnforcement: config.posixModeEnforcement
+    });
     try {
         migrateDatabase(db, config);
         await createUserService({ db }).bootstrapAdministrator({ username, password });

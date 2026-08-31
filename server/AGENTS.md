@@ -29,6 +29,9 @@ Read, as applicable:
   production secret through an HTTP route or command argument.
 - Health readiness stays false until migrations complete and reports the exact
   non-secret release/data-schema identity expected by Control Center.
+- Never infer host bind-mount semantics from the Linux container's
+  `process.platform`. Apply restrictive modes through the configured host
+  capability and tolerate only the specified unsupported-operation codes.
 - An inconsistent legacy row is conserved in a private migration-owned
   recovery partition; do not fabricate parents, discard content, treat an
   ownership hint as authority, or expose recovery content through HTTP,

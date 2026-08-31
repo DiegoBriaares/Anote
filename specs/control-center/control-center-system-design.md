@@ -67,6 +67,13 @@ resolved executable without changing the process or system `PATH`. A missing
 CLI and an installed CLI whose engine cannot answer are distinct safe failure
 codes in localized UI and redacted diagnostics.
 
+The runtime adapter also translates host storage capability into application
+configuration. It emits strict POSIX mode enforcement for macOS and the
+explicit unsupported-mode contract for Windows; application containers never
+guess from their Linux process identity. Docker command output is not exposed,
+but a recognized `/data` mode-capability failure maps to one safe localized
+code so a healthy Docker engine is not misreported as unavailable.
+
 The operation lock's process adapter is observational: Windows uses process
 query access, never `os.kill`, while POSIX uses signal zero. Only a proven-dead
 owner is reclaimed; permission or probe ambiguity fails closed. Any staged

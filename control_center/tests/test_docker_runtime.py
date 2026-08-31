@@ -10,6 +10,7 @@ from unittest.mock import patch
 from anote_control_center.docker_runtime import (
     CommandResult,
     DockerRuntime,
+    RuntimeConfiguration,
     SubprocessExecutor,
     resolve_docker_executable,
 )
@@ -18,7 +19,7 @@ from anote_control_center.model import Installation
 from anote_control_center.platform_paths import ManagedPaths
 from anote_control_center.releases import RuntimeImage
 
-from helpers import MAC, write_release
+from helpers import MAC, WINDOWS, write_release
 
 
 OWNED = ("production", "backups", "checkpoints", "releases", "logs", "operations")
@@ -115,6 +116,67 @@ class DockerRuntimeTests(unittest.TestCase):
         with self.assertRaises(RuntimeCommandError) as raised:
             resolve_docker_executable(system_name="Darwin", which=lambda _candidate: None)
         self.assertEqual("docker_cli_missing", raised.exception.code)
+
+    def test_runtime_storage_permission_failure_has_specific_safe_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = DockerRuntime(
+                ManagedPaths(Path(directory) / "state"),
+                MAC,
+                executor=ScriptedExecutor({
+                    ("docker", "compose"): CommandResult(
+                        1, "", "EPERM: operation not permitted, chmod '/data/calendar.db'",
+                    ),
+                }),
+            )
+            with self.assertRaises(RuntimeCommandError) as raised:
+                runtime._run(["docker", "compose"])
+            self.assertEqual("runtime_storage_permissions", raised.exception.code)
+
+    def test_failed_start_classifies_api_logs_without_exposing_them(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = ManagedPaths(Path(directory) / "state")
+            installed = installation()
+            prefix = (
+                "docker", "compose", "--project-name", installed.project_name,
+                "--env-file", str(paths.environment), "--file", str(paths.compose),
+            )
+            responses = {
+                ("docker", "image", "inspect", installed.api_image_tag, "--format", "{{json .}}"): CommandResult(
+                    0, json.dumps({"Id": installed.api_image_digest}), "",
+                ),
+                ("docker", "image", "inspect", installed.web_image_tag, "--format", "{{json .}}"): CommandResult(
+                    0, json.dumps({"Id": installed.web_image_digest}), "",
+                ),
+                (*prefix, "up", "--detach", "--remove-orphans"): CommandResult(
+                    1, "", "dependency failed to start",
+                ),
+                (*prefix, "logs", "--no-color", "--tail", "100", "api"): CommandResult(
+                    0, "EPERM: operation not permitted, chmod '/data/calendar.db'", "",
+                ),
+            }
+            runtime = DockerRuntime(paths, MAC, executor=ScriptedExecutor(responses))
+            with self.assertRaises(RuntimeCommandError) as raised:
+                runtime.up(installed)
+            self.assertEqual("runtime_storage_permissions", raised.exception.code)
+            self.assertNotIn("calendar.db", str(raised.exception))
+
+    def test_runtime_declares_host_filesystem_mode_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for platform, expected in ((MAC, "required"), (WINDOWS, "unsupported")):
+                with self.subTest(host_os=platform.host_os):
+                    release = write_release(root / platform.host_os, platform=platform)
+                    paths = ManagedPaths(root / f"state-{platform.host_os}")
+                    DockerRuntime(paths, platform, executor=ScriptedExecutor({})).write_runtime(
+                        release,
+                        RuntimeConfiguration("America/Mexico_City", 15173),
+                    )
+                    values = {
+                        key: json.loads(encoded)
+                        for line in paths.environment.read_text(encoding="utf-8").splitlines()
+                        for key, _separator, encoded in (line.partition("="),)
+                    }
+                    self.assertEqual(expected, values["ANOTE_POSIX_MODE_ENFORCEMENT"])
 
     def test_loaded_image_accepts_the_verified_top_level_oci_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

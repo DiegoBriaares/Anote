@@ -24,7 +24,9 @@ const { createSocialRouter, createSocialService } = require('./social');
 const { createUserService, createUsersRouter } = require('./users');
 
 const createRuntime = ({ config, database, now = () => new Date(), scheduler = true, logger = console }) => {
-    const db = database || createDatabase(config.databasePath);
+    const db = database || createDatabase(config.databasePath, {
+        posixModeEnforcement: config.posixModeEnforcement
+    });
     const ownsDatabase = !database;
     let schemaVersion;
     try {
@@ -63,7 +65,12 @@ const createRuntime = ({ config, database, now = () => new Date(), scheduler = t
 
     let attachmentService;
     try {
-        attachmentService = createAttachmentService({ db, uploadDir: config.uploadDir, now });
+        attachmentService = createAttachmentService({
+            db,
+            uploadDir: config.uploadDir,
+            now,
+            posixModeEnforcement: config.posixModeEnforcement
+        });
         attachmentService.migrateLegacyReferences();
         verifyUploads(config.uploadDir);
     } catch (error) {

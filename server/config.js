@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { parsePosixModeEnforcement } = require('./file-modes');
+
 const parsePort = (value, fallback) => {
     const parsed = Number(value ?? fallback);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
@@ -46,6 +48,7 @@ module.exports = Object.freeze({
     sessionIdleSeconds: parsePositiveInteger(process.env.ANOTE_SESSION_IDLE_SECONDS, 60 * 60 * 24 * 7, 'session idle duration'),
     sessionAbsoluteSeconds: parsePositiveInteger(process.env.ANOTE_SESSION_ABSOLUTE_SECONDS, 60 * 60 * 24 * 30, 'session absolute duration'),
     secureCookies: process.env.ANOTE_SECURE_COOKIES === '1',
+    posixModeEnforcement: parsePosixModeEnforcement(process.env.ANOTE_POSIX_MODE_ENFORCEMENT),
     defaultTimeZone,
     release: Object.freeze({
         id: process.env.ANOTE_RELEASE_ID || 'development',

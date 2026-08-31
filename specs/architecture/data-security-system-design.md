@@ -35,6 +35,14 @@ PRAGMA journal_mode = WAL
 PRAGMA busy_timeout = 5000
 ```
 
+The runtime supplies `ANOTE_POSIX_MODE_ENFORCEMENT=required|unsupported` from
+the verified host platform. Database, upload, staging and retirement owners use
+one mode-application boundary. `required` fails on every `chmod` error;
+`unsupported` tolerates only `EPERM`, `ENOTSUP` or `EOPNOTSUPP` from a Windows
+Docker bind mount. It never tolerates access denial or ordinary I/O failure.
+The Windows host's per-user managed-root ACL remains the confidentiality owner;
+the Linux container OS is not evidence of host filesystem semantics.
+
 There is no callback compatibility adapter. A statement error throws to its
 owning service; no wrapper converts failure into `undefined`, logs-and-continues,
 or invokes later commit work.
@@ -288,6 +296,7 @@ before applying a bounded head/tail limit.
 | DATA-MIG-001 | Legacy schema/preferences/files are lost, fabricated or partially advanced | migration on representative database/data copy, active-plus-recovery conservation, deterministic replay and injected failure |
 | DATA-TXN-001 | The nth row failure leaves earlier rows committed | service failure injection and post-state assertion |
 | DATA-REV-001 | Two equal/older client versions both commit | atomic predicate integration test |
+| DATA-FS-001 | A Windows Docker bind mount rejects POSIX `chmod` and prevents migration/readiness, or relaxed mode handling hides a real access failure | mode-policy owner tests plus native Windows checkpoint apply |
 
 Broad browser repetition does not add evidence for database atomicity or
 authorization. Those risks are proved at the real service/database boundary;

@@ -3,7 +3,9 @@ const { closeDatabase, createDatabase } = require('./db');
 const { migrateDatabase } = require('./migrations');
 
 const main = () => {
-    const db = createDatabase(config.databasePath);
+    const db = createDatabase(config.databasePath, {
+        posixModeEnforcement: config.posixModeEnforcement
+    });
     try {
         const schemaVersion = migrateDatabase(db, config);
         process.stdout.write(`Anote database schema ${schemaVersion} is ready.\n`);

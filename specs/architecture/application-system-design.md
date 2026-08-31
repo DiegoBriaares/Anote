@@ -80,6 +80,14 @@ Startup ordering is strict:
 4. Compose routes and start the automatic-program worker.
 5. Bind the listener and mark readiness true.
 
+Production configuration includes the host storage's POSIX-mode capability.
+The container must not infer that capability from `process.platform`, because
+both supported Docker Desktop hosts run a Linux container. Apple Silicon bind
+mounts require successful restrictive `chmod`; Windows bind mounts may reject
+only the known unsupported-operation errors and instead rely on the
+Control-Center-owned per-user `%LOCALAPPDATA%` ACL boundary. Any other
+filesystem error remains fatal before readiness.
+
 Readiness is false before step 5 and after shutdown begins. Shutdown first
 stops accepting work, then stops the scheduler, drains the HTTP server, performs
 a bounded WAL checkpoint, and closes SQLite. Failure is logged with a request or

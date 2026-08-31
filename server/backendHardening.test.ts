@@ -18,6 +18,7 @@ const { createAuth, createSessionService, tokenHash } = require('./auth');
 const { closeDatabase, createDatabase } = require('./db');
 const { createEventService } = require('./events');
 const { createCalendarMetadataService } = require('./calendar-metadata');
+const { applyFileMode, parsePosixModeEnforcement } = require('./file-modes');
 const { ApiError } = require('./http');
 const { SCHEMA_VERSION, migrateDatabase } = require('./migrations');
 const { createProgramService, startProgramScheduler } = require('./programs');
@@ -61,9 +62,47 @@ const insertUser = (db: TestDatabase, id: string, username = id, password = '$2b
 };
 
 afterEach(() => {
+    vi.restoreAllMocks();
     while (cleanupPaths.length > 0) {
         fs.rmSync(cleanupPaths.pop(), { recursive: true, force: true });
     }
+});
+
+describe('host filesystem mode capability', () => {
+    it('ignores only unsupported chmod failures when the host contract declares them unsupported', () => {
+        const unsupported = Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+        expect(applyFileMode('/data/calendar.db', 0o600, 'unsupported', () => {
+            throw unsupported;
+        })).toBe(false);
+        expect(() => applyFileMode('/data/calendar.db', 0o600, 'required', () => {
+            throw unsupported;
+        })).toThrow('operation not permitted');
+        expect(() => applyFileMode('/data/calendar.db', 0o600, 'unsupported', () => {
+            throw Object.assign(new Error('access denied'), { code: 'EACCES' });
+        })).toThrow('access denied');
+        expect(() => parsePosixModeEnforcement('optional')).toThrow('required or unsupported');
+    });
+
+    it('opens SQLite and attachment storage when a Windows bind mount rejects chmod', () => {
+        const directory = temporaryDirectory();
+        const originalChmod = fs.chmodSync;
+        vi.spyOn(fs, 'chmodSync').mockImplementation((target: string, mode: number) => {
+            if (String(target).startsWith(directory)) {
+                throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+            }
+            return originalChmod(target, mode);
+        });
+        const db = createDatabase(path.join(directory, 'calendar.db'), {
+            posixModeEnforcement: 'unsupported'
+        });
+        migrateDatabase(db, { defaultTimeZone: 'UTC' });
+        expect(() => createAttachmentService({
+            db,
+            uploadDir: path.join(directory, 'uploads'),
+            posixModeEnforcement: 'unsupported'
+        })).not.toThrow();
+        closeDatabase(db);
+    });
 });
 
 describe('fail-closed schema migrations', () => {
