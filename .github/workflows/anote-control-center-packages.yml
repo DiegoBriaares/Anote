@@ -217,6 +217,21 @@ jobs:
           Invoke-CheckedProcess -FilePath $installer -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installRoot`"") -Label "Installer" -TimeoutSeconds 120
           $executable = Join-Path $installRoot "Anote Control Center.exe"
           Invoke-CheckedProcess -FilePath $executable -ArgumentList @("--self-check") -Label "Installed application self-check" -TimeoutSeconds 60
+          $shortcutPath = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Anote Control Center\Anote Control Center.lnk"
+          if (-not (Test-Path -LiteralPath $shortcutPath -PathType Leaf)) { throw "Installed Start Menu shortcut is missing." }
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+          $iconLocation = ([string] $shortcut.IconLocation).Split(',')[0].Trim('"')
+          $expectedIcon = Join-Path $installRoot "AnoteControlCenter.ico"
+          if (-not [string]::Equals($iconLocation, $expectedIcon, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Installed launcher does not own the Anote calendar icon."
+          }
+          $shell = New-Object -ComObject Shell.Application
+          $shortcutFolder = $shell.Namespace((Split-Path -Parent $shortcutPath))
+          $shortcutItem = $shortcutFolder.ParseName((Split-Path -Leaf $shortcutPath))
+          $appUserModelId = $shortcutItem.ExtendedProperty("System.AppUserModel.ID")
+          if ($appUserModelId -ne "Anote.ControlCenter") {
+            throw "Installed launcher does not own the Anote application identity."
+          }
           Invoke-CheckedProcess -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Label "Uninstaller" -TimeoutSeconds 120
           if (Test-Path -LiteralPath $executable) { throw "Installer did not uninstall cleanly." }
       - name: Record Windows package result

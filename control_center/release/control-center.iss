@@ -1,4 +1,5 @@
 #define ProductName "Anote Control Center"
+#define AppUserModelId "Anote.ControlCenter"
 #ifndef ProductVersion
   #error ProductVersion must be supplied by the build script.
 #endif
@@ -44,8 +45,8 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Source: "{#SourceDirectory}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#ProductName}"; Filename: "{app}\{#ProductName}.exe"
-Name: "{userdesktop}\{#ProductName}"; Filename: "{app}\{#ProductName}.exe"; Tasks: desktopicon
+Name: "{group}\{#ProductName}"; Filename: "{app}\{#ProductName}.exe"; IconFilename: "{app}\AnoteControlCenter.ico"; AppUserModelID: "{#AppUserModelId}"
+Name: "{userdesktop}\{#ProductName}"; Filename: "{app}\{#ProductName}.exe"; IconFilename: "{app}\AnoteControlCenter.ico"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

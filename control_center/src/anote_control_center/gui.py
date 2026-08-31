@@ -12,6 +12,7 @@ from typing import Callable, cast
 
 from .application import CheckpointApplyIntent, ControlCenterApplication, INTERACTION_IDS
 from .checkpoints import VerifiedCheckpoint
+from .desktop_identity import apply_window_identity, prepare_process_identity
 from .errors import ControlCenterError
 from .i18n import Translator
 from .lifecycle import ERASE_CONFIRMATION
@@ -35,13 +36,11 @@ def _detected_timezone() -> str:
     return "UTC"
 
 
-def _window_icon_path() -> Path:
-    return Path(__file__).resolve().parent / "assets" / "icon-128.png"
-
-
 class ControlCenterWindow:
     def __init__(self, application: ControlCenterApplication, root: tk.Tk | None = None) -> None:
         self.application = application
+        if root is None:
+            prepare_process_identity()
         self.root = root or tk.Tk()
         self.translator = Translator("en")
         self.busy = False
@@ -63,14 +62,7 @@ class ControlCenterWindow:
         self.setup_guidance = tk.StringVar()
         self.root.geometry("900x680")
         self.root.minsize(760, 600)
-        self._window_icon: tk.PhotoImage | None = None
-        icon_path = _window_icon_path()
-        if icon_path.is_file():
-            try:
-                self._window_icon = tk.PhotoImage(file=icon_path)
-                self.root.iconphoto(True, self._window_icon)
-            except tk.TclError:
-                self._window_icon = None
+        self._window_icon = apply_window_identity(self.root, tk.PhotoImage)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self._build()
         self._run_async(

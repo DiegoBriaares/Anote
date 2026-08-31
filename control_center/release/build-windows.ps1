@@ -21,6 +21,7 @@ $iconSource = Join-Path $repositoryRoot "public\anote.svg"
 $iconRoot = Join-Path $buildRoot "icons"
 $iconFile = Join-Path $iconRoot "anote-control-center.ico"
 $iconPng = Join-Path $iconRoot "icon-128.png"
+$iconPngLarge = Join-Path $iconRoot "icon-512.png"
 $bootstrapPython = Get-Command python -CommandType Application -ErrorAction Stop |
     Select-Object -First 1 -ExpandProperty Source
 
@@ -60,8 +61,11 @@ if ($LASTEXITCODE -ne 0) { throw "Python does not provide Tk 8.6." }
     --paths (Join-Path $controlCenterRoot "src") `
     --add-data "$runtimeCompose;anote_control_center/runtime" `
     --add-data "$iconPng;anote_control_center/assets" `
+    --add-data "$iconPngLarge;anote_control_center/assets" `
+    --add-data "$iconFile;anote_control_center/assets" `
     (Join-Path $controlCenterRoot "src\anote_control_center\app.py")
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $executablePath -PathType Leaf)) { throw "PyInstaller did not produce the executable." }
+Copy-Item -LiteralPath $iconFile -Destination (Join-Path $appPath "AnoteControlCenter.ico") -Force
 
 $privateFiles = @(Get-ChildItem -LiteralPath $appPath -Recurse -File | Where-Object {
     $_.Name -match '\.anote-(release|checkpoint)$|\.db$|^production\.env$|^installation\.json$|^journal\.json$|\.tar$'
