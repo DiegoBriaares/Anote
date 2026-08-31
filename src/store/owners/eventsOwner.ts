@@ -56,6 +56,14 @@ const toCreateWireEvent = (event: CalendarEvent): WireRecord => {
     return wire;
 };
 
+const mergeEvents = (source: Record<string, CalendarEvent[]>, additions: CalendarEvent[]) => (
+    additions.reduce(upsertEventIntoDateMap, source)
+);
+
+const readCreatedEvents = (rows: WireRecord[], postponed = false) => (
+    rows.map((row) => readWireEvent(row, null, postponed))
+);
+
 const groupEvents = (
     rows: WireRecord[],
     previous: Record<string, CalendarEvent[]> = {}
@@ -186,7 +194,9 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
         });
         if (events.length === 0) return;
         try {
-            await eventsApi.create(events.map(toCreateWireEvent));
+            const response = await eventsApi.create(events.map(toCreateWireEvent));
+            const persisted = readCreatedEvents(response.data);
+            set((state) => ({ events: mergeEvents(state.events, persisted) }));
             await get().fetchEvents();
         } catch (error) {
             if (isSessionError(error)) logoutAndReset();
@@ -201,7 +211,9 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
             : []);
         if (events.length === 0) return false;
         try {
-            await eventsApi.create(events.map(toCreateWireEvent));
+            const response = await eventsApi.create(events.map(toCreateWireEvent));
+            const persisted = readCreatedEvents(response.data);
+            set((state) => ({ events: mergeEvents(state.events, persisted) }));
             await get().fetchEvents();
             return true;
         } catch (error) {
@@ -230,7 +242,9 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
         const event = createCalendarEvent(entry, formatDate(date));
         set({ actionError: null });
         try {
-            await eventsApi.create([toCreateWireEvent(event)]);
+            const response = await eventsApi.create([toCreateWireEvent(event)]);
+            const persisted = readCreatedEvents(response.data);
+            set((state) => ({ events: mergeEvents(state.events, persisted) }));
             await get().fetchEvents();
             return true;
         } catch (error) {
@@ -329,7 +343,11 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
         }] : []);
         if (events.length === 0) return false;
         try {
-            await eventsApi.createPostponed(events.map(toCreateWireEvent));
+            const response = await eventsApi.createPostponed(events.map(toCreateWireEvent));
+            const persisted = readCreatedEvents(response.data, true);
+            set((state) => ({
+                postponedEvents: sortEventsByTimeThenTitle([...state.postponedEvents, ...persisted])
+            }));
             await get().fetchPostponedEvents();
             return true;
         } catch (error) {
@@ -346,7 +364,11 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
             postponedView: entry.postponedView ?? DEFAULT_POSTPONED_EVENT_DOMAIN
         };
         try {
-            await eventsApi.createPostponed([toCreateWireEvent(event)]);
+            const response = await eventsApi.createPostponed([toCreateWireEvent(event)]);
+            const persisted = readCreatedEvents(response.data, true);
+            set((state) => ({
+                postponedEvents: sortEventsByTimeThenTitle([...state.postponedEvents, ...persisted])
+            }));
             await get().fetchPostponedEvents();
         } catch (error) {
             if (isSessionError(error)) logoutAndReset();

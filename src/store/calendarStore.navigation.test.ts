@@ -81,17 +81,15 @@ describe('calendarStore day administration navigation', () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(new Response(JSON.stringify({
                 message: 'success',
-                data: [{ id: 'server-event-1', revision: 1, version: 1 }]
-            }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
-            .mockResolvedValueOnce(new Response(JSON.stringify({
-                message: 'success',
                 data: [{
                     id: 'server-event-1',
                     title: 'New planning block',
                     date: '2026-04-23',
-                    revision: 1
+                    revision: 1,
+                    version: 1
                 }]
-            }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+            }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+            .mockRejectedValueOnce(new Error('reconciliation offline'));
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
         useCalendarStore.setState({
             user: { id: 'user-1', username: 'mira' },
@@ -106,6 +104,7 @@ describe('calendarStore day administration navigation', () => {
 
         const createBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
         expect(createBody.events[0]).not.toHaveProperty('id');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(useCalendarStore.getState().events['2026-04-23'][0].id).toBe('server-event-1');
     });
 

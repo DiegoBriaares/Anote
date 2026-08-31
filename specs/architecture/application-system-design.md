@@ -155,8 +155,11 @@ uses `randomUUID`, random bytes, or a non-secret monotonic fallback in that
 order, so an insecure-context browser cannot fail before issuing a request.
 Correlation labels are transport-only and may never become persisted domain
 identities. Event creation omits `id`, `revision`, and `version`; the API creates
-the durable event ID with its OS-backed cryptographic UUID owner, and the next
-authoritative read replaces the browser draft. A 401 invalidates the session
+the durable event ID with its OS-backed cryptographic UUID owner and ignores any
+caller-supplied create ID from stale or direct clients. The validated create
+response contains the complete persisted event and is applied before an optional
+list reconciliation, so a committed event remains visible if that later read is
+offline. A 401 invalidates the session
 once through the auth owner; other state owners do not implement their own
 logout rules. This applies uniformly to reads and every mutation command; an
 owner must not retain authenticated state or issue a reconciliation read after

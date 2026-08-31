@@ -109,14 +109,9 @@ const normalizeEvent = (raw, { postponed = false } = {}) => {
     const startTime = optionalString(raw.startTime, 5);
     if (startTime && !isTime(startTime)) throw new ApiError(400, 'invalid_event_time');
     const status = normalizeEventStatusFields(raw);
-    const suppliedId = raw.id === undefined || raw.id === null || raw.id === '' ? null : raw.id;
-    if (suppliedId !== null && (typeof suppliedId !== 'string' || !suppliedId.trim() || suppliedId.trim().length > 128)) {
-        throw new ApiError(400, 'invalid_event');
-    }
     const unlockDate = postponed ? null : optionalString(raw.unlockDate, 10);
     if (unlockDate && !isDateKey(unlockDate)) throw new ApiError(400, 'invalid_event_date');
     return {
-        id: suppliedId === null ? crypto.randomUUID() : suppliedId.trim(),
         title,
         date,
         startTime,
@@ -170,6 +165,7 @@ const addOriginDate = (resources, sourceDate) => {
 const createEventService = ({
     db,
     now = () => new Date(),
+    idFactory = () => crypto.randomUUID(),
     retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate()
 }) => {
     const list = (ownerId, postponed = false) => {
@@ -187,7 +183,12 @@ const createEventService = ({
         if (!Array.isArray(rawEvents) || rawEvents.length === 0 || rawEvents.length > 1000) {
             throw new ApiError(400, 'invalid_events');
         }
-        const events = rawEvents.map((event) => normalizeEvent(event, { postponed }));
+        const events = rawEvents.map((event) => ({
+            ...normalizeEvent(event, { postponed }),
+            // Persisted event identity is server-owned. Caller-supplied IDs are
+            // intentionally ignored, including requests from stale clients.
+            id: idFactory()
+        }));
         const table = postponed ? 'postponed_events' : 'events';
         const columns = postponed
             ? 'id, title, date, user_id, start_time, priority, note, link, completed, failed, updated_at, revision, resources'
@@ -212,7 +213,20 @@ const createEventService = ({
             if (error.code?.startsWith('SQLITE_CONSTRAINT')) throw new ApiError(409, 'event_conflict');
             throw error;
         }
-        return events.map((event) => ({ id: event.id, version: 1, revision: 1 }));
+        return events.map((event) => eventDto({
+            id: event.id,
+            title: event.title,
+            date: event.date,
+            start_time: event.startTime,
+            priority: event.priority,
+            note: event.note,
+            link: event.link,
+            completed: event.completed,
+            failed: event.failed,
+            revision: 1,
+            resources: event.resources,
+            ...(!postponed ? { unlock_date: event.unlockDate } : {})
+        }));
     };
 
     const update = (ownerId, id, raw, revision, postponed = false) => {

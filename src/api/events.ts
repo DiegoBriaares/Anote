@@ -62,9 +62,9 @@ export const eventsApi = {
     list: async () => eventListEnvelope(await apiRequest<unknown>('/events')),
     listPostponed: async () => eventListEnvelope(await apiRequest<unknown>('/postponed-events')),
     listFriend: async (friendId: string) => eventListEnvelope(await apiRequest<unknown>(`/friends/${encodeURIComponent(friendId)}/events`)),
-    create: (events: WireRecord[]) => apiRequest<MessageEnvelope<WireRecord[]> | { message: string }>('/events', {
+    create: async (events: WireRecord[]) => eventListEnvelope(await apiRequest<unknown>('/events', {
         method: 'POST', body: jsonBody({ events })
-    }),
+    })),
     share: (friendIds: string[], dateKeys: string[], eventIds?: string[]) => apiRequest<{ message: string }>('/friends/share-events', {
         method: 'POST', body: jsonBody({ friendIds, dateKeys, eventIds })
     }),
@@ -77,9 +77,9 @@ export const eventsApi = {
     setStatus: async (id: string, status: string, revision: number | null | undefined) => statusEnvelope(await apiRequest<unknown>(`/events/${encodeURIComponent(id)}/status`, {
         method: 'PATCH', body: jsonBody({ status, revision })
     })),
-    createPostponed: (events: WireRecord[]) => apiRequest<{ message: string }>('/postponed-events', {
+    createPostponed: async (events: WireRecord[]) => eventListEnvelope(await apiRequest<unknown>('/postponed-events', {
         method: 'POST', body: jsonBody({ events })
-    }),
+    })),
     removePostponed: (id: string, revision: number | null | undefined) => apiRequest<{ message: string }>(`/postponed-events/${encodeURIComponent(id)}`, {
         method: 'DELETE', body: jsonBody({ revision })
     }),
