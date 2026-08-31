@@ -225,6 +225,13 @@ jobs:
           if (-not [string]::Equals($iconLocation, $expectedIcon, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw "Installed launcher does not own the Anote calendar icon."
           }
+          $shell = New-Object -ComObject Shell.Application
+          $shortcutFolder = $shell.Namespace((Split-Path -Parent $shortcutPath))
+          $shortcutItem = $shortcutFolder.ParseName((Split-Path -Leaf $shortcutPath))
+          $appUserModelId = $shortcutItem.ExtendedProperty("System.AppUserModel.ID")
+          if ($appUserModelId -ne "Anote.ControlCenter") {
+            throw "Installed launcher does not own the Anote application identity."
+          }
           Invoke-CheckedProcess -FilePath (Join-Path $installRoot "unins000.exe") -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Label "Uninstaller" -TimeoutSeconds 120
           if (Test-Path -LiteralPath $executable) { throw "Installer did not uninstall cleanly." }
       - name: Record Windows package result

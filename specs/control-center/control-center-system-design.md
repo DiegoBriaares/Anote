@@ -305,7 +305,8 @@ One repository-owned Anote calendar SVG is the launcher identity. A
 standard-library deterministic generator produces the native PNG/ICO inputs;
 macOS `iconutil` produces ICNS from the same pixels. PyInstaller, the Tk window,
 the Windows installer and shortcuts all consume those owned outputs. Before Tk
-creates UI, Windows assigns the explicit Anote process AppUserModelID; after the
+creates UI, Windows assigns the explicit Anote process AppUserModelID and every
+installed shortcut declares that same identity; after the
 native window exists, macOS assigns the owned image to `NSApplication`'s Dock
 tile. Native packaging or packaged self-check fails when generation or a
 required runtime icon input is missing.

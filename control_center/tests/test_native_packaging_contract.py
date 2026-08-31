@@ -41,6 +41,7 @@ class NativePackagingContractTests(unittest.TestCase):
         self.assertIn("Copy-Item -LiteralPath $iconFile", windows)
         self.assertIn("SetupIconFile={#IconFile}", installer)
         self.assertEqual(installer.count('IconFilename: "{app}\\AnoteControlCenter.ico"'), 2)
+        self.assertEqual(installer.count('AppUserModelID: "{#AppUserModelId}"'), 2)
 
     def test_runtime_and_distribution_versions_match(self) -> None:
         project = tomllib.loads((CONTROL_CENTER_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -71,6 +72,8 @@ class NativePackagingContractTests(unittest.TestCase):
         self.assertIn("Invoke-CheckedProcess", workflow)
         self.assertIn("TimeoutSeconds 60", workflow)
         self.assertIn("Installed launcher does not own the Anote calendar icon.", workflow)
+        self.assertIn('ExtendedProperty("System.AppUserModel.ID")', workflow)
+        self.assertIn("Installed launcher does not own the Anote application identity.", workflow)
 
     def test_macos_bundle_metadata_and_runtime_share_one_version(self) -> None:
         build_script = (CONTROL_CENTER_ROOT / "release" / "build-macos.sh").read_text(encoding="utf-8")
