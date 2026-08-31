@@ -147,8 +147,11 @@ time, idle expiry and absolute expiry; revocation deletes the row.
 The cookie is named `anote_session`, has `Path=/api`, `HttpOnly` and
 `SameSite=Strict`. It has `Secure` whenever the effective gateway scheme is
 HTTPS; local HTTP is an explicit documented deployment mode, not an implicit
-downgrade. The gateway is the only trusted proxy and supplies the effective
-scheme. JavaScript never stores or receives the token.
+downgrade. The gateway is the only trusted proxy. It rebuilds the effective
+host/scheme from either its direct request or one complete validated
+`X-Forwarded-Host`/`X-Forwarded-Proto` pair supplied by a TLS terminator and
+rebuilds the client-address chain from its immediate peer. JavaScript never
+stores or receives the token.
 
 Sessions expire after 7 days idle or 30 days absolute, whichever is sooner.
 The authentication owner may coalesce last-seen writes to one per five minutes.
@@ -175,14 +178,13 @@ login clears its account/IP failure bucket. Eviction is time-based and the map
 has a hard cardinality bound. All invalid account/password/throttled login
 responses are non-enumerating; HTTP 429 may include a bounded retry delay.
 
-Registration policy lives in application configuration:
-
-- fresh Control Center installations default to disabled after the first
-  offline administrator bootstrap;
-- legacy migration preserves the installation's prior open-registration
-  behavior by seeding enabled;
-- only an administrator may change it;
-- the public registration route checks it before password hashing or mutation.
+Registration is an immutable product rule: account creation is always open.
+Schema migration 6 normalizes fresh and upgraded installations to
+`registration_enabled = true`; offline administrator bootstrap cannot change
+it. The public configuration projection retains that true key for compatibility.
+A request attempting to disable it returns `IMMUTABLE_CONFIG_KEY` without
+changing configuration or version state. Password, rate-limit, uniqueness and
+non-enumeration rules continue to govern every registration attempt.
 
 ## 5. Authorization matrix
 
@@ -278,6 +280,8 @@ before applying a bounded head/tail limit.
 | SEC-SES-001 | Stolen browser-readable storage yields a reusable token | client static/storage scan plus login cookie integration |
 | SEC-SES-002 | A password change or administrator demotion completed during bcrypt work still permits the stale request to create a session or mutate users | deterministic bcrypt-gate races with no-session/no-mutation post-state assertions |
 | SEC-ORG-001 | Cross-site form/fetch mutates cookie-authenticated state | mismatched/missing origin integration refusal and no-mutation assertion |
+| SEC-ORG-002 | TLS termination rewrites Anote's origin or a malformed forwarding pair weakens comparison | direct/Tailscale-style exact-origin integration plus gateway malformed-pair refusal |
+| SEC-REG-001 | Upgrade/bootstrap closes public account creation or an administrator disables it | schema-5 migration, bootstrap and immutable-config integration evidence |
 | SEC-AUTHZ-001 | A friend or guessed ID reads/writes private notes/files | policy/service integration matrix |
 | SEC-UP-001 | Active content or traversal becomes same-origin executable content | upload/serve contract tests with malicious samples |
 | SEC-UP-002 | Owner deletion/replacement leaks unreachable managed bytes, deletes bytes while metadata rolls back, or omits a pending owned byte from an offline snapshot | event/account/avatar/background retirement, rename-failure rollback, restart reconciliation and snapshot/restore tests |

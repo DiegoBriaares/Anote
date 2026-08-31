@@ -301,6 +301,12 @@ serialized by exact tag, targets the intended commit, uploads only the exact
 native asset set and verifies the tag after publication. Unsigned mode is
 disclosed; required-signing mode fails closed.
 
+One repository-owned Anote calendar SVG is the launcher identity. A
+standard-library deterministic generator produces the native PNG/ICO inputs;
+macOS `iconutil` produces ICNS from the same pixels. PyInstaller, the Tk window,
+the Windows installer and shortcuts all consume those owned outputs. Native
+packaging fails when generation or the required icon input is missing.
+
 Application release CI builds `linux/amd64` and `linux/arm64` API/web images
 from one clean commit and immutable multi-platform base digests, inspects the
 exact archives, and creates one native `.anote-release` per host. The target

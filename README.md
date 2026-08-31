@@ -152,10 +152,10 @@ streamed through `/api/attachments/:id`. There is no public `/uploads` static
 namespace.
 
 Fresh installations create their first administrator through Control Center's
-offline bootstrap command and default public registration to disabled. The
-command accepts credentials through protected standard input, refuses after an
-administrator exists and never logs the secret. There is no `/admin/init`
-route.
+offline bootstrap command. Public account registration remains permanently
+available. The bootstrap command accepts credentials through protected
+standard input, refuses after an administrator exists and never logs the
+secret. There is no `/admin/init` route.
 
 ## Development
 

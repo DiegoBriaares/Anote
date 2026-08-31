@@ -20,6 +20,9 @@ Read, as applicable:
   policies.
 - Unsafe cookie-authenticated requests pass the origin guard. Notes and note
   attachments are owner-only; friend views use a safe event projection.
+- Direct HTTP uses the gateway origin; TLS termination uses one complete
+  validated forwarded host/scheme pair. Partial or multi-valued forwarding
+  fails closed, and public registration remains immutable and open.
 - Automatic-program clocks, run claims and event movement live in the server
   program transaction. Browser presence is not a precondition.
 - Offline administration calls the normal domain service and never accepts a
