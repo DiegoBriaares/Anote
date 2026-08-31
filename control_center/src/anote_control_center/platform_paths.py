@@ -117,6 +117,21 @@ class ManagedPaths:
                 raise ContractError("A required managed Anote path is missing.", code="unsafe_owned_path")
         return candidate
 
+    def has_existing_data(self) -> bool:
+        """Fail closed when a fresh/standby setup would overlap existing data."""
+        data = self.assert_safe(self.data)
+        if not data.exists():
+            return False
+        if not data.is_dir():
+            return True
+        try:
+            next(data.iterdir())
+        except StopIteration:
+            return False
+        except OSError:
+            return True
+        return True
+
     @property
     def registry(self) -> Path:
         return self.root / "registry" / "installation.json"

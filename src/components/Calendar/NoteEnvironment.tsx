@@ -66,9 +66,12 @@ export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClos
     const onCloseRef = useRef(onClose);
     const selectedFileRef = useRef(selectedFile);
     const linkStepRef = useRef(linkStep);
-    onCloseRef.current = onClose;
-    selectedFileRef.current = selectedFile;
-    linkStepRef.current = linkStep;
+
+    useEffect(() => {
+        onCloseRef.current = onClose;
+        selectedFileRef.current = selectedFile;
+        linkStepRef.current = linkStep;
+    }, [onClose, selectedFile, linkStep]);
 
     useEffect(() => {
         contentRef.current = content;

@@ -58,6 +58,9 @@ The root, registry and journal are atomic ownership boundaries. Temporary files
 are created in the target directory, flushed, permission-restricted, then
 replaced atomically. Production credentials exist only in `production.env`,
 with the most restrictive per-user permissions the platform supports.
+When an operator selects an existing destination directory, Control Center
+validates it but never changes its permissions. It restricts only a missing
+destination directory and the checkpoint file it creates.
 
 The registry owns every mutable/destructive path as a canonical path relative
 to the validated application root. Absolute targets, `..`, symlinks/reparse

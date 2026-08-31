@@ -49,6 +49,7 @@ The initial Control Center version is 0.1.0 and uses
 | CC-RUNTIME-001 | Docker inspection, image loading, Compose generation, start/stop/readiness and exact resource removal are platform details hidden behind one installed-runtime adapter. | `DockerRuntime` |
 | CC-DATA-001 | Consistent backup, restore, checkpoint creation/apply and directory swap have one owner and never write application business rows. | data snapshot/checkpoint services |
 | CC-SETUP-001 | Fresh source, legacy adoption, standby preparation and retained reinstall are distinct commands with distinct guards/postconditions. | `SetupService` |
+| CC-SETUP-002 | Existing unmanaged production data disables fresh/standby setup and routes the operator to legacy adoption before any mutation. | application read model + `ManagedPaths` |
 | CC-UPDATE-001 | Classification, backup-before-migration, exact readiness validation, rollback and stopped result are one transaction-like operation. | `UpdateService` |
 | CC-ORCH-001 | Explicit start/stop, source/standby capability, checkpoint lineage and dirty/clean state have one owner. | `OrchestraService` |
 | CC-UNIN-001 | Safe uninstall and exact-confirmed erase have disjoint target/preservation policies. | `UninstallService` |
@@ -146,6 +147,14 @@ It starts only for bounded loopback/same-origin validation, requires the exact
 release readiness identity, then stops. Registry commit is last and records
 `checkpoint_required`. Failure stops/removes only provisional managed Docker
 resources, clears secret-bearing work and leaves no installation registry.
+
+The setup read model and lifecycle preflight share
+`ManagedPaths.has_existing_data` as the single fail-closed classifier. If the
+managed data location is nonempty, unreadable, or not a directory while no
+registry exists, fresh source and standby preparation are disabled and the
+localized setup guidance directs the operator to legacy adoption. Adoption is
+enabled only in that state. This workflow guard does not replace adoption's
+exact Docker topology checks.
 
 ### Legacy production adoption
 

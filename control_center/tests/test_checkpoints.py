@@ -4,8 +4,10 @@ from dataclasses import replace
 from hashlib import sha256
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
+import stat
 import tarfile
 import tempfile
 from typing import Callable
@@ -90,6 +92,26 @@ def rewrite_checkpoint_database(source: Path, destination: Path, mutate: Callabl
 
 
 class CheckpointTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX directory mode evidence")
+    def test_checkpoint_does_not_change_existing_destination_directory_permissions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = ManagedPaths(root / "source")
+            registry = InstallationRegistry(paths)
+            registry.save(install("source", "checkpoint_required", installation_id="1" * 32))
+            create_database(paths.database)
+            destination_directory = root / "operator-selected"
+            destination_directory.mkdir(mode=0o755)
+            destination_directory.chmod(0o755)
+            before = stat.S_IMODE(destination_directory.stat().st_mode)
+
+            CheckpointService(paths, registry).create(
+                destination_directory / "baseline.anote-checkpoint",
+                prove_stopped=lambda _installation: True,
+            )
+
+            self.assertEqual(before, stat.S_IMODE(destination_directory.stat().st_mode))
+
     def test_snapshot_preserves_pending_attachment_retirements_for_reconciliation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             paths = ManagedPaths(Path(directory) / "state")
