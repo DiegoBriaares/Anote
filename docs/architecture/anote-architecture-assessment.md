@@ -109,6 +109,13 @@ Incremental reliability evidence on 2026-08-31 is:
   built, ad-hoc signing and embedded self-check passed, bundle/runtime versions
   equal 0.1.7, and the installed ICNS plus Tk asset contain the owned calendar
   glyph. Windows native execution remains the independent CI/manual gate.
+- **CC-LIFECYCLE-1.0.2-GATE:** the verified 1.0.1 and clean-commit 1.0.2
+  arm64 packages completed fresh setup, explicit start/stop, checkpoint,
+  safe uninstall, retained reinstall, legacy adoption, standby apply/start,
+  injected update rollback, successful update and registry-scoped erase using
+  real Docker Desktop. Exact health identities and schema 6 passed; the safety
+  harness removed every disposable root/project while the pre-existing healthy
+  production containers remained running.
 
 A broad gate alone does not close authorization, failure atomicity, migration
 or recovery. The rows below name the focused owner evidence within those final
@@ -269,17 +276,15 @@ record must state which gates actually ran for the exact commit:
 
 1. A disposable Compose/Docker Desktop smoke using the generated managed
    runtime and real application images, including gateway health, scheduler,
-   checkpoint and exact-resource removal histories.
+   checkpoint and exact-resource removal histories. **Passed on Apple Silicon
+   for 1.0.1 → 1.0.2 in CC-LIFECYCLE-1.0.2-GATE; Windows remains external.**
 2. Real paired Windows-amd64 and macOS-arm64 `.anote-release` builds followed by
    Docker image load and exact readiness-identity validation.
 3. Windows 11 x64 installer install/repair/uninstall, embedded self-check,
    Docker Desktop lifecycle and human EN/ES, keyboard and layout acceptance.
-4. Remaining native packaged UI/Computer Use review and macOS Docker histories:
-   successful legacy adoption requires a disposable legacy project that cannot
-   collide with the live `anote-production` project, and update/rollback requires
-   a second compatible application release. The 0.1.4 isolated setup,
-   checkpoint, start/stop, retained reinstall, refusal, erase and recovery
-   histories passed as recorded in `MAC-LIFECYCLE-GATE`.
+4. Remaining native packaged UI review. The 0.1.4 histories are recorded in
+   `MAC-LIFECYCLE-GATE`; the real 0.1.7 owner and 1.0.1 → 1.0.2 Docker paths,
+   including adoption and rollback, passed in `CC-LIFECYCLE-1.0.2-GATE`.
 5. Signing, notarization and publication, when the selected release policy
    requires them.
 
