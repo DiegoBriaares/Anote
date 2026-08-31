@@ -630,6 +630,12 @@ class LifecycleApplicationTests(unittest.TestCase):
             self.assertFalse(model.action("setup.prepare-standby").enabled)
             self.assertTrue(model.action("setup.adopt-legacy").enabled)
 
+    def test_unreadable_data_is_classified_as_existing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            paths = ManagedPaths(Path(directory) / "state")
+            with patch.object(ManagedPaths, "assert_safe", side_effect=PermissionError("denied")):
+                self.assertTrue(paths.has_existing_data())
+
     def test_operator_intents_are_exhaustively_guarded_by_lifecycle_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

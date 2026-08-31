@@ -119,12 +119,12 @@ class ManagedPaths:
 
     def has_existing_data(self) -> bool:
         """Fail closed when a fresh/standby setup would overlap existing data."""
-        data = self.assert_safe(self.data)
-        if not data.exists():
-            return False
-        if not data.is_dir():
-            return True
         try:
+            data = self.assert_safe(self.data)
+            if not data.exists():
+                return False
+            if not data.is_dir():
+                return True
             next(data.iterdir())
         except StopIteration:
             return False

@@ -106,11 +106,12 @@ class CheckpointTests(unittest.TestCase):
             before = stat.S_IMODE(destination_directory.stat().st_mode)
 
             CheckpointService(paths, registry).create(
-                destination_directory / "baseline.anote-checkpoint",
+                destination := destination_directory / "baseline.anote-checkpoint",
                 prove_stopped=lambda _installation: True,
             )
 
             self.assertEqual(before, stat.S_IMODE(destination_directory.stat().st_mode))
+            self.assertEqual(0o600, stat.S_IMODE(destination.stat().st_mode))
 
     def test_snapshot_preserves_pending_attachment_retirements_for_reconciliation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

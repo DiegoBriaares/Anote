@@ -664,10 +664,15 @@ class CheckpointService:
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
-            with zipfile.ZipFile(temporary, "x", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
-                archive.writestr("manifest.json", manifest_bytes)
-                archive.write(database, "calendar.db")
-                archive.write(uploads, "uploads.tar")
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+            descriptor = os.open(temporary, flags, 0o600)
+            with os.fdopen(descriptor, "w+b") as package_stream:
+                with zipfile.ZipFile(package_stream, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+                    archive.writestr("manifest.json", manifest_bytes)
+                    archive.write(database, "calendar.db")
+                    archive.write(uploads, "uploads.tar")
+                package_stream.flush()
+                os.fsync(package_stream.fileno())
             operation = replace(operation, phase="package_prepared", details={
                 **operation.details,
                 "checkpoint_id": checkpoint_id,

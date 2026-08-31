@@ -60,7 +60,9 @@ replaced atomically. Production credentials exist only in `production.env`,
 with the most restrictive per-user permissions the platform supports.
 When an operator selects an existing destination directory, Control Center
 validates it but never changes its permissions. It restricts only a missing
-destination directory and the checkpoint file it creates.
+destination directory and the checkpoint file it creates. The temporary
+checkpoint is opened exclusively with per-user permissions before any database
+or upload byte is written; publication preserves that mode.
 
 The registry owns every mutable/destructive path as a canonical path relative
 to the validated application root. Absolute targets, `..`, symlinks/reparse
