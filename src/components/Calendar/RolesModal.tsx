@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore, type Role } from '../../store/calendarStore';
 import { X } from 'lucide-react';
 import { useTranslation } from '../../i18n/languageContext';
@@ -10,7 +11,11 @@ interface RolesModalProps {
 }
 
 export const RolesModal: React.FC<RolesModalProps> = ({ isOpen, onClose, onSelectRole }) => {
-    const { roles, fetchRoles, fetchSubroles } = useCalendarStore();
+    const { roles, fetchRoles, fetchSubroles } = useCalendarStore(useShallow((state) => ({
+        roles: state.roles,
+        fetchRoles: state.fetchRoles,
+        fetchSubroles: state.fetchSubroles
+    })));
     const { text } = useTranslation();
     const titleId = useId();
     const closeRef = useRef<HTMLButtonElement>(null);

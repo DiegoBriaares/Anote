@@ -83,6 +83,40 @@ Final repository evidence on 2026-08-30 is:
   and integrity/foreign-key checks passed. Source hash, size and modification
   time were unchanged before and after the read-only copy/migration exercise.
 
+Incremental reliability evidence on 2026-08-31 is:
+
+- **APP-1.0.2-GATE:** privacy guard, ESLint, the production TypeScript/Vite
+  build and 37/37 test files with 154/154 tests passed. The backend hardening
+  owner passed 32/32 migration, session, configuration and API histories. The
+  initial JavaScript chunk is 353.40 kB and the lazy note surface 132.59 kB,
+  without Vite's bundle-size warning.
+- **REMOTE-ACCESS-GATE:** disposable Linux/arm64 API and gateway images built
+  from the final owners and started under a unique Compose project/port. Fresh
+  schema-6 registration and direct session restoration passed. Chrome signed
+  in over the host's remote plain-HTTP Tailscale address, which exercises the
+  insecure-context request-ID fallback. A temporary independent Tailscale
+  Serve HTTPS mapping then signed in through the real proxy with a `Secure`
+  cookie and no console errors. Partial forwarded identity returned HTTP 400.
+  The temporary mapping, containers, network, data and cookies were removed;
+  the live installation was not addressed.
+- **RESPONSIVENESS-GATE:** the production build contains no whole-store React
+  subscriptions and preloads menu workspaces. Warm Chrome transitions to
+  Programs, Friends, Roles and Profile completed in 301–315 ms including
+  browser-control round trips; no transition inherited the removed one-second
+  shell animation.
+- **CC-0.1.7-GATE:** 82/82 Control Center owner, recovery, archive, packaging
+  and publication-contract tests passed. The Apple Silicon bundle and DMG
+  built, ad-hoc signing and embedded self-check passed, bundle/runtime versions
+  equal 0.1.7, and the installed ICNS plus Tk asset contain the owned calendar
+  glyph. Windows native execution remains the independent CI/manual gate.
+- **CC-LIFECYCLE-1.0.2-GATE:** the verified 1.0.1 and clean-commit 1.0.2
+  arm64 packages completed fresh setup, explicit start/stop, checkpoint,
+  safe uninstall, retained reinstall, legacy adoption, standby apply/start,
+  injected update rollback, successful update and registry-scoped erase using
+  real Docker Desktop. Exact health identities and schema 6 passed; the safety
+  harness removed every disposable root/project while the pre-existing healthy
+  production containers remained running.
+
 A broad gate alone does not close authorization, failure atomicity, migration
 or recovery. The rows below name the focused owner evidence within those final
 results.
@@ -114,6 +148,8 @@ results.
 | ARCH-002 Monolithic frontend state/transport | `src/store/calendarStore.ts` is 2,335 baseline lines with 43 direct `fetch` calls, auth headers, serialization, all domains, navigation and automatic-program clocks. | One 401/error/wire change is interpreted many times; browser state becomes a second backend. | One typed same-origin client and focused auth/events/social/config/notes/program owners; server remains authority. | **Closed.** `src/api/client.ts` owns relative cookie transport/error classification and focused store owners call typed runtime-validated APIs. Static review found no bearer-token construction or raw component transport; APP-GATE includes client contract and focused owner tests. |
 | ARCH-003 Duplicate/ad hoc route contracts | `/admin/users` is registered twice; response/error shapes and raw database messages vary by route. | Express order silently shadows a handler and clients must infer errors from prose/status combinations. | One route per intent and the `APP-HTTP-*` request-ID/error envelope. | **Closed.** `server/app.js` mounts one router per intent and `server/http.js` owns bounded request IDs and one safe error envelope. APP-GATE includes the representative API origin/session/error integration and frontend stable-code contract tests. |
 | ARCH-004 Configuration polling and eager workspaces | `App.tsx` polls `/config` every three seconds and eagerly imports calendar, profile, programs, friends, roles and admin surfaces; baseline build reports a >500 KiB main chunk. | Every open client creates needless load; unrelated workspaces inflate initial startup. | Bootstrap/focus/invalidation configuration reads and stable lazy workspace boundaries. | **Closed.** Final `App.tsx` performs bootstrap/focus configuration reads and lazy-loads non-calendar workspaces; `DayModal` gives the note/Markdown surface its own lazy boundary. Final APP-GATE production build passed on 2026-08-30 with a 349.63 kB initial JavaScript chunk and a separate 132.44 kB `NoteEnvironment` chunk, without Vite's bundle-size warning. |
+| ARCH-005 Insecure-context request IDs failed before transport | The typed client and two event builders invoked `crypto.randomUUID()` directly. Chrome does not expose that method to Anote opened at a remote plain-HTTP IP, so login threw before `fetch` and surfaced a false unavailable-service message. | A documented direct LAN/Tailscale deployment could render the app but could not issue any API command. | One request-ID owner prefers UUID/random bytes and has a non-secret monotonic fallback; every browser caller uses it. | **Closed.** APP-1.0.2-GATE covers UUID, throwing/unavailable UUID, random-byte and no-crypto branches; REMOTE-ACCESS-GATE proves production Chrome login over a remote plain-HTTP Tailscale address. |
+| ARCH-006 Whole-store subscriptions amplified unrelated changes | Every major view destructured `useCalendarStore()` without a selector, menu routes fetched only after activation, and the shell applied a one-second `transition-all`. | Polling or any domain write rerendered the complete calendar tree; first navigation also waited for its route chunk and visually inherited a one-second transition. | Focused shallow selectors, menu-open route preloading and targeted short color transitions. | **Closed.** APP-1.0.2-GATE enforces zero broad React subscriptions and the preload/transition contract; RESPONSIVENESS-GATE proves all four warm workspace paths complete without the reported one-second lag. |
 
 ### Data integrity and migration
 
@@ -143,6 +179,8 @@ results.
 | SEC-007 Gateway policy contradicted the supported background workflow | Profile and day settings accept and persist HTTPS background URLs, but the production gateway's `img-src` omitted the HTTPS source class. | A valid saved background works in development but is blocked after the same application is deployed. | Permit HTTPS only in application image sources while retaining same-origin scripts/connections and disabled object content. | **Closed.** Every application-shell/static-asset CSP now includes `https:` only in `img-src`; focused gateway evidence proves all three policies preserve same-origin scripts, `object-src 'none'`, and reject the broader insecure `http:` source. |
 | SEC-008 Attachment metadata cascades left unreachable managed bytes | Event/account deletion cascaded attachment rows while avatar/background replacement retained old metadata; no filesystem retirement or crash reconciliation owner existed. | Repeated owner deletion grows every future backup/checkpoint, while deleting a file before a failed SQL mutation would instead break a live reference. | Two-phase same-volume retirement around the owner transaction, with exact startup reconciliation based only on managed attachment metadata. | **Closed.** Event, account, avatar and background histories remove newly unreferenced bytes; injected rename failure rolls SQL back with the original file intact; restart histories restore pre-commit moves and delete post-commit retirements without touching untracked legacy uploads. APP-GATE includes all boundaries. |
 | SEC-009 Pending attachment retirement lived outside snapshots | The crash-recovery directory was a sibling of `uploads`, while backups and checkpoints archive only the uploads root. | A process exit before SQLite commit leaves metadata owning a retired byte; an offline snapshot before API restart silently omits that byte and restores a broken attachment. | Keep pending retirements inside the canonical uploads snapshot boundary and reconcile them against restored metadata on startup. | **Closed.** Retirement remains same-volume under `uploads/.anote-attachment-retirement`; snapshot/restore evidence preserves a pending owned byte and existing startup evidence restores or deletes it according to committed metadata. |
+| SEC-010 TLS termination replaced the browser origin | The gateway overwrote Tailscale Serve's external HTTPS scheme/host with its internal HTTP request identity. The API then compared the HTTPS browser `Origin` with the rewritten HTTP origin and returned `ORIGIN_NOT_ALLOWED`; localization reduced that code to a generic failure. | Valid authenticated mutations through the documented HTTPS path always failed, while disabling the guard would create a CSRF regression. | Gateway accepts exactly one complete valid forwarded pair, rejects ambiguity, forwards the normalized identity and rebuilds the peer chain; API retains exact canonical origin comparison and localized recovery. | **Closed.** APP-1.0.2-GATE covers canonical parsing, exact-origin API behavior, `Secure` cookies and malformed gateway pairs; REMOTE-ACCESS-GATE proves login through a real Tailscale Serve HTTPS terminator. |
+| SEC-011 Bootstrap/schema closed required public registration | Fresh schema seeding and offline administrator bootstrap stored `registration_enabled=false`, while the product requires account creation to remain available. | A successful installation immediately contradicted the required account workflow and an administrator could close it again. | Schema 6 normalizes true; auth treats registration as immutable product policy; compatible config reads true and disabling returns `IMMUTABLE_CONFIG_KEY` without mutation. | **Closed.** APP-1.0.2-GATE proves fresh and schema-5 migration, bootstrap, registration despite a stale false row, immutable configuration and EN/ES recovery; REMOTE-ACCESS-GATE created a fresh account against the schema-6 container. |
 
 ### Automatic program correctness
 
@@ -193,6 +231,7 @@ results.
 | OPS-023 Checkpoint bytes briefly inherited a permissive umask | Preserving an existing destination directory skipped its chmod, while `ZipFile(..., "x")` created the temporary package with the process umask. | Under umask `022`, database and upload bytes were readable by other local users until or after publication. | Open the package exclusively as `0600` before writing any byte, then flush/fsync and atomically publish it. | **Closed.** The checkpoint owner creates the temporary descriptor with `O_EXCL` and mode `0600`; owner evidence proves both the existing parent mode and published file mode. |
 | OPS-024 Unreadable data could crash initial read-model construction | Existing-data classification handled `iterdir` errors but not an earlier `assert_safe`/stat permission failure. | A permission-denied data root crashed the window instead of failing closed toward adoption. | Treat filesystem `OSError` across the complete classification probe as existing data while preserving typed unsafe-link failures. | **Closed.** Injected permission refusal returns existing-data guidance without crossing the lifecycle boundary. |
 | OPS-025 Acceptance work-root symlink identity was resolved away | The native Docker gate canonicalized its work root before testing `is_symlink`. | A prefixed temporary symlink could redirect final recursive cleanup to its target. | Validate the lexical direct child and symlink identity before canonicalization; then separately prove the resolved parent. | **Closed.** A real temporary symlink is rejected and its target remains intact. |
+| OPS-026 Native Control Center used the default launcher glyph | Neither native build supplied PyInstaller/Inno icon inputs and the Tk window had no owned icon. | Installed Anote looked like a generic Python application and was hard to distinguish from Barcelonnette Control Center. | One orange calendar SVG, deterministic standard-library PNG/ICO generation, macOS ICNS derivation and explicit PyInstaller/Tk/Inno wiring. | **Closed for repository/macOS.** CC-0.1.7-GATE proves deterministic outputs and explicit PyInstaller, Tk and Inno ownership; the native macOS bundle's `CFBundleIconFile` resolves to the inspected calendar ICNS. Windows rendering remains a release-platform gate, not an unresolved owner. |
 
 ## 4. Requirements-to-owner-to-evidence matrix
 
@@ -237,17 +276,15 @@ record must state which gates actually ran for the exact commit:
 
 1. A disposable Compose/Docker Desktop smoke using the generated managed
    runtime and real application images, including gateway health, scheduler,
-   checkpoint and exact-resource removal histories.
+   checkpoint and exact-resource removal histories. **Passed on Apple Silicon
+   for 1.0.1 → 1.0.2 in CC-LIFECYCLE-1.0.2-GATE; Windows remains external.**
 2. Real paired Windows-amd64 and macOS-arm64 `.anote-release` builds followed by
    Docker image load and exact readiness-identity validation.
 3. Windows 11 x64 installer install/repair/uninstall, embedded self-check,
    Docker Desktop lifecycle and human EN/ES, keyboard and layout acceptance.
-4. Remaining native packaged UI/Computer Use review and macOS Docker histories:
-   successful legacy adoption requires a disposable legacy project that cannot
-   collide with the live `anote-production` project, and update/rollback requires
-   a second compatible application release. The 0.1.4 isolated setup,
-   checkpoint, start/stop, retained reinstall, refusal, erase and recovery
-   histories passed as recorded in `MAC-LIFECYCLE-GATE`.
+4. Remaining native packaged UI review. The 0.1.4 histories are recorded in
+   `MAC-LIFECYCLE-GATE`; the real 0.1.7 owner and 1.0.1 → 1.0.2 Docker paths,
+   including adoption and rollback, passed in `CC-LIFECYCLE-1.0.2-GATE`.
 5. Signing, notarization and publication, when the selected release policy
    requires them.
 

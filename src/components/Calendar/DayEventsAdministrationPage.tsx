@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { parseDateKey } from '../../utils/dateUtils';
@@ -15,7 +16,15 @@ export const DayEventsAdministrationPage: React.FC = () => {
         viewMode,
         viewingUserId,
         viewingUsername
-    } = useCalendarStore();
+    } = useCalendarStore(useShallow((state) => ({
+        dayAdministrationDate: state.dayAdministrationDate,
+        navigateToCalendar: state.navigateToCalendar,
+        fetchEvents: state.fetchEvents,
+        fetchFriendEvents: state.fetchFriendEvents,
+        viewMode: state.viewMode,
+        viewingUserId: state.viewingUserId,
+        viewingUsername: state.viewingUsername
+    })));
 
     const activeDate = useMemo(() => (
         dayAdministrationDate ? parseDateKey(dayAdministrationDate) : null

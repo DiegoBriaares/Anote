@@ -26,10 +26,13 @@ contracts, not by a simultaneous server-language migration. Express, Zustand,
 and `better-sqlite3` remain implementation choices; no dependency-injection
 container or generic repository layer is introduced.
 
-Anote has one browser origin. The gateway serves the application and proxies
-`/api` to the internal API. Browser code never constructs a host-specific API
-URL, reads the database, interprets Docker state, or owns production lifecycle
-policy.
+Anote has one effective browser origin. The gateway serves the application and
+proxies `/api` to the internal API. Direct LAN/Tailscale HTTP uses the gateway
+host and scheme. A TLS terminator such as Tailscale Serve may supply one
+complete, syntactically valid forwarded host/scheme pair; partial, multi-valued
+or malformed forwarding fails before proxying. Browser code never constructs a
+host-specific API URL, reads the database, interprets Docker state, or owns
+production lifecycle policy.
 
 ## 2. Ownership and dependency direction
 
@@ -135,7 +138,7 @@ writable, and the process is accepting requests. Its non-secret payload is:
     "releaseId": "anote",
     "version": "1.0.0",
     "sourceCommit": "40-lowercase-hex-commit",
-    "schemaVersion": 4
+    "schemaVersion": 6
   }
 }
 ```
@@ -147,7 +150,10 @@ selected verified release contract.
 
 The typed API client is the only browser transport owner. It always uses
 relative `/api`, `credentials: 'same-origin'`, parses the stable envelope, and
-turns status/error codes into a closed error type. A 401 invalidates the session
+turns status/error codes into a closed error type. Its correlation-ID generator
+uses `randomUUID`, random bytes, or a non-secret monotonic fallback in that
+order, so an insecure-context browser cannot fail before issuing a request. A
+401 invalidates the session
 once through the auth owner; other state owners do not implement their own
 logout rules. This applies uniformly to reads and every mutation command; an
 owner must not retain authenticated state or issue a reconciliation read after
@@ -177,6 +183,12 @@ destructive actions state their scope and require the governing confirmation.
 Feature-heavy authenticated surfaces are lazy-loaded at stable view boundaries.
 The shell, login and ordinary calendar remain the initial path; administrator,
 profile, programs, social, roles and note-heavy workspaces load on demand.
+The shell preloads authenticated menu workspaces when the menu opens. React
+views subscribe only to the focused Zustand values/actions they render or
+invoke; whole-store subscriptions are prohibited because unrelated polling or
+domain changes would invalidate the calendar tree. Navigation state changes
+synchronously and shell styling must not impose a one-second transition on
+route changes.
 Polling is permitted only when the server fact can change independently and no
 event/read-on-focus boundary suffices. Configuration is loaded at bootstrap and
 on deliberate invalidation/focus, not every three seconds.

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { ArrowLeft, ChevronDown, ChevronUp, PlusSquare, Shield, Trash2 } from 'lucide-react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { useTranslation } from '../../i18n/languageContext';
@@ -26,7 +27,16 @@ export const RolesPanel: React.FC = () => {
         manageSubroles,
         reorderRoles,
         navigateToCalendar
-    } = useCalendarStore();
+    } = useCalendarStore(useShallow((state) => ({
+        roles: state.roles,
+        subroles: state.subroles,
+        fetchRoles: state.fetchRoles,
+        fetchSubroles: state.fetchSubroles,
+        manageRoles: state.manageRoles,
+        manageSubroles: state.manageSubroles,
+        reorderRoles: state.reorderRoles,
+        navigateToCalendar: state.navigateToCalendar
+    })));
     const { text } = useTranslation();
     const [textAction, setTextAction] = useState<TextAction | null>(null);
     const [deleteAction, setDeleteAction] = useState<DeleteAction | null>(null);

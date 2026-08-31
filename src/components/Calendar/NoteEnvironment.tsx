@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore, type CalendarEvent, type Role } from '../../store/calendarStore';
 import { X, Save, FileText, RotateCcw, Link, Paperclip, Eye, Pencil, UploadCloud } from 'lucide-react';
 import { toApiUrl } from '../../utils/api';
@@ -43,7 +44,12 @@ const TextAttachmentPreview = ({ url }: { url: string }) => {
 
 export const NoteEnvironment: React.FC<NoteEnvironmentProps> = ({ isOpen, onClose, event, role }) => {
     const { language, text } = useTranslation();
-    const { eventNotes, fetchEventNotes, saveEventNote, uploadFile } = useCalendarStore();
+    const { eventNotes, fetchEventNotes, saveEventNote, uploadFile } = useCalendarStore(useShallow((state) => ({
+        eventNotes: state.eventNotes,
+        fetchEventNotes: state.fetchEventNotes,
+        saveEventNote: state.saveEventNote,
+        uploadFile: state.uploadFile
+    })));
     const noteKey = `${event.id}:${role.id}`;
     const [contentDraft, setContentDraft] = useState<{ key: string; value: string } | null>(null);
     const storedContent = eventNotes[event.id]?.[role.id] || '';

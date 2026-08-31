@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore, type CalendarEvent } from '../../store/calendarStore';
 import { interpolateText } from '../../i18n/appText';
 import { CheckCircle2, CircleX, Clock, Link as LinkIcon, StickyNote, Trash2, Edit3, Plus } from 'lucide-react';
@@ -12,7 +13,15 @@ interface PostponedEventBoardProps {
 }
 
 export const PostponedEventBoard: React.FC<PostponedEventBoardProps> = ({ postponedView, onViewChange }) => {
-    const { postponedEvents, viewMode, addPostponedEvent, deletePostponedEvent, editPostponedEvent, actionError, clearActionError } = useCalendarStore();
+    const { postponedEvents, viewMode, addPostponedEvent, deletePostponedEvent, editPostponedEvent, actionError, clearActionError } = useCalendarStore(useShallow((state) => ({
+        postponedEvents: state.postponedEvents,
+        viewMode: state.viewMode,
+        addPostponedEvent: state.addPostponedEvent,
+        deletePostponedEvent: state.deletePostponedEvent,
+        editPostponedEvent: state.editPostponedEvent,
+        actionError: state.actionError,
+        clearActionError: state.clearActionError
+    })));
     const { text } = useTranslation();
     const statusText = text.eventStatus;
     const [draft, setDraft] = useState({ title: '', time: '', link: '', note: '', priority: '' });

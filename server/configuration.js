@@ -10,30 +10,32 @@ const PUBLIC_KEYS = Object.freeze([
     'registration_enabled'
 ]);
 
-const MUTABLE_KEYS = new Set(['app_title', 'app_subtitle', 'console_title', 'registration_enabled']);
+const MUTABLE_KEYS = new Set(['app_title', 'app_subtitle', 'console_title']);
 
 const createConfigurationService = ({ db }) => {
     const read = () => {
         const placeholders = PUBLIC_KEYS.map(() => '?').join(',');
         const rows = db.prepare(`SELECT key, value FROM app_config WHERE key IN (${placeholders})`).all(...PUBLIC_KEYS);
-        return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+        return {
+            ...Object.fromEntries(rows.map((row) => [row.key, row.value])),
+            registration_enabled: 'true'
+        };
     };
 
     const update = (input) => {
         if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ApiError(400, 'invalid_config');
         const expectedVersion = Number.parseInt(String(input.config_version ?? ''), 10);
         if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new ApiError(428, 'config_revision_required');
-        const entries = Object.entries(input).filter(([key]) => key !== 'config_version');
+        const requestedEntries = Object.entries(input).filter(([key]) => key !== 'config_version');
+        const registrationEntry = requestedEntries.find(([key]) => key === 'registration_enabled');
+        if (registrationEntry && ![true, 'true', '1'].includes(registrationEntry[1])) {
+            throw new ApiError(409, 'immutable_config_key', { key: 'registration_enabled' });
+        }
+        const entries = requestedEntries.filter(([key]) => key !== 'registration_enabled');
         if (entries.length === 0 || entries.some(([key]) => !MUTABLE_KEYS.has(key))) {
             throw new ApiError(400, 'invalid_config_key');
         }
         const normalized = entries.map(([key, rawValue]) => {
-            if (key === 'registration_enabled') {
-                if (rawValue !== true && rawValue !== false && rawValue !== 'true' && rawValue !== 'false') {
-                    throw new ApiError(400, 'invalid_config_value');
-                }
-                return [key, rawValue === true || rawValue === 'true' ? 'true' : 'false'];
-            }
             if (typeof rawValue !== 'string' || rawValue.length > 5000) throw new ApiError(400, 'invalid_config_value');
             if ((key === 'app_title' || key === 'console_title') && !rawValue.trim()) {
                 throw new ApiError(400, 'invalid_config_value');

@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore, type Role, type Subrole } from '../../store/calendarStore';
 import { interpolateText } from '../../i18n/appText';
 import { X, Clock, StickyNote, Link as LinkIcon, Settings, CheckCircle2, CircleX } from 'lucide-react';
@@ -41,7 +42,11 @@ const DayEventsAdministrationIcon: React.FC<{ className?: string }> = ({ classNa
 );
 
 export const DayModal: React.FC<DayModalProps> = ({ date, events, onClose, onConfigure, onAdminister }) => {
-    const { viewMode, subroles, fetchSubroles } = useCalendarStore();
+    const { viewMode, subroles, fetchSubroles } = useCalendarStore(useShallow((state) => ({
+        viewMode: state.viewMode,
+        subroles: state.subroles,
+        fetchSubroles: state.fetchSubroles
+    })));
     const { language, text } = useTranslation();
     const statusText = text.eventStatus;
     const [sortOrder, setSortOrder] = useState<'time' | 'priority'>('time');

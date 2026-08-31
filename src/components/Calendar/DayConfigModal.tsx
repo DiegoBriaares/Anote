@@ -16,7 +16,7 @@ type DayConfigFormProps = DayConfigModalProps & {
 };
 
 const DayConfigForm = ({ date, dateKey, initialFact, initialBackground, onClose }: DayConfigFormProps) => {
-    const { saveDaySettings } = useCalendarStore();
+    const saveDaySettings = useCalendarStore((state) => state.saveDaySettings);
     const { language, text } = useTranslation();
     const [factDraft, setFactDraft] = useState(initialFact);
     const [backgroundDraft, setBackgroundDraft] = useState(initialBackground);
@@ -117,7 +117,8 @@ const DayConfigForm = ({ date, dateKey, initialFact, initialBackground, onClose 
 };
 
 export const DayConfigModal: React.FC<DayConfigModalProps> = ({ date, isOpen, onClose }) => {
-    const { dailyFacts, dayBackgrounds } = useCalendarStore();
+    const dailyFacts = useCalendarStore((state) => state.dailyFacts);
+    const dayBackgrounds = useCalendarStore((state) => state.dayBackgrounds);
     if (!isOpen) return null;
     const dateKey = date.toISOString().split('T')[0];
     return (

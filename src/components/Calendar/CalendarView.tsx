@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { MonthGrid } from './MonthGrid';
 import { useCalendarStore } from '../../store/calendarStore';
 import { getNextMonth, getPrevMonth, formatDate } from '../../utils/dateUtils';
@@ -55,7 +56,29 @@ export const CalendarView: React.FC = () => {
         friends,
         actionError,
         clearActionError
-    } = useCalendarStore();
+    } = useCalendarStore(useShallow((state) => ({
+        viewDate: state.viewDate,
+        setViewDate: state.setViewDate,
+        setSelection: state.setSelection,
+        setSelectionActive: state.setSelectionActive,
+        selection: state.selection,
+        fetchEvents: state.fetchEvents,
+        fetchFriendEvents: state.fetchFriendEvents,
+        fetchMonthVisuals: state.fetchMonthVisuals,
+        events: state.events,
+        viewMode: state.viewMode,
+        viewingUserId: state.viewingUserId,
+        viewingUsername: state.viewingUsername,
+        navigateToPostponed: state.navigateToPostponed,
+        navigateToDayAdministration: state.navigateToDayAdministration,
+        clearSelection: state.clearSelection,
+        addEventsBulk: state.addEventsBulk,
+        moveIncompleteEventsToDate: state.moveIncompleteEventsToDate,
+        shareEventsToFriends: state.shareEventsToFriends,
+        friends: state.friends,
+        actionError: state.actionError,
+        clearActionError: state.clearActionError
+    })));
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectionStart, setSelectionStart] = useState<Date | null>(null);
     const [isMarkingDays, setIsMarkingDays] = useState(false);

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ChevronDown, Clock3, Eye, Loader2, LogOut, Settings, Shield, User, Users } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 
 import { Login } from './components/Auth/Login';
 import { CalendarView } from './components/Calendar/CalendarView';
@@ -14,19 +15,40 @@ const lazyNamed = <T extends Record<string, unknown>, K extends keyof T>(
     name: K
 ) => lazy(async () => ({ default: (await loader())[name] as React.ComponentType }));
 
-const AdminPanel = lazyNamed(() => import('./components/Admin/AdminPanel'), 'AdminPanel');
+const viewLoaders = {
+    admin: () => import('./components/Admin/AdminPanel'),
+    dayAdministration: () => import('./components/Calendar/DayEventsAdministrationPage'),
+    postponed: () => import('./components/Calendar/PostponedEventsView'),
+    friends: () => import('./components/Friends/SocialPanel'),
+    profile: () => import('./components/Profile/ProfilePanel'),
+    programs: () => import('./components/Programs/ProgramsPanel'),
+    roles: () => import('./components/Roles/RolesPanel')
+};
+
+const preloadMenuViews = (includeAdministration: boolean) => {
+    const loaders: Array<() => Promise<Record<string, unknown>>> = [
+        viewLoaders.profile,
+        viewLoaders.roles,
+        viewLoaders.friends,
+        viewLoaders.programs
+    ];
+    if (includeAdministration) loaders.push(viewLoaders.admin);
+    for (const loader of loaders) void loader();
+};
+
+const AdminPanel = lazyNamed(viewLoaders.admin, 'AdminPanel');
 const DayEventsAdministrationPage = lazyNamed(
-    () => import('./components/Calendar/DayEventsAdministrationPage'),
+    viewLoaders.dayAdministration,
     'DayEventsAdministrationPage'
 );
 const PostponedEventsView = lazyNamed(
-    () => import('./components/Calendar/PostponedEventsView'),
+    viewLoaders.postponed,
     'PostponedEventsView'
 );
-const SocialPanel = lazyNamed(() => import('./components/Friends/SocialPanel'), 'SocialPanel');
-const ProfilePanel = lazyNamed(() => import('./components/Profile/ProfilePanel'), 'ProfilePanel');
-const ProgramsPanel = lazyNamed(() => import('./components/Programs/ProgramsPanel'), 'ProgramsPanel');
-const RolesPanel = lazyNamed(() => import('./components/Roles/RolesPanel'), 'RolesPanel');
+const SocialPanel = lazyNamed(viewLoaders.friends, 'SocialPanel');
+const ProfilePanel = lazyNamed(viewLoaders.profile, 'ProfilePanel');
+const ProgramsPanel = lazyNamed(viewLoaders.programs, 'ProgramsPanel');
+const RolesPanel = lazyNamed(viewLoaders.roles, 'RolesPanel');
 
 const STORED_DEFAULT_SUBTITLE = 'Mark progress, move plans, and keep your calendar notes in one place.';
 const STORED_DEFAULT_CONSOLE_TITLE = 'Anote Console';
@@ -64,7 +86,29 @@ function App() {
         bootstrap,
         fetchAppConfig,
         pollProgramRunNotifications
-    } = useCalendarStore();
+    } = useCalendarStore(useShallow((state) => ({
+        user: state.user,
+        sessionStatus: state.sessionStatus,
+        restoreSession: state.restoreSession,
+        logout: state.logout,
+        viewMode: state.viewMode,
+        viewingUsername: state.viewingUsername,
+        profile: state.profile,
+        viewingPreferences: state.viewingPreferences,
+        localPreferences: state.localPreferences,
+        currentView: state.currentView,
+        navigateToProfile: state.navigateToProfile,
+        navigateToFriends: state.navigateToFriends,
+        navigateToRoles: state.navigateToRoles,
+        navigateToPrograms: state.navigateToPrograms,
+        viewOwnCalendar: state.viewOwnCalendar,
+        navigateToAdmin: state.navigateToAdmin,
+        appConfig: state.appConfig,
+        socialError: state.socialError,
+        bootstrap: state.bootstrap,
+        fetchAppConfig: state.fetchAppConfig,
+        pollProgramRunNotifications: state.pollProgramRunNotifications
+    })));
     const { language, setLanguage, text } = useTranslation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -167,9 +211,17 @@ function App() {
         setIsMenuOpen(false);
     };
 
+    const toggleMenu = () => {
+        setIsMenuOpen((open) => {
+            const next = !open;
+            if (next) preloadMenuViews(user.isAdmin === true);
+            return next;
+        });
+    };
+
     return (
         <div
-            className={`min-h-screen ${theme === 'dark' ? 'text-slate-100' : 'text-stone-800'} selection:bg-orange-500/30 relative transition-all duration-1000`}
+            className={`min-h-screen ${theme === 'dark' ? 'text-slate-100' : 'text-stone-800'} selection:bg-orange-500/30 relative transition-colors duration-200`}
             style={{ ...backgroundStyle, ['--accent' as string]: accentColor }}
         >
             {backgroundUrl && (
@@ -188,7 +240,7 @@ function App() {
                     aria-haspopup="menu"
                     aria-controls="anote-user-menu"
                     aria-expanded={isMenuOpen}
-                    onClick={() => setIsMenuOpen((open) => !open)}
+                    onClick={toggleMenu}
                 >
                     <span
                         className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold font-mono shadow-md"

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { getMonthGrid, isDateInRange, formatDate } from '../../utils/dateUtils';
 import { useCalendarStore } from '../../store/calendarStore';
 import { isSameMonth, isToday } from 'date-fns';
@@ -27,7 +28,12 @@ export const MonthGrid: React.FC<MonthGridProps> = ({
     isDayMarkingActive = false
 }) => {
     const days = getMonthGrid(year, month);
-    const { events, selection, compareMode, compareEvents } = useCalendarStore();
+    const { events, selection, compareMode, compareEvents } = useCalendarStore(useShallow((state) => ({
+        events: state.events,
+        selection: state.selection,
+        compareMode: state.compareMode,
+        compareEvents: state.compareEvents
+    })));
     const { language, text } = useTranslation();
     const currentMonthDate = new Date(year, month);
     const markedDates = new Set(markedDateKeys);

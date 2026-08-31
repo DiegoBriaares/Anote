@@ -28,6 +28,9 @@ completely before changing this directory.
   state under the operation lock.
 - Diagnostics redact secrets/content before bounding output. Worker threads
   never update Tk widgets directly.
+- Native packages and the Tk window use the repository-owned Anote calendar
+  glyph through the deterministic icon generator; default runtime glyphs are
+  not acceptable release output.
 
 ## Evidence and safety
 

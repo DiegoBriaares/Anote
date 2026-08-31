@@ -8,6 +8,9 @@
 #ifndef OutputDirectory
   #error OutputDirectory must be supplied by the build script.
 #endif
+#ifndef IconFile
+  #error IconFile must be supplied by the build script.
+#endif
 
 [Setup]
 AppId={{BB9972F8-AE2F-48C0-A4D6-52A4062D9B70}
@@ -31,6 +34,7 @@ UninstallDisplayIcon={app}\{#ProductName}.exe
 CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
+SetupIconFile={#IconFile}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

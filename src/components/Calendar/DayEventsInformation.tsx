@@ -10,7 +10,7 @@ interface DayEventsInformationProps {
 }
 
 export const DayEventsInformation: React.FC<DayEventsInformationProps> = ({ activeDate }) => {
-    const { events } = useCalendarStore();
+    const events = useCalendarStore((state) => state.events);
     const { text } = useTranslation();
     const statusText = text.eventStatus;
     const [expandedByDate, setExpandedByDate] = useState<Record<string, string[]>>({});

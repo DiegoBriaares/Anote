@@ -68,7 +68,7 @@ revocation are server-owned.
 
 Unsafe browser methods require an exact same-origin `Origin`/effective-host
 match before mutation. The gateway is the only trusted proxy. Account entry is
-rate-limited, fresh installations default registration to disabled, and the
+rate-limited, public registration remains permanently available, and the
 first administrator is created only by Control Center's offline bootstrap
 command through protected standard input.
 
@@ -216,7 +216,7 @@ root are ready. Its non-secret identity is:
     "releaseId": "anote",
     "version": "1.0.0",
     "sourceCommit": "40-lowercase-hex-commit",
-    "schemaVersion": 4
+    "schemaVersion": 6
   }
 }
 ```

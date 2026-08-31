@@ -3,6 +3,7 @@ import { eachDayOfInterval } from 'date-fns';
 import { ApiError } from '../../api/client';
 import type { CalendarEvent, UserPreferences } from '../../api/contracts';
 import { eventsApi, type WireRecord } from '../../api/events';
+import { createRequestId } from '../../api/requestId';
 import { getApiErrorText, getAppText } from '../../i18n/appText';
 import { formatDate } from '../../utils/dateUtils';
 import { eventStatusFields, readEventStatus } from '../../utils/eventStatus';
@@ -86,7 +87,7 @@ const createCalendarEvent = (
 ): CalendarEvent => {
     const rawTime = entry.startTime ?? entry.time;
     return {
-        id: crypto.randomUUID(),
+        id: createRequestId(),
         title: entry.title,
         date,
         startTime: rawTime?.trim() || null,

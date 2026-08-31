@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore } from '../../store/calendarStore';
 import { normalizeApiAssetUrl } from '../../utils/api';
 import { useTranslation } from '../../i18n/languageContext';
@@ -8,7 +9,11 @@ interface UserAvatarBadgeProps {
 }
 
 export const UserAvatarBadge: React.FC<UserAvatarBadgeProps> = ({ size = 36 }) => {
-    const { user, profile, fetchProfile } = useCalendarStore();
+    const { user, profile, fetchProfile } = useCalendarStore(useShallow((state) => ({
+        user: state.user,
+        profile: state.profile,
+        fetchProfile: state.fetchProfile
+    })));
     const avatarUrl = normalizeApiAssetUrl(profile?.avatar_url || user?.avatar_url) || '/default-avatar.svg';
     const { text } = useTranslation();
 

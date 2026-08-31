@@ -22,4 +22,17 @@ describe('production gateway content security policy', () => {
             expect(policy).not.toContain('http:');
         }
     });
+
+    it('normalizes one complete external origin and rejects ambiguous forwarding', () => {
+        const gateway = fs.readFileSync(path.join(repositoryRoot, 'docker', 'nginx.conf'), 'utf8');
+        const nginxMain = fs.readFileSync(path.join(repositoryRoot, 'control_center', 'release', 'nginx-main.conf'), 'utf8');
+
+        expect(nginxMain).toContain('map "$http_x_forwarded_proto|$http_x_forwarded_host" $anote_forwarding_state');
+        expect(nginxMain).toContain('default invalid;');
+        expect(nginxMain).toContain('direct $scheme;');
+        expect(gateway).toContain('if ($anote_forwarding_state = invalid)');
+        expect(gateway.match(/proxy_set_header Host \$anote_effective_host;/g)).toHaveLength(2);
+        expect(gateway.match(/proxy_set_header X-Forwarded-Proto \$anote_effective_proto;/g)).toHaveLength(2);
+        expect(gateway.match(/proxy_set_header X-Forwarded-For \$remote_addr;/g)).toHaveLength(2);
+    });
 });

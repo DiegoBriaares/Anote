@@ -1,4 +1,5 @@
 import { getAppText } from '../i18n/appText';
+import { createRequestId } from './requestId';
 
 const HAS_SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:/i;
 
@@ -62,7 +63,7 @@ const sendRequest = async (path: string, init: RequestInit): Promise<Response> =
     const headers = new Headers(init.headers);
     if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     if (!headers.has('Accept')) headers.set('Accept', 'application/json');
-    if (!headers.has('X-Request-ID')) headers.set('X-Request-ID', crypto.randomUUID());
+    if (!headers.has('X-Request-ID')) headers.set('X-Request-ID', createRequestId());
     try {
         return await fetch(toApiUrl(path), {
             ...init,

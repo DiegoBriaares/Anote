@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { ArrowLeft, Image as ImageIcon, Palette, RefreshCcw } from 'lucide-react';
 import { useTranslation } from '../../i18n/languageContext';
 import { useCalendarStore, type UserPreferences } from '../../store/calendarStore';
@@ -22,7 +23,11 @@ const applyAppearance = (prefs: Partial<UserPreferences>) => {
 };
 
 const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
-    const { updateProfile, setLocalPreferences, navigateToCalendar } = useCalendarStore();
+    const { updateProfile, setLocalPreferences, navigateToCalendar } = useCalendarStore(useShallow((state) => ({
+        updateProfile: state.updateProfile,
+        setLocalPreferences: state.setLocalPreferences,
+        navigateToCalendar: state.navigateToCalendar
+    })));
     const { text } = useTranslation();
     const [draft, setDraft] = useState(initial);
     const [isSaving, setIsSaving] = useState(false);
@@ -148,7 +153,10 @@ const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
 };
 
 export const ProfilePanel: React.FC = () => {
-    const { profile, fetchProfile } = useCalendarStore();
+    const { profile, fetchProfile } = useCalendarStore(useShallow((state) => ({
+        profile: state.profile,
+        fetchProfile: state.fetchProfile
+    })));
     const cachedPreferences = useMemo<UserPreferences | null>(() => {
         try {
             return JSON.parse(localStorage.getItem('preferences') || 'null') as UserPreferences | null;

@@ -33,6 +33,9 @@ Non-negotiable laws:
    registry.
 7. Derive evidence from the changed invariant first. Run only checks that can
    distinguish a remaining material uncertainty; never claim an unrun gate.
+8. Public registration is always available. Direct HTTP and a single validated
+   TLS-terminator host/scheme pair are supported origins; never relax exact
+   unsafe-request origin comparison to achieve proxy compatibility.
 
 ## Project Structure & Module Organization
 - `src/` contains the React + TypeScript app. UI components live under `components/` (calendar grids, auth views, inputs), shared state in `store/` (Zustand), helpers in `utils/`, and entry points in `main.tsx`/`App.tsx`. Global styles are split between `index.css` (base/tokens) and `App.css` (layout accents).

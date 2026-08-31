@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const { isTime, isTimeZone, nextOccurrence } = require('./time');
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const LEGACY_CHECKSUMS = new Map([
     [1, '5bfa9d644af52dd9bbe1e76a89d1d44ee2b6d54aa1d6adaf778b4cf784e1b64b'],
@@ -739,18 +739,25 @@ const ensureSecurityAndAutomationSchema = (db) => {
     `);
 };
 
-const seedConfiguration = (db, legacyInstallation) => {
+const seedConfiguration = (db, _legacyInstallation) => {
     const defaults = {
         app_title: 'Anote',
         app_subtitle: 'Mark progress, move plans, and keep your calendar notes in one place.',
         console_title: 'Anote Console',
         config_version: '1',
-        registration_enabled: legacyInstallation ? 'true' : 'false'
+        registration_enabled: 'true'
     };
     const insert = db.prepare('INSERT OR IGNORE INTO app_config (key, value) VALUES (?, ?)');
     for (const [key, value] of Object.entries(defaults)) insert.run(key, value);
     db.prepare(`UPDATE app_config SET value = 'Anote' WHERE key = 'app_title' AND value IN ('AUREUM CALENDAR', 'Plan Administration Management System', 'Administration Management Plan System', 'AMPS')`).run();
     db.prepare(`UPDATE app_config SET value = 'Anote Console' WHERE key = 'console_title' AND value = 'Chronos Console'`).run();
+};
+
+const normalizeOpenRegistration = (db) => {
+    db.prepare(`
+        INSERT INTO app_config (key, value) VALUES ('registration_enabled', 'true')
+        ON CONFLICT(key) DO UPDATE SET value = 'true'
+    `).run();
 };
 
 const migratePreferencePrograms = (db, defaultTimeZone, now, isProduction) => {
@@ -928,6 +935,14 @@ const migrations = [
         run(db) {
             ensureLegacyOwnedRecovery(db);
             flagPreviouslyPublishedOwnershipRisk(db);
+        }
+    },
+    {
+        version: 6,
+        name: 'registration-always-open',
+        checksumSources: [normalizeOpenRegistration],
+        run(db) {
+            normalizeOpenRegistration(db);
         }
     }
 ];

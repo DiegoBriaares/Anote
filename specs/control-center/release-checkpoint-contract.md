@@ -161,6 +161,9 @@ Unsigned publication is permitted only when the workflow and UI disclose it.
 When signing is required, incomplete Windows certificate or Apple
 signing/notarization credentials fail the build; there is no unsigned fallback.
 Release-package SHA-256 detects corruption but is not claimed as authenticity.
+Native Control Center packages also carry the repository-owned Anote calendar
+launcher identity. This presentation asset is part of the desktop package, not
+an embedded application release payload and not registry/data identity.
 
 ## 5. Installation registry and journal
 
