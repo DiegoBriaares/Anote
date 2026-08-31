@@ -123,7 +123,7 @@ class LifecycleService:
         release.assert_current()
         with OperationLock(self.paths):
             self._require_no_installation_or_journal()
-            if self.paths.database.exists() or (self.paths.data.exists() and any(self.paths.data.iterdir())):
+            if self.paths.has_existing_data():
                 raise ContractError("Managed Anote data already exists; use legacy adoption instead.", code="existing_data")
             installation = self._candidate(
                 release, role="source", state="checkpoint_required", timezone=timezone,
@@ -177,7 +177,7 @@ class LifecycleService:
         validate_timezone(timezone)
         with OperationLock(self.paths):
             self._require_no_installation_or_journal()
-            if self.paths.database.exists() or (self.paths.data.exists() and any(self.paths.data.iterdir())):
+            if self.paths.has_existing_data():
                 raise ContractError("Managed Anote data already exists; standby preparation requires an empty data root.", code="existing_data")
             installation = self._candidate(
                 release, role="standby", state="awaiting_checkpoint", timezone=timezone,

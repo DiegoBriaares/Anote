@@ -56,6 +56,7 @@ class ControlCenterWindow:
         self.status = tk.StringVar()
         self.release_status = tk.StringVar()
         self.installation_status = tk.StringVar()
+        self.setup_guidance = tk.StringVar()
         self.root.geometry("900x680")
         self.root.minsize(760, 600)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -151,7 +152,7 @@ class ControlCenterWindow:
         text = self.translator.text
         parent.columnconfigure(1, weight=1)
         ttk.Label(parent, text=text("setup.heading"), font=("TkDefaultFont", 14, "bold")).grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(parent, text=text("setup.description"), wraplength=690).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 16))
+        ttk.Label(parent, textvariable=self.setup_guidance, wraplength=690).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 16))
         fields = (
             ("setup.username", self.username, False),
             ("setup.password", self.password, True),
@@ -566,6 +567,7 @@ class ControlCenterWindow:
         )
         installation = read_model.installation
         text = self.translator.text
+        self.setup_guidance.set(text(f"setup.guidance.{read_model.setup_guidance_code}"))
         if installation is None:
             self.installation_status.set(text("orchestra.not_installed"))
             self._set_controls()

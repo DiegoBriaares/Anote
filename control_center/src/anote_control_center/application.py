@@ -56,6 +56,7 @@ class InstallationSummary:
 class ControlCenterReadModel:
     installation: InstallationSummary | None
     actions: Mapping[str, ActionAvailability]
+    setup_guidance_code: str
 
     def action(self, interaction_id: str) -> ActionAvailability:
         return self.actions.get(interaction_id, ActionAvailability(False, False, "unavailable"))
@@ -146,16 +147,27 @@ class ControlCenterApplication:
             return ActionAvailability(True, condition, None if condition else reason)
 
         exists = installation is not None
+        existing_data = not exists and self.paths.has_existing_data()
         role = installation.role if installation else None
         state = installation.state if installation else None
+        setup_guidance_code = "installed" if exists else "existing_data" if existing_data else "choose_role"
         actions = {
             interaction_id: ActionAvailability(True, True)
             for interaction_id in INTERACTION_IDS
         }
         actions.update({
-            "setup.install-source": availability(not exists and release_available, "verified_release_required"),
-            "setup.prepare-standby": availability(not exists and release_available, "verified_release_required"),
-            "setup.adopt-legacy": availability(not exists and release_available, "verified_release_required"),
+            "setup.install-source": availability(
+                not exists and not existing_data and release_available,
+                "existing_data" if existing_data else "verified_release_required",
+            ),
+            "setup.prepare-standby": availability(
+                not exists and not existing_data and release_available,
+                "existing_data" if existing_data else "verified_release_required",
+            ),
+            "setup.adopt-legacy": availability(
+                not exists and existing_data and release_available,
+                "existing_data_required" if not existing_data else "verified_release_required",
+            ),
             "setup.reinstall-retained": availability(
                 exists and state == "runtime_removed_data_retained" and release_available,
                 "retained_exact_release_required",
@@ -190,7 +202,7 @@ class ControlCenterApplication:
             ),
             "operation.cancel": ActionAvailability(True, operation_cancellable, None if operation_cancellable else "mutation_started"),
         })
-        return ControlCenterReadModel(summary, actions)
+        return ControlCenterReadModel(summary, actions, setup_guidance_code)
 
     def erase_targets(self) -> tuple[str, ...]:
         """Return the exact canonical registry-owned erase authority for confirmation UI."""

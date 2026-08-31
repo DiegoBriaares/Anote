@@ -589,6 +589,8 @@ class LifecycleApplicationTests(unittest.TestCase):
             application = ControlCenterApplication(paths=paths, platform=MAC, runtime=runtime)  # type: ignore[arg-type]
             empty = application.read_model(release_available=True)
             self.assertTrue(empty.action("setup.install-source").enabled)
+            self.assertFalse(empty.action("setup.adopt-legacy").enabled)
+            self.assertEqual("choose_role", empty.setup_guidance_code)
             self.assertFalse(empty.action("orchestra.start").enabled)
             release = write_release(root / "release")
             application.lifecycle.fresh_source(
@@ -601,6 +603,7 @@ class LifecycleApplicationTests(unittest.TestCase):
             )
             installed = application.read_model(release_available=True)
             self.assertFalse(installed.action("setup.install-source").enabled)
+            self.assertEqual("installed", installed.setup_guidance_code)
             self.assertTrue(installed.action("orchestra.create-checkpoint").enabled)
             self.assertEqual(INTERACTION_IDS, set(installed.actions))
             cancellable = application.read_model(release_available=True, operation_cancellable=True)
@@ -608,6 +611,24 @@ class LifecycleApplicationTests(unittest.TestCase):
             targets = application.erase_targets()
             self.assertIn(f"docker-project: {registry.load().project_name}", targets)  # type: ignore[union-attr]
             self.assertTrue(any(str(paths.production) in target for target in targets))
+
+    def test_existing_data_routes_setup_to_legacy_adoption(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = ManagedPaths(root / "state")
+            registry = InstallationRegistry(paths)
+            runtime = FakeRuntime(paths, registry)
+            paths.data.mkdir(parents=True)
+            paths.database.write_bytes(b"legacy-data")
+            application = ControlCenterApplication(paths=paths, platform=MAC, runtime=runtime)  # type: ignore[arg-type]
+
+            model = application.read_model(release_available=True)
+
+            self.assertEqual("existing_data", model.setup_guidance_code)
+            self.assertFalse(model.action("setup.install-source").enabled)
+            self.assertEqual("existing_data", model.action("setup.install-source").reason_code)
+            self.assertFalse(model.action("setup.prepare-standby").enabled)
+            self.assertTrue(model.action("setup.adopt-legacy").enabled)
 
     def test_operator_intents_are_exhaustively_guarded_by_lifecycle_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

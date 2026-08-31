@@ -609,7 +609,11 @@ class CheckpointService:
             raise ContractError("Docker still reports Anote running; stop it before creating a checkpoint.", code="stop_required")
         self.paths.assert_safe(self.paths.database, allow_missing=False)
         self.paths.assert_safe(self.paths.uploads)
-        ensure_private_directory(destination.parent)
+        if destination.parent.exists():
+            if is_link_or_junction(destination.parent) or not destination.parent.is_dir():
+                raise ContractError("Choose a safe checkpoint destination folder.", code="checkpoint_destination_invalid")
+        else:
+            ensure_private_directory(destination.parent)
         if (
             destination.suffix != ".anote-checkpoint" or destination.exists() or destination.is_symlink()
             or is_link_or_junction(destination.parent)
