@@ -24,9 +24,17 @@ def emit(phase: str, **details: object) -> None:
 
 
 def require_safe_work_root(path: Path) -> Path:
-    root = path.expanduser().resolve(strict=False)
-    temporary = Path(tempfile.gettempdir()).resolve()
-    if root.parent != temporary or not root.name.startswith(WORK_PREFIX) or root.is_symlink():
+    lexical_root = path.expanduser().absolute()
+    lexical_temporary = Path(tempfile.gettempdir()).absolute()
+    if (
+        lexical_root.parent != lexical_temporary
+        or not lexical_root.name.startswith(WORK_PREFIX)
+        or lexical_root.is_symlink()
+    ):
+        raise SystemExit(f"--work-root must be a direct {lexical_temporary}/{WORK_PREFIX}* child")
+    root = lexical_root.resolve(strict=False)
+    temporary = lexical_temporary.resolve()
+    if root.parent != temporary:
         raise SystemExit(f"--work-root must be a direct {temporary}/{WORK_PREFIX}* child")
     if root.exists() and (not root.is_dir() or any(root.iterdir())):
         raise SystemExit("--work-root must not exist or must be an empty directory")
