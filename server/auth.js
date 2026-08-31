@@ -182,14 +182,9 @@ const createAuth = ({ db, config, now, userService, comparePassword = bcrypt.com
             ? { count: 1, resetAt: current + 60 * 60 * 1000 }
             : { ...entry, count: entry.count + 1 });
     };
-    const registrationEnabled = () => db.prepare(`
-        SELECT 1 FROM app_config WHERE key = 'registration_enabled' AND value = 'true'
-    `).get() !== undefined;
     const register = async ({ username, password, userAgent }) => {
-        if (!registrationEnabled()) throw new ApiError(403, 'registration_disabled');
         const prepared = await users.prepareCreate({ username, password, isAdmin: false });
         return db.transaction(() => {
-            if (!registrationEnabled()) throw new ApiError(403, 'registration_disabled');
             const user = users.insertPrepared(prepared);
             const token = sessions.create(user.id, userAgent);
             return { token, user };
@@ -218,7 +213,6 @@ const createAuth = ({ db, config, now, userService, comparePassword = bcrypt.com
 
     router.post('/register', async (req, res, next) => {
         try {
-            if (!registrationEnabled()) throw new ApiError(403, 'registration_disabled');
             recordRegistrationAttempt(req);
             const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
             const password = req.body?.password;

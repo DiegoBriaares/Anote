@@ -33,19 +33,35 @@ const securityHeaders = (_req, res, next) => {
     next();
 };
 
+const canonicalHttpOrigin = (value) => {
+    if (typeof value !== 'string' || !value || value.includes(',') || /\s/.test(value)) return null;
+    try {
+        const parsed = new URL(value);
+        if (!['http:', 'https:'].includes(parsed.protocol)
+            || parsed.username || parsed.password
+            || parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
+        return parsed.origin;
+    } catch {
+        return null;
+    }
+};
+
 const readExpectedOrigin = (req) => {
-    return `${req.protocol}://${req.get('host')}`;
+    const protocol = typeof req.protocol === 'string' ? req.protocol.toLowerCase() : '';
+    const host = req.get('x-forwarded-host') || req.get('host');
+    return canonicalHttpOrigin(`${protocol}://${host || ''}`);
 };
 
 const createSameOriginMutations = (allowedOrigins = []) => {
-    const developmentOrigins = new Set(allowedOrigins);
+    const developmentOrigins = new Set(allowedOrigins.map(canonicalHttpOrigin).filter(Boolean));
     return (req, _res, next) => {
         if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
-        const origin = req.get('origin');
-        if (!origin || origin === 'null' || origin.includes(',')) {
+        const origin = canonicalHttpOrigin(req.get('origin'));
+        const expectedOrigin = readExpectedOrigin(req);
+        if (!origin || !expectedOrigin) {
             return next(new ApiError(403, 'origin_not_allowed'));
         }
-        if (origin !== readExpectedOrigin(req) && !developmentOrigins.has(origin)) {
+        if (origin !== expectedOrigin && !developmentOrigins.has(origin)) {
             return next(new ApiError(403, 'origin_not_allowed'));
         }
         next();
@@ -112,10 +128,12 @@ const createRateLimiter = ({ windowMs, maxAttempts, key }) => {
 
 module.exports = {
     ApiError,
+    canonicalHttpOrigin,
     createRateLimiter,
     createSameOriginMutations,
     errorHandler,
     notFound,
     requestContext,
+    readExpectedOrigin,
     securityHeaders
 };

@@ -1,3 +1,5 @@
+import { createRequestId } from '../../api/requestId';
+
 export interface GroupEventDraft {
     title: string;
     startTime: string;
@@ -38,7 +40,7 @@ export const buildQueuedGroupEvent = (draft: GroupEventDraft): QueuedGroupEvent 
     if (!title) return null;
 
     return {
-        id: crypto.randomUUID(),
+        id: createRequestId(),
         title,
         startTime: draft.startTime.trim() ? draft.startTime.trim() : null,
         priority: parseGroupEventPriority(draft.priority),

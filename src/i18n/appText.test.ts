@@ -32,6 +32,13 @@ describe('user-facing connection messages', () => {
         expect(getApiErrorText('SESSION_REQUIRED')).toContain('Your session ended');
     });
 
+    it('localizes proxy-origin recovery and permanent registration policy', () => {
+        expect(getApiErrorText('ORIGIN_NOT_ALLOWED', 'en')).toContain('Tailscale Serve');
+        expect(getApiErrorText('ORIGIN_NOT_ALLOWED', 'es')).toContain('Tailscale Serve');
+        expect(getApiErrorText('IMMUTABLE_CONFIG_KEY', 'en')).toContain('always available');
+        expect(getApiErrorText('IMMUTABLE_CONFIG_KEY', 'es')).toContain('siempre está disponible');
+    });
+
     it('does not expose internal API or port instructions', () => {
         for (const language of ['en', 'es']) {
             const text = Object.values(getAppText(language)).join(' ');

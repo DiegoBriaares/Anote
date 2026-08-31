@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCalendarStore } from '../../store/calendarStore';
 import { User, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n/languageContext';
 
 export const Login: React.FC = () => {
-    const { login, register, error, isLoading, appConfig } = useCalendarStore();
+    const { login, register, error, isLoading } = useCalendarStore(useShallow((state) => ({
+        login: state.login,
+        register: state.register,
+        error: state.error,
+        isLoading: state.isLoading
+    })));
     const { language, setLanguage, text } = useTranslation();
     const [isLogin, setIsLogin] = useState(true);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const registrationValue = appConfig?.registration_enabled;
-    const registrationEnabled = registrationValue === true
-        || registrationValue === 'true'
-        || registrationValue === '1';
-    const isRegistration = !isLogin && registrationEnabled;
+    const isRegistration = !isLogin;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -104,21 +106,15 @@ export const Login: React.FC = () => {
                     </button>
                 </form>
 
-                {registrationEnabled ? (
-                    <div className="mt-6 text-center">
-                        <button
-                            type="button"
-                            onClick={() => { setIsLogin(!isLogin); }}
-                            className="text-xs font-mono text-stone-500 hover:text-orange-600 transition-colors uppercase tracking-wide"
-                        >
-                            {isRegistration ? text.auth.signInPrompt : text.auth.createAccountPrompt}
-                        </button>
-                    </div>
-                ) : (
-                    <p className="mt-6 text-center text-xs text-stone-500" role="status">
-                        {text.errors.REGISTRATION_DISABLED}
-                    </p>
-                )}
+                <div className="mt-6 text-center">
+                    <button
+                        type="button"
+                        onClick={() => { setIsLogin(!isLogin); }}
+                        className="text-xs font-mono text-stone-500 hover:text-orange-600 transition-colors uppercase tracking-wide"
+                    >
+                        {isRegistration ? text.auth.signInPrompt : text.auth.createAccountPrompt}
+                    </button>
+                </div>
                 <div className="mt-4 flex justify-center gap-2" aria-label={text.common.language}>
                     {(['en', 'es'] as const).map((option) => (
                         <button

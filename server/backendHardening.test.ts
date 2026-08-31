@@ -159,6 +159,18 @@ describe('fail-closed schema migrations', () => {
         closeDatabase(db);
     });
 
+    it('normalizes a closed schema-5 installation to permanently open registration', () => {
+        const { db } = createTestDatabase();
+        db.prepare('DELETE FROM schema_migrations WHERE version = 6').run();
+        db.prepare("UPDATE app_config SET value = 'false' WHERE key = 'registration_enabled'").run();
+
+        expect(migrateDatabase(db, { defaultTimeZone: 'UTC' })).toBe(SCHEMA_VERSION);
+        expect(db.prepare("SELECT value FROM app_config WHERE key = 'registration_enabled'").get().value).toBe('true');
+        expect(db.prepare('SELECT name FROM schema_migrations WHERE version = 6').get().name)
+            .toBe('registration-always-open');
+        closeDatabase(db);
+    });
+
     it('rebuilds the representative legacy ownership graph without losing valid business rows', () => {
         const directory = temporaryDirectory();
         const db = createDatabase(path.join(directory, 'representative-legacy.db'));
@@ -695,7 +707,7 @@ describe('credentials and opaque sessions', () => {
         expect(db.prepare('SELECT password FROM users WHERE id = ?').get(user.id).password).toMatch(/^\$2b\$12\$/);
         await expect(users.create({ username: 'caseowner', password: 'another valid password' }))
             .rejects.toMatchObject({ code: 'USERNAME_UNAVAILABLE' });
-        expect(db.prepare("SELECT value FROM app_config WHERE key = 'registration_enabled'").get().value).toBe('false');
+        expect(db.prepare("SELECT value FROM app_config WHERE key = 'registration_enabled'").get().value).toBe('true');
         closeDatabase(db);
     });
 
@@ -732,7 +744,7 @@ describe('credentials and opaque sessions', () => {
 
     it('commits registration and its initial session atomically', async () => {
         const { db } = createTestDatabase();
-        db.prepare("UPDATE app_config SET value = 'true' WHERE key = 'registration_enabled'").run();
+        db.prepare("UPDATE app_config SET value = 'false' WHERE key = 'registration_enabled'").run();
         const auth = createAuth({
             db,
             config: {
@@ -851,14 +863,12 @@ describe('session and request boundary', () => {
             headers: { 'content-type': 'application/json', origin: baseUrl },
             body: JSON.stringify({ username: 'new-user', password: 'correct horse battery staple' })
         });
-        expect(registration.status).toBe(403);
-        expect(await registration.json()).toMatchObject({ error: { code: 'REGISTRATION_DISABLED' } });
+        expect(registration.status).toBe(201);
+        expect(await registration.json()).toMatchObject({ user: { username: 'new-user' } });
 
-        db.prepare("UPDATE app_config SET value = 'true' WHERE key = 'registration_enabled'").run();
         const registrationCases = [
             { username: 'admin', password: 'correct horse battery staple', code: 'REGISTRATION_REJECTED' },
-            { username: '', password: 'correct horse battery staple', code: 'REGISTRATION_REJECTED' },
-            { username: 'too-short', password: '12345678901', code: 'PASSWORD_TOO_SHORT' }
+            { username: '', password: 'correct horse battery staple', code: 'REGISTRATION_REJECTED' }
         ];
         for (const registrationCase of registrationCases) {
             const response = await fetch(`${baseUrl}/register`, {
@@ -937,6 +947,21 @@ describe('session and request boundary', () => {
         expect(cookie).toContain('HttpOnly');
         expect(cookie).toContain('SameSite=Strict');
         expect(cookie).toContain('Path=/api');
+
+        const proxiedOrigin = 'https://anote.example.test:11443';
+        const proxiedLogin = await fetch(`${baseUrl}/login`, {
+            method: 'POST',
+            headers: {
+                host: 'anote.example.test:11443',
+                'x-forwarded-host': 'anote.example.test:11443',
+                'x-forwarded-proto': 'https',
+                origin: proxiedOrigin,
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({ username: 'viewer', password: 'correct horse battery staple' })
+        });
+        expect(proxiedLogin.status).toBe(200);
+        expect(proxiedLogin.headers.get('set-cookie')).toContain('Secure');
 
         for (const rawTable of ['event_notes', 'app_config', 'roles']) {
             const deniedRawTable = await fetch(`${baseUrl}/admin/database/${rawTable}`, { headers: { cookie } });
@@ -1101,6 +1126,18 @@ describe('session and request boundary', () => {
         expect(staleConfig.status).toBe(409);
         expect(await staleConfig.json()).toMatchObject({ error: { code: 'CONFIG_CONFLICT' } });
         expect(db.prepare("SELECT value FROM app_config WHERE key = 'app_title'").get().value).toBe('Anote test');
+
+        const registrationCannotClose = await fetch(`${baseUrl}/admin/config`, {
+            method: 'PUT',
+            headers: { cookie, 'content-type': 'application/json', origin: baseUrl },
+            body: JSON.stringify({ config: {
+                config_version: (await (await fetch(`${baseUrl}/config`)).json()).data.config_version,
+                registration_enabled: false
+            } })
+        });
+        expect(registrationCannotClose.status).toBe(409);
+        expect(await registrationCannotClose.json()).toMatchObject({ error: { code: 'IMMUTABLE_CONFIG_KEY' } });
+        expect(db.prepare("SELECT value FROM app_config WHERE key = 'registration_enabled'").get().value).toBe('true');
 
         const rejected = await fetch(`${baseUrl}/admin/config`, {
             method: 'PUT',

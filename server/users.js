@@ -113,7 +113,6 @@ const createUserService = ({
                 if (error.code?.startsWith('SQLITE_CONSTRAINT')) throw new ApiError(409, 'username_unavailable');
                 throw error;
             }
-            db.prepare("INSERT OR REPLACE INTO app_config (key, value) VALUES ('registration_enabled', 'false')").run();
             return { id, username, isAdmin: true, avatarUrl: null, preferences: {} };
         });
         return createFirst.immediate();
