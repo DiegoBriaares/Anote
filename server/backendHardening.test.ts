@@ -32,6 +32,16 @@ interface TestDatabase {
 
 const cleanupPaths: string[] = [];
 
+const fixedEventIds = (...ids: string[]) => {
+    let index = 0;
+    return () => {
+        const id = ids[index];
+        if (!id) throw new Error('test event ID sequence exhausted');
+        index += 1;
+        return id;
+    };
+};
+
 const temporaryDirectory = () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'anote-backend-'));
     cleanupPaths.push(directory);
@@ -404,7 +414,11 @@ describe('event transaction and revision ownership', () => {
     it('rejects stale writes and moves incomplete events atomically', () => {
         const { db } = createTestDatabase();
         insertUser(db, 'u1');
-        const service = createEventService({ db, now: () => new Date('2026-01-01T12:00:00.000Z') });
+        const service = createEventService({
+            db,
+            now: () => new Date('2026-01-01T12:00:00.000Z'),
+            idFactory: fixedEventIds('a', 'b')
+        });
         const created = service.createMany('u1', [
             { id: 'a', title: 'A', date: '2026-01-01' },
             { id: 'b', title: 'B', date: '2026-01-01' }
@@ -435,7 +449,7 @@ describe('event transaction and revision ownership', () => {
     it('preserves server-owned automatic provenance across ordinary event edits', () => {
         const { db } = createTestDatabase();
         insertUser(db, 'u1');
-        const events = createEventService({ db });
+        const events = createEventService({ db, idFactory: fixedEventIds('owned-marker') });
         events.createMany('u1', [{
             id: 'owned-marker', title: 'Original', date: '2026-01-02',
             resources: { automaticProgramArrivalDate: 'client-forgery', originDates: ['2026-01-01'] }
@@ -508,7 +522,7 @@ describe('event transaction and revision ownership', () => {
         const { db } = createTestDatabase();
         insertUser(db, 'u1');
         insertUser(db, 'u2');
-        const events = createEventService({ db });
+        const events = createEventService({ db, idFactory: fixedEventIds('first', 'second', 'foreign') });
         events.createMany('u1', [
             { id: 'first', title: 'First', date: '2026-01-01' },
             { id: 'second', title: 'Second', date: '2026-01-01' }
@@ -549,7 +563,9 @@ describe('automatic program transaction ownership', () => {
         const now = () => new Date('2026-01-01T12:00:00.000Z');
         const { db } = createTestDatabase(now);
         insertUser(db, 'u1');
-        const events = createEventService({ db, now });
+        const events = createEventService({
+            db, now, idFactory: fixedEventIds('pending-a', 'pending-b', 'done')
+        });
         events.createMany('u1', [
             { id: 'pending-a', title: 'A', date: '2026-01-01' },
             { id: 'pending-b', title: 'B', date: '2026-01-01' },
@@ -574,7 +590,7 @@ describe('automatic program transaction ownership', () => {
         const now = () => new Date('2026-01-01T12:00:00.000Z');
         const { db } = createTestDatabase(now);
         insertUser(db, 'u1');
-        createEventService({ db, now }).createMany('u1', [
+        createEventService({ db, now, idFactory: fixedEventIds('a', 'b') }).createMany('u1', [
             { id: 'a', title: 'A', date: '2026-01-01' },
             { id: 'b', title: 'B', date: '2026-01-01' }
         ]);
@@ -597,7 +613,9 @@ describe('automatic program transaction ownership', () => {
         const now = () => new Date('2026-01-03T12:00:00.000Z');
         const { db } = createTestDatabase(now);
         insertUser(db, 'u1');
-        const events = createEventService({ db, now });
+        const events = createEventService({
+            db, now, idFactory: fixedEventIds('old-a', 'old-b', 'today')
+        });
         events.createMany('u1', [
             { id: 'old-a', title: 'Old A', date: '2026-01-01' },
             { id: 'old-b', title: 'Old B', date: '2026-01-02' },
@@ -982,24 +1000,28 @@ describe('session and request boundary', () => {
             }] })
         });
         expect(eventResponse.status).toBe(201);
+        const createdEvent = (await eventResponse.json()).data[0];
+        const privateEventId = createdEvent.id;
+        expect(createdEvent).toMatchObject({ title: 'Private', date: '2026-01-01', revision: 1 });
+        expect(privateEventId).not.toBe('private-event');
         db.prepare('UPDATE events SET resources = ? WHERE id = ?').run(
             JSON.stringify({
                 automaticProgramArrivalDate: '2026-01-01',
                 originDates: ['2025-12-31']
             }),
-            'private-event'
+            privateEventId
         );
         const adminEventsResponse = await fetch(`${baseUrl}/admin/events`, { headers: { cookie } });
         expect(adminEventsResponse.status).toBe(200);
         const adminEvent = (await adminEventsResponse.json()).data
-            .find((event: { id: string }) => event.id === 'private-event');
-        expect(adminEvent).toMatchObject({ id: 'private-event', title: 'Private', username: 'admin' });
+            .find((event: { id: string }) => event.id === privateEventId);
+        expect(adminEvent).toMatchObject({ id: privateEventId, title: 'Private', username: 'admin' });
         expect(adminEvent).not.toHaveProperty('priority');
         expect(adminEvent).not.toHaveProperty('note');
         expect(adminEvent).not.toHaveProperty('link');
         db.exec(`
             CREATE TRIGGER redact_injected_failure BEFORE INSERT ON events
-            WHEN NEW.id = 'redaction-probe'
+            WHEN NEW.title = 'Probe'
             BEGIN SELECT RAISE(ABORT, '/private/secret.db password=do-not-leak'); END;
         `);
         const redactedFailure = await fetch(`${baseUrl}/events`, {
@@ -1026,6 +1048,8 @@ describe('session and request boundary', () => {
             body: JSON.stringify({ events: [{ id: 'private-postponed', title: 'Private postponed', date: null }] })
         });
         expect(postponedResponse.status).toBe(201);
+        const privatePostponedId = (await postponedResponse.json()).data[0].id;
+        expect(privatePostponedId).not.toBe('private-postponed');
         const roleResponse = await fetch(`${baseUrl}/roles`, {
             method: 'POST',
             headers: { cookie, 'content-type': 'application/json', origin: baseUrl },
@@ -1040,7 +1064,7 @@ describe('session and request boundary', () => {
             'color', 'id', 'isEnabled', 'label', 'orderIndex', 'username'
         ]);
         expect(adminRole).toMatchObject({ label: 'Private role', username: 'admin', isEnabled: true });
-        const saveNote = await fetch(`${baseUrl}/events/private-event/notes`, {
+        const saveNote = await fetch(`${baseUrl}/events/${privateEventId}/notes`, {
             method: 'POST',
             headers: { cookie, 'content-type': 'application/json', origin: baseUrl },
             body: JSON.stringify({ roleId: role.id, content: 'owner only' })
@@ -1053,18 +1077,18 @@ describe('session and request boundary', () => {
             body: JSON.stringify({ username: 'viewer', password: 'correct horse battery staple' })
         });
         const viewerCookie = viewerLogin.headers.get('set-cookie');
-        const deniedNote = await fetch(`${baseUrl}/events/private-event/notes`, { headers: { cookie: viewerCookie } });
+        const deniedNote = await fetch(`${baseUrl}/events/${privateEventId}/notes`, { headers: { cookie: viewerCookie } });
         expect(deniedNote.status).toBe(404);
         expect(await deniedNote.json()).toMatchObject({ error: { code: 'EVENT_NOT_FOUND' } });
 
-        const deniedEvent = await fetch(`${baseUrl}/events/private-event`, {
+        const deniedEvent = await fetch(`${baseUrl}/events/${privateEventId}`, {
             method: 'PUT',
             headers: { cookie: viewerCookie, 'content-type': 'application/json', origin: baseUrl },
             body: JSON.stringify({ title: 'Tampered', date: '2026-01-01', revision: 1 })
         });
         expect(deniedEvent.status).toBe(409);
         expect(await deniedEvent.json()).toMatchObject({ error: { code: 'EVENT_CONFLICT_OR_MISSING' } });
-        const deniedPostponed = await fetch(`${baseUrl}/postponed-events/private-postponed`, {
+        const deniedPostponed = await fetch(`${baseUrl}/postponed-events/${privatePostponedId}`, {
             method: 'DELETE',
             headers: { cookie: viewerCookie, 'content-type': 'application/json', origin: baseUrl },
             body: JSON.stringify({ revision: 1 })
@@ -1081,7 +1105,7 @@ describe('session and request boundary', () => {
         const deniedAdmin = await fetch(`${baseUrl}/admin/users`, { headers: { cookie: viewerCookie } });
         expect(deniedAdmin.status).toBe(403);
         expect(await deniedAdmin.json()).toMatchObject({ error: { code: 'ADMIN_REQUIRED' } });
-        expect(db.prepare("SELECT title FROM events WHERE id = 'private-event'").get().title).toBe('Private');
+        expect(db.prepare('SELECT title FROM events WHERE id = ?').get(privateEventId).title).toBe('Private');
 
         const notYetFriend = await fetch(`${baseUrl}/friends/admin/events`, { headers: { cookie: viewerCookie } });
         expect(notYetFriend.status).toBe(404);
@@ -1096,7 +1120,7 @@ describe('session and request boundary', () => {
             body: JSON.stringify({
                 friendIds: ['viewer'],
                 dateKeys: ['2026-01-01'],
-                eventIds: ['private-event']
+                eventIds: [privateEventId]
             })
         });
         expect(sharedEvents.status).toBe(200);
@@ -1202,7 +1226,10 @@ describe('attachment authorization', () => {
         const { db, directory } = createTestDatabase();
         insertUser(db, 'u1');
         insertUser(db, 'u2');
-        createEventService({ db }).createMany('u1', [{ id: 'event', title: 'Event', date: '2026-01-01' }]);
+        const created = createEventService({ db, idFactory: fixedEventIds('event') })
+            .createMany('u1', [{ id: 'ignored-client-id', title: 'Event', date: '2026-01-01' }]);
+        expect(created[0]).toMatchObject({ id: 'event', title: 'Event', date: '2026-01-01', revision: 1 });
+        expect(db.prepare('SELECT 1 FROM events WHERE id = ?').get('ignored-client-id')).toBeUndefined();
         const uploadDir = path.join(directory, 'uploads');
         fs.mkdirSync(uploadDir);
         const service = createAttachmentService({ db, uploadDir });
@@ -1278,7 +1305,9 @@ describe('attachment authorization', () => {
         fs.mkdirSync(uploadDir);
         const attachments = createAttachmentService({ db, uploadDir });
         const retireAttachments = attachments.retireAfterMutation;
-        const events = createEventService({ db, retireAttachments });
+        const events = createEventService({
+            db, retireAttachments, idFactory: fixedEventIds('retired-event')
+        });
         const users = createUserService({ db, retireAttachments });
         const metadata = createCalendarMetadataService({ db, retireAttachments });
         const admin = createAdminService({ db, eventService: events, userService: users, retireAttachments });
@@ -1328,7 +1357,11 @@ describe('attachment authorization', () => {
         const uploadDir = path.join(directory, 'uploads');
         fs.mkdirSync(uploadDir);
         const attachments = createAttachmentService({ db, uploadDir });
-        const events = createEventService({ db, retireAttachments: attachments.retireAfterMutation });
+        const events = createEventService({
+            db,
+            retireAttachments: attachments.retireAfterMutation,
+            idFactory: fixedEventIds('protected-event')
+        });
         events.createMany('u1', [{ id: 'protected-event', title: 'Protected', date: '2026-01-01' }]);
         const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
         const note = attachments.create({

@@ -14,6 +14,9 @@ for affected work.
   construct bearer tokens, hostnames or duplicate response classification.
 - Browser correlation IDs come from the transport-owned capability fallback;
   callers never invoke secure-context-only UUID APIs directly.
+- Persisted domain identities never reuse request-correlation fallbacks. The
+  API owns durable event UUIDs; browser-only draft/queue labels are omitted
+  from create payloads and replaced by the authoritative response/read model.
 - Focused state owners coordinate client histories; server authorization,
   revisions, transactions, schedule clocks and run ledgers remain authoritative.
 - Write every visible label, status, error, dialog, generated label, tooltip and

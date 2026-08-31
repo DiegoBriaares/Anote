@@ -1,5 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
-  <title id="title">Anote calendar</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" aria-hidden="true" focusable="false">
   <rect x="64" y="64" width="896" height="896" rx="224" fill="#f97316"/>
   <rect x="184" y="214" width="656" height="620" rx="88" fill="#fff7ed"/>
   <rect x="184" y="214" width="656" height="190" rx="88" fill="#c2410c"/>

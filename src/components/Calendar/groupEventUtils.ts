@@ -40,6 +40,7 @@ export const buildQueuedGroupEvent = (draft: GroupEventDraft): QueuedGroupEvent 
     if (!title) return null;
 
     return {
+        // Queue identity is tab-local UI state and is never sent as event ID.
         id: createRequestId(),
         title,
         startTime: draft.startTime.trim() ? draft.startTime.trim() : null,

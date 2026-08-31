@@ -3,7 +3,6 @@ import { eachDayOfInterval } from 'date-fns';
 import { ApiError } from '../../api/client';
 import type { CalendarEvent, UserPreferences } from '../../api/contracts';
 import { eventsApi, type WireRecord } from '../../api/events';
-import { createRequestId } from '../../api/requestId';
 import { getApiErrorText, getAppText } from '../../i18n/appText';
 import { formatDate } from '../../utils/dateUtils';
 import { eventStatusFields, readEventStatus } from '../../utils/eventStatus';
@@ -49,8 +48,20 @@ const toWireEvent = (event: CalendarEvent): WireRecord => ({
         : null
 });
 
+const toCreateWireEvent = (event: CalendarEvent): WireRecord => {
+    const wire = toWireEvent(event);
+    delete wire.id;
+    delete wire.revision;
+    delete wire.version;
+    return wire;
+};
+
 const mergeEvents = (source: Record<string, CalendarEvent[]>, additions: CalendarEvent[]) => (
     additions.reduce(upsertEventIntoDateMap, source)
+);
+
+const readCreatedEvents = (rows: WireRecord[], postponed = false) => (
+    rows.map((row) => readWireEvent(row, null, postponed))
 );
 
 const groupEvents = (
@@ -87,7 +98,9 @@ const createCalendarEvent = (
 ): CalendarEvent => {
     const rawTime = entry.startTime ?? entry.time;
     return {
-        id: createRequestId(),
+        // The API owns durable event identity with Node's cryptographic UUID.
+        // Creation drafts never enter application state with this placeholder.
+        id: '',
         title: entry.title,
         date,
         startTime: rawTime?.trim() || null,
@@ -181,8 +194,9 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
         });
         if (events.length === 0) return;
         try {
-            await eventsApi.create(events.map(toWireEvent));
-            set((state) => ({ events: mergeEvents(state.events, events) }));
+            const response = await eventsApi.create(events.map(toCreateWireEvent));
+            const persisted = readCreatedEvents(response.data);
+            set((state) => ({ events: mergeEvents(state.events, persisted) }));
             await get().fetchEvents();
         } catch (error) {
             if (isSessionError(error)) logoutAndReset();
@@ -197,8 +211,9 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
             : []);
         if (events.length === 0) return false;
         try {
-            await eventsApi.create(events.map(toWireEvent));
-            set((state) => ({ events: mergeEvents(state.events, events) }));
+            const response = await eventsApi.create(events.map(toCreateWireEvent));
+            const persisted = readCreatedEvents(response.data);
+            set((state) => ({ events: mergeEvents(state.events, persisted) }));
             await get().fetchEvents();
             return true;
         } catch (error) {
@@ -227,8 +242,9 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
         const event = createCalendarEvent(entry, formatDate(date));
         set({ actionError: null });
         try {
-            await eventsApi.create([toWireEvent(event)]);
-            set((state) => ({ events: upsertEventIntoDateMap(state.events, event) }));
+            const response = await eventsApi.create([toCreateWireEvent(event)]);
+            const persisted = readCreatedEvents(response.data);
+            set((state) => ({ events: mergeEvents(state.events, persisted) }));
             await get().fetchEvents();
             return true;
         } catch (error) {
@@ -327,9 +343,10 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
         }] : []);
         if (events.length === 0) return false;
         try {
-            await eventsApi.createPostponed(events.map(toWireEvent));
+            const response = await eventsApi.createPostponed(events.map(toCreateWireEvent));
+            const persisted = readCreatedEvents(response.data, true);
             set((state) => ({
-                postponedEvents: sortEventsByTimeThenTitle([...state.postponedEvents, ...events])
+                postponedEvents: sortEventsByTimeThenTitle([...state.postponedEvents, ...persisted])
             }));
             await get().fetchPostponedEvents();
             return true;
@@ -347,9 +364,10 @@ export const createEventsOwner = ({ set, get, logoutAndReset }: OwnerContext): E
             postponedView: entry.postponedView ?? DEFAULT_POSTPONED_EVENT_DOMAIN
         };
         try {
-            await eventsApi.createPostponed([toWireEvent(event)]);
+            const response = await eventsApi.createPostponed([toCreateWireEvent(event)]);
+            const persisted = readCreatedEvents(response.data, true);
             set((state) => ({
-                postponedEvents: sortEventsByTimeThenTitle([...state.postponedEvents, event])
+                postponedEvents: sortEventsByTimeThenTitle([...state.postponedEvents, ...persisted])
             }));
             await get().fetchPostponedEvents();
         } catch (error) {

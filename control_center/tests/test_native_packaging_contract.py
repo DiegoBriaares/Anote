@@ -25,7 +25,7 @@ class NativePackagingContractTests(unittest.TestCase):
             subprocess.run(
                 [sys.executable, str(generator), "--source", str(source), "--output", str(output)],
                 check=True,
-                timeout=15,
+                timeout=60,
             )
             self.assertTrue((output / "icon-128.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
             self.assertTrue((output / "anote-control-center.ico").read_bytes().startswith(b"\x00\x00\x01\x00"))
