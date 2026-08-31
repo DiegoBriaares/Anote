@@ -28,6 +28,9 @@ completely before changing this directory.
   state under the operation lock.
 - Diagnostics redact secrets/content before bounding output. Worker threads
   never update Tk widgets directly.
+- Generated runtime configuration owns host filesystem capability: macOS
+  requires POSIX modes; Windows may reject only known unsupported `chmod`
+  operations. Containers never infer this from their Linux process identity.
 - Native packages and the Tk window use the repository-owned Anote calendar
   glyph through the deterministic icon generator. Windows taskbar process
   identity and the macOS Dock tile must be assigned explicitly; default

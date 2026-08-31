@@ -280,7 +280,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--source-commit")
     value.add_argument("--host-platform", required=True, choices=("windows-amd64", "macos-arm64"))
     value.add_argument("--output", type=Path)
-    value.add_argument("--minimum-control-center-version", default="0.1.0")
+    value.add_argument("--minimum-control-center-version", default="0.1.9")
     value.add_argument("--minimum-upgradable-version", default="0.0.0")
     value.add_argument("--minimum-data-schema", type=int, default=0)
     value.add_argument("--maximum-data-schema", type=int, default=6)

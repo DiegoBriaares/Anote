@@ -4,6 +4,7 @@ const path = require('path');
 const express = require('express');
 const multer = require('multer');
 
+const { POSIX_MODE_ENFORCEMENT, applyFileMode } = require('./file-modes');
 const { ApiError } = require('./http');
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -73,7 +74,12 @@ const fileHasExpectedSignature = (filePath, mimeType) => {
     }
 };
 
-const createAttachmentService = ({ db, uploadDir, now = () => new Date() }) => {
+const createAttachmentService = ({
+    db,
+    uploadDir,
+    now = () => new Date(),
+    posixModeEnforcement = POSIX_MODE_ENFORCEMENT.REQUIRED
+}) => {
     const lstatIfExists = (filePath) => {
         try {
             return fs.lstatSync(filePath);
@@ -87,13 +93,9 @@ const createAttachmentService = ({ db, uploadDir, now = () => new Date() }) => {
     // If the process exits around the database commit, an offline backup/checkpoint
     // therefore always carries the bytes needed by startup reconciliation.
     const retirementDir = path.join(uploadDir, '.anote-attachment-retirement');
-    for (const directory of [stagingDir, retirementDir]) {
+    for (const directory of [uploadDir, stagingDir, retirementDir]) {
         fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-        try {
-            fs.chmodSync(directory, 0o700);
-        } catch (error) {
-            if (process.platform !== 'win32') throw error;
-        }
+        applyFileMode(directory, 0o700, posixModeEnforcement);
     }
     for (const entry of fs.readdirSync(stagingDir)) {
         const candidate = path.join(stagingDir, entry);
@@ -226,11 +228,7 @@ const createAttachmentService = ({ db, uploadDir, now = () => new Date() }) => {
             const stats = fs.lstatSync(temporary);
             if (!stats.isFile() || stats.size === 0) throw new ApiError(400, 'unsupported_attachment_type');
             if (stats.size > MAX_ATTACHMENT_BYTES) throw new ApiError(413, 'attachment_too_large');
-            try {
-                fs.chmodSync(temporary, 0o600);
-            } catch (error) {
-                if (process.platform !== 'win32') throw error;
-            }
+            applyFileMode(temporary, 0o600, posixModeEnforcement);
             if (!['avatar', 'note', 'background'].includes(purpose)) throw new ApiError(400, 'invalid_attachment_purpose');
             if (!CONTENT_TYPES[file.mimetype] || !fileHasExpectedSignature(temporary, file.mimetype)) {
                 throw new ApiError(400, 'unsupported_attachment_type');

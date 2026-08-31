@@ -116,6 +116,16 @@ Incremental reliability evidence on 2026-08-31 is:
   real Docker Desktop. Exact health identities and schema 6 passed; the safety
   harness removed every disposable root/project while the pre-existing healthy
   production containers remained running.
+- **WINDOWS-STORAGE-1.0.4-SOURCE-GATE:** the reported Windows/amd64 failure
+  established the pre-fix cause at `/data/calendar.db`. On the corrected source,
+  privacy guard, lint, production build and 37/37 application files with
+  157/157 tests passed; Control Center passed 88/88 owner tests and both host
+  self-checks at version 0.1.9. The focused owner injected the real Windows
+  `EPERM` result through database and attachment startup, proved strict macOS
+  behavior and rejected unrelated `EACCES`. A disposable production API image
+  then ran as `1000:1000`, migrated schema 6, initialized every attachment
+  directory and returned exact readiness from an isolated bind mount. The
+  affected native Windows checkpoint retry remains the release gate.
 
 A broad gate alone does not close authorization, failure atomicity, migration
 or recovery. The rows below name the focused owner evidence within those final
@@ -232,6 +242,7 @@ results.
 | OPS-024 Unreadable data could crash initial read-model construction | Existing-data classification handled `iterdir` errors but not an earlier `assert_safe`/stat permission failure. | A permission-denied data root crashed the window instead of failing closed toward adoption. | Treat filesystem `OSError` across the complete classification probe as existing data while preserving typed unsafe-link failures. | **Closed.** Injected permission refusal returns existing-data guidance without crossing the lifecycle boundary. |
 | OPS-025 Acceptance work-root symlink identity was resolved away | The native Docker gate canonicalized its work root before testing `is_symlink`. | A prefixed temporary symlink could redirect final recursive cleanup to its target. | Validate the lexical direct child and symlink identity before canonicalization; then separately prove the resolved parent. | **Closed.** A real temporary symlink is rejected and its target remains intact. |
 | OPS-026 Native Control Center used the default launcher glyph | Neither native build initially supplied a complete process-level identity. Version 0.1.7 wired installer, bundle and Tk image inputs, but an installed process could still inherit Python/Tk in the live Dock or taskbar. | Installed Anote looked like a generic Python application and was hard to distinguish from Barcelonnette Control Center. | One orange calendar SVG, deterministic standard-library PNG/ICO generation, macOS ICNS derivation, explicit Windows AppUserModelID before UI and on installed shortcuts, native macOS application-icon assignment and Tk/Inno wiring. | **Closed in 0.1.8.** Owner tests prove platform dispatch and exact native asset selection; packaged self-check requires the live assets, Windows CI verifies the installed shortcut's explicit icon and application identity, and the macOS build proves the bundle icon before native visual inspection. |
+| OPS-027 Linux container identity hid Windows bind-mount semantics | Database and attachment startup tolerated `chmod` failure only when `process.platform === 'win32'`; the deployed process is Linux on both supported hosts. A real Windows/amd64 checkpoint apply failed with `EPERM` on `/data/calendar.db` while Docker, images and Compose were healthy. | Every Windows checkpoint migration and fresh runtime could abort before readiness; fixing only the database call would defer the same failure to attachment-directory initialization. Broadly ignoring permission failures would conceal real storage denial on macOS/Linux. | Make the verified host platform emit one explicit POSIX-mode capability. One server owner enforces restrictive modes, tolerating only unsupported-operation codes for a Windows bind mount. Keep all other failures fatal and map recognized runtime storage failure to safe EN/ES guidance. | **Closed in source.** WINDOWS-STORAGE-1.0.4-SOURCE-GATE proves the owner, runtime-generation and packaged-container boundaries. Anote 1.0.4 requires Control Center 0.1.9 so the capability cannot be omitted. The affected native Windows checkpoint retry remains an explicit release gate, not inferred from macOS. |
 
 ## 4. Requirements-to-owner-to-evidence matrix
 

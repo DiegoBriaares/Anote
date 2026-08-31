@@ -207,8 +207,17 @@ class DockerRuntime:
     ) -> CommandResult:
         result = self.executor.run(arguments, input_bytes=input_bytes, timeout=timeout)
         if result.returncode != 0:
-            raise RuntimeCommandError(message, code="docker_command_failed")
+            raise RuntimeCommandError(message, code=self._failure_code(result))
         return result
+
+    @staticmethod
+    def _failure_code(result: CommandResult) -> str:
+        output = f"{result.stdout}\n{result.stderr}".lower()
+        if "chmod" in output and "/data/" in output and any(
+            marker in output for marker in ("eperm", "operation not permitted", "enotsup", "not supported")
+        ):
+            return "runtime_storage_permissions"
+        return "docker_command_failed"
 
     @staticmethod
     def _numeric_version(value: str) -> tuple[int, ...]:
@@ -301,6 +310,7 @@ class DockerRuntime:
             "ANOTE_BIND_ADDRESS": configuration.bind_address,
             "ANOTE_PUBLIC_PORT": str(configuration.public_port),
             "ANOTE_DEFAULT_TIME_ZONE": configuration.timezone,
+            "ANOTE_POSIX_MODE_ENFORCEMENT": "unsupported" if self.platform.host_os == "windows" else "required",
             "ANOTE_RELEASE_ID": release.manifest.release_id,
             "ANOTE_RELEASE_VERSION": release.manifest.version,
             "ANOTE_SOURCE_COMMIT": release.manifest.source_commit,
@@ -372,15 +382,18 @@ class DockerRuntime:
         except (KeyError, ValueError) as error:
             raise ContractError("Anote runtime configuration is incomplete.", code="runtime_config_invalid") from error
 
+    def _compose_arguments(self, installation: Installation, arguments: Sequence[str]) -> list[str]:
+        return [
+            "docker", "compose",
+            "--project-name", installation.project_name,
+            "--env-file", str(self.paths.environment),
+            "--file", str(self.paths.compose),
+            *arguments,
+        ]
+
     def _compose(self, installation: Installation, arguments: Sequence[str], *, input_bytes: bytes | None = None, timeout: int = 600) -> CommandResult:
         return self._run(
-            [
-                "docker", "compose",
-                "--project-name", installation.project_name,
-                "--env-file", str(self.paths.environment),
-                "--file", str(self.paths.compose),
-                *arguments,
-            ],
+            self._compose_arguments(installation, arguments),
             input_bytes=input_bytes,
             timeout=timeout,
             message="The managed Anote runtime command failed.",
@@ -397,7 +410,22 @@ class DockerRuntime:
 
     def up(self, installation: Installation, *, wait_seconds: int = 180) -> HealthIdentity:
         self._verify_registered_images(installation)
-        self._compose(installation, ["up", "--detach", "--remove-orphans"], timeout=600)
+        try:
+            self._compose(installation, ["up", "--detach", "--remove-orphans"], timeout=600)
+        except RuntimeCommandError as error:
+            if error.code != "docker_command_failed":
+                raise
+            try:
+                logs = self.executor.run(
+                    self._compose_arguments(installation, ["logs", "--no-color", "--tail", "100", "api"]),
+                    timeout=60,
+                )
+            except Exception:
+                raise error
+            code = self._failure_code(logs)
+            if code != "docker_command_failed":
+                raise RuntimeCommandError("The managed Anote runtime could not start.", code=code) from error
+            raise
         return self.wait_for_health(installation, timeout_seconds=wait_seconds)
 
     def stop(self, installation: Installation) -> None:
