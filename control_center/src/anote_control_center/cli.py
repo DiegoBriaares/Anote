@@ -9,6 +9,7 @@ import tempfile
 from . import __version__
 from .application import load_application
 from .docker_runtime import docker_executable_candidates
+from .desktop_identity import prepare_process_identity
 from .errors import ControlCenterError
 from .i18n import validate_catalogs
 from .lifecycle import validate_timezone
@@ -61,6 +62,16 @@ def main(arguments: list[str] | None = None) -> int:
             content = compose.read_text(encoding="utf-8")
             if "cap_drop:" not in content or "ANOTE_RELEASE_ID" not in content:
                 raise ControlCenterError("Bundled runtime contract is incomplete.", code="self_check_failed")
+            if getattr(sys, "frozen", False):
+                required_icons = ["icon-128.png", "icon-512.png"]
+                if sys.platform == "win32":
+                    required_icons.append("anote-control-center.ico")
+                for icon_name in required_icons:
+                    icon = resources.files("anote_control_center").joinpath("assets").joinpath(icon_name)
+                    if not icon.is_file():
+                        raise ControlCenterError("Bundled launcher identity is incomplete.", code="self_check_failed")
+                if sys.platform == "win32" and not prepare_process_identity():
+                    raise ControlCenterError("Windows taskbar identity is unavailable.", code="self_check_failed")
             with tempfile.TemporaryDirectory(prefix="anote-control-center-self-check-") as directory:
                 application = load_application(
                     state_root=Path(directory) / "state",

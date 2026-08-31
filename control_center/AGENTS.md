@@ -29,8 +29,9 @@ completely before changing this directory.
 - Diagnostics redact secrets/content before bounding output. Worker threads
   never update Tk widgets directly.
 - Native packages and the Tk window use the repository-owned Anote calendar
-  glyph through the deterministic icon generator; default runtime glyphs are
-  not acceptable release output.
+  glyph through the deterministic icon generator. Windows taskbar process
+  identity and the macOS Dock tile must be assigned explicitly; default
+  Python/Tk runtime glyphs are not acceptable release output.
 
 ## Evidence and safety
 

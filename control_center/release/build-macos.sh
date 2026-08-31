@@ -82,6 +82,7 @@ fi
     --paths "$control_center_root/src" \
     --add-data "$runtime_compose:anote_control_center/runtime" \
     --add-data "$icon_root/icon-128.png:anote_control_center/assets" \
+    --add-data "$icon_root/icon-512.png:anote_control_center/assets" \
     "$control_center_root/src/anote_control_center/app.py"
 
 executable="$app_path/Contents/MacOS/$product_name"
@@ -92,6 +93,11 @@ if [[ ! -x "$executable" ]]; then
 fi
 if [[ ! -f "$info_plist" ]]; then
     echo "The packaged Control Center bundle metadata is missing." >&2
+    exit 1
+fi
+bundle_icon="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$info_plist")"
+if [[ "$bundle_icon" != "AnoteControlCenter.icns" || ! -f "$app_path/Contents/Resources/$bundle_icon" ]]; then
+    echo "The macOS application bundle does not own its calendar icon." >&2
     exit 1
 fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $package_version" "$info_plist"

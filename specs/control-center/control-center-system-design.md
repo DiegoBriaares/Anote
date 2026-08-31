@@ -304,8 +304,11 @@ disclosed; required-signing mode fails closed.
 One repository-owned Anote calendar SVG is the launcher identity. A
 standard-library deterministic generator produces the native PNG/ICO inputs;
 macOS `iconutil` produces ICNS from the same pixels. PyInstaller, the Tk window,
-the Windows installer and shortcuts all consume those owned outputs. Native
-packaging fails when generation or the required icon input is missing.
+the Windows installer and shortcuts all consume those owned outputs. Before Tk
+creates UI, Windows assigns the explicit Anote process AppUserModelID; after the
+native window exists, macOS assigns the owned image to `NSApplication`'s Dock
+tile. Native packaging or packaged self-check fails when generation or a
+required runtime icon input is missing.
 
 Application release CI builds `linux/amd64` and `linux/arm64` API/web images
 from one clean commit and immutable multi-platform base digests, inspects the
