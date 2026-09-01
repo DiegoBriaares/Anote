@@ -1,14 +1,31 @@
 import { ApiError } from '../../api/client';
 import { programsApi } from '../../api/programs';
-import { getApiErrorText, getAppText, interpolateText } from '../../i18n/appText';
+import { getApiErrorText, getAppText } from '../../i18n/appText';
+import { storage } from '../../utils/storage';
 
 import type { CalendarState } from '../calendarStore';
 import type { OwnerContext } from './types';
 
 type ProgramsOwner = Pick<CalendarState,
     'fetchPrograms' | 'savePrograms' | 'createProgram' | 'updateProgram' | 'deleteProgram' |
-    'runProgram' | 'pollProgramRunNotifications'
+    'runProgram' | 'pollProgramRunNotifications' | 'clearProgramExecutionNotice'
 >;
+
+const publishExecutionNotice = (
+    set: OwnerContext['set'],
+    name: string,
+    movedEventCount: number
+) => {
+    const notice = { name, movedEventCount };
+    let reloadRequested = false;
+    try {
+        storage.setItem('program-execution-notice', JSON.stringify(notice));
+        reloadRequested = true;
+    } catch {
+        // Keep the committed result visible in memory when persistence is unavailable.
+    }
+    set({ programExecutionNotice: notice, programPageReloadRequested: reloadRequested });
+};
 
 const actionError = (error: unknown) => error instanceof ApiError
     ? getApiErrorText(error.code)
@@ -91,9 +108,12 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
 
     runProgram: async (id, revision) => {
         try {
+            const programName = get().programs.find((program) => program.id === id)?.name
+                || getAppText().programs.defaultName;
             const run = await programsApi.run(id, revision);
             set({ lastProgramRun: run });
             await Promise.all([get().fetchEvents(), get().fetchPrograms()]);
+            publishExecutionNotice(set, programName, run.movedEventCount);
             return run;
         } catch (error) {
             if (!handleSessionError(error, logoutAndReset)) set({ actionError: actionError(error) });
@@ -111,12 +131,18 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
             const programName = get().programs.find((program) => program.id === latestRun.programId)?.name
                 || getAppText().programs.defaultName;
             await programsApi.completeNotifications(automaticRuns.map((run) => run.id));
-            logoutAndReset(interpolateText(getAppText().programs.runCompleted, {
-                name: programName,
-                count: latestRun.movedEventCount
-            }));
+            publishExecutionNotice(set, programName, latestRun.movedEventCount);
         } catch (error) {
             handleSessionError(error, logoutAndReset);
         }
+    },
+
+    clearProgramExecutionNotice: () => {
+        try {
+            storage.removeItem('program-execution-notice');
+        } catch {
+            // The in-memory notice is still cleared.
+        }
+        set({ programExecutionNotice: null, programPageReloadRequested: false });
     }
 });

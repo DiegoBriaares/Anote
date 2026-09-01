@@ -36,7 +36,8 @@ time_zone, next_run_at, revision, created_at, updated_at
 - `activation_time` is a validated `HH:mm` wall-clock time.
 - `target_offset_days` is an integer in the product-supported range 0 through
   365.
-- `time_zone` is a supported IANA timezone, never a numeric UTC offset.
+- `time_zone` is either a supported IANA timezone or a normalized fixed GMT
+  offset from `GMT-12` through `GMT+14`, including minute offsets.
 - `next_run_at` is the next UTC instant derived by the schedule owner.
 - revision follows `DATA-REV-*`.
 
@@ -74,11 +75,13 @@ scheduler may establish its own marker only through a committed program run.
 The program service owns validation, CRUD, execution, ledger creation and the
 next occurrence. The scheduler owns only wake-up and bounded due-work
 selection; it calls the service. The frontend program owner calls the API and
-renders results. The auth owner handles the post-run session-close experience.
+renders results. Program notification acknowledgement never owns or revokes an
+authentication session.
 
 ## 3. Scheduling semantics
 
-Dates and activation time are interpreted in each program's IANA timezone.
+Dates and activation time are interpreted in each program's IANA timezone or
+fixed GMT offset.
 The server stores execution instants in UTC and source/target calendar dates as
 ISO `YYYY-MM-DD` local dates.
 
@@ -184,17 +187,19 @@ Wire values contain program/run IDs, normalized schedule fields, revision,
 next-run instant, last-run summary and a stable status code. They do not expose
 SQL, worker polling state or another user's schedule.
 
-The client obtains an IANA timezone from the browser when creating/editing a
-program and submits it explicitly. Unsupported timezones are rejected without
-mutation. The UI describes the effective local time/zone and next run in EN and
-ES.
+The client starts new programs with the browser timezone and exposes an editable
+text field with common suggestions. Users may submit IANA identifiers or GMT
+offsets such as `GMT-6` and `GMT+5:30`; suggestions do not restrict accepted
+values. Unsupported timezones are rejected without mutation. The UI describes
+the effective local time/zone and next run in EN and ES.
 
 An unacknowledged automatic run is a durable user notification. When an open
-client observes it, the client displays the localized activation message,
-acknowledges the notification and signs out through the normal session owner.
-The event transaction is already complete; a closed browser, failed
-acknowledgement, second device or repeated notification poll cannot rerun it.
-Manual runs never request sign-out.
+client observes it, the client acknowledges the notification, records a
+short-lived result notice and reloads the page. After reload the authenticated
+session is preserved and the localized notice is displayed. Manual runs use the
+same reload-and-notice behavior. The event transaction is already complete; a
+closed browser, failed acknowledgement, second device or repeated notification
+poll cannot rerun it.
 
 ## 7. Transition model
 
@@ -206,7 +211,7 @@ Manual runs never request sign-out.
 | PROG-RUN-002 | source already claimed | worker/manual retry | unique ledger owner | existing result, no event mutation | none; idempotent success |
 | PROG-RUN-003 | enabled, current revision, source not claimed | manual run | program service transaction | same atomic result, trigger manual | stale/foreign/future-invalid: no mutation |
 | PROG-MISS-001 | due source before observed local day | worker run | timezone/schedule owner | pending source events target observed local date with durable arrival provenance; original events on that date remain eligible while catch-up arrivals cannot cascade | invalid clock/timezone: no mutation and retry remains due |
-| PROG-NOTIFY-001 | unacknowledged automatic run, open client | observe/acknowledge | notification and auth owners | localized notice then session revoked | client failure leaves notification retryable; run remains committed |
+| PROG-NOTIFY-001 | unacknowledged automatic run, open client | observe/acknowledge | notification owner | notification acknowledged; page reloads and shows localized notice while session remains active | client failure leaves notification retryable; run remains committed |
 | PROG-SHARE-001 | event with automatic arrival provenance is shared | share event | event/social owners | recipient copy preserves ordinary resources and removes server-owned arrival provenance | invalid stored resources abort the complete share transaction |
 | PROG-MIG-001 | legacy profile definitions | schema migration | migration/program owner | normalized future schedules and unrelated preferences preserved | any invalid persistence step rolls back user migration |
 
@@ -229,15 +234,15 @@ API.
 
 ## 8. Evidence
 
-Use a deterministic clock and representative IANA zones to prove ordinary,
-spring-gap and fall-repeat scheduling. A focused database integration suite
+Use a deterministic clock and representative IANA zones plus fixed GMT offsets
+to prove ordinary, spring-gap and fall-repeat scheduling. A focused database integration suite
 covers unique-claim replay, multiple workers racing the same source date,
 mid-transaction failure, exact moved-set and revision behavior. Catch-up
 evidence must instantiate a fresh program service between scans and prove both
 that durable arrivals are excluded from a later same-day program and that the
 original current-day set still moves. Migration evidence uses legacy
 preference fixtures and asserts unrelated JSON survives. One API/client
-history covers atomic notification completion/session revocation; browser tests
+history covers atomic notification completion/session preservation; browser tests
 do not duplicate scheduling arithmetic or transaction evidence.
 
 The legacy TLA model is retained only as a safety-property reference until its

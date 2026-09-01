@@ -10,7 +10,7 @@ import type { OwnerContext } from './types';
 
 type SocialOwner = Pick<CalendarState,
     'fetchUsers' | 'fetchFriends' | 'addFriend' | 'removeFriend' |
-    'fetchProfile' | 'updateProfile'
+    'fetchProfile' | 'updateProfile' | 'changePassword'
 >;
 
 const socialError = (error: unknown) => getApiErrorText(
@@ -118,6 +118,18 @@ export const createSocialOwner = ({ set, get, logoutAndReset }: OwnerContext): S
                     ? getApiErrorText(error.code)
                     : getAppText().serviceUnavailable
             });
+            return false;
+        }
+    },
+
+    changePassword: async (currentPassword, newPassword) => {
+        try {
+            await peopleApi.changePassword(currentPassword, newPassword);
+            logoutAndReset(getAppText().profile.passwordChanged);
+            return true;
+        } catch (error) {
+            if (error instanceof ApiError && error.status === 401) logoutAndReset();
+            else set({ actionError: socialError(error) });
             return false;
         }
     }

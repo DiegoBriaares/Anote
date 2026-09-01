@@ -100,6 +100,8 @@ export interface CalendarState {
     dayAdministrationDate: string | null;
     programs: Program[];
     lastProgramRun: ProgramRun | null;
+    programExecutionNotice: { name: string; movedEventCount: number } | null;
+    programPageReloadRequested: boolean;
 
     setSelection: (start: Date | null, end: Date | null) => void;
     setSelectionActive: (active: boolean) => void;
@@ -141,6 +143,7 @@ export interface CalendarState {
     removeFriend: (id: string) => Promise<void>;
     fetchProfile: () => Promise<void>;
     updateProfile: (prefs: Partial<UserPreferences> & { avatar_url?: string | null; username?: string }) => Promise<boolean>;
+    changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
     fetchPrograms: () => Promise<void>;
     savePrograms: (programs: Program[]) => Promise<boolean>;
     createProgram: (program: ProgramInput) => Promise<Program | null>;
@@ -149,6 +152,7 @@ export interface CalendarState {
     runProgram: (id: string, revision: number) => Promise<ProgramRun | null>;
     moveIncompleteEventsToDate: (sourceDateKeys: string[], targetDateKey: string, options?: { recordClockCheck?: boolean }) => Promise<boolean>;
     pollProgramRunNotifications: () => Promise<void>;
+    clearProgramExecutionNotice: () => void;
 
     // Visuals
     dailyFacts: Record<string, string>;
@@ -195,6 +199,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         storage.removeItem('token');
         storage.removeItem('user');
         storage.removeItem('profile');
+        storage.removeItem('program-execution-notice');
         set({
             user: null,
             sessionStatus: 'anonymous',
@@ -213,6 +218,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             dayAdministrationDate: null,
             programs: [],
             lastProgramRun: null,
+            programExecutionNotice: null,
+            programPageReloadRequested: false,
             dailyFacts: {},
             dayBackgrounds: {},
             roles: [],
@@ -257,6 +264,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         dayAdministrationDate: null,
         programs: [],
         lastProgramRun: null,
+        programExecutionNotice: (() => {
+            try {
+                const notice = JSON.parse(storage.getItem('program-execution-notice') || 'null');
+                return typeof notice?.name === 'string' && Number.isInteger(notice?.movedEventCount)
+                    ? notice
+                    : null;
+            } catch {
+                return null;
+            }
+        })(),
+        programPageReloadRequested: false,
         users: [],
         friends: [],
         socialError: null,

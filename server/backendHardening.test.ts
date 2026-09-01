@@ -22,8 +22,8 @@ const { applyFileMode, parsePosixModeEnforcement } = require('./file-modes');
 const { ApiError } = require('./http');
 const { SCHEMA_VERSION, migrateDatabase } = require('./migrations');
 const { createProgramService, startProgramScheduler } = require('./programs');
-const { wallTimeToInstant, zonedParts } = require('./time');
-const { createUserService } = require('./users');
+const { normalizeTimeZone, wallTimeToInstant, zonedParts } = require('./time');
+const { PASSWORD_MIN_LENGTH, createUserService } = require('./users');
 
 interface TestDatabase {
     prepare: (sql: string) => {
@@ -101,6 +101,63 @@ describe('host filesystem mode capability', () => {
             uploadDir: path.join(directory, 'uploads'),
             posixModeEnforcement: 'unsupported'
         })).not.toThrow();
+        closeDatabase(db);
+    });
+});
+
+describe('editable time zones', () => {
+    it('normalizes GMT offsets and resolves wall-clock instants without the host timezone', () => {
+        expect(normalizeTimeZone(' UTC - 06:00 ')).toBe('GMT-6');
+        expect(normalizeTimeZone('GMT+0530')).toBe('GMT+5:30');
+        expect(normalizeTimeZone('GMT-12')).toBe('GMT-12');
+        expect(normalizeTimeZone('GMT-12:01')).toBeNull();
+        expect(normalizeTimeZone('GMT-13')).toBeNull();
+        expect(normalizeTimeZone('GMT-14')).toBeNull();
+        expect(normalizeTimeZone('GMT+14:30')).toBeNull();
+        expect(wallTimeToInstant('2026-06-20', '08:15', 'GMT-6').toISOString())
+            .toBe('2026-06-20T14:15:00.000Z');
+        expect(zonedParts(new Date('2026-06-20T14:15:00.000Z'), 'GMT-6'))
+            .toMatchObject({ year: 2026, month: 6, day: 20, hour: 8, minute: 15 });
+    });
+});
+
+describe('password policy and self-service changes', () => {
+    it('accepts eight characters, verifies the current password, and revokes every session', async () => {
+        expect(PASSWORD_MIN_LENGTH).toBe(8);
+        const { db } = createTestDatabase();
+        insertUser(db, 'u1', 'user', 'current-hash');
+        const sessions = createSessionService({
+            db,
+            config: { sessionIdleSeconds: 3600, sessionAbsoluteSeconds: 7200 }
+        });
+        sessions.create('u1', 'first');
+        sessions.create('u1', 'second');
+        const users = createUserService({
+            db,
+            comparePassword: async (password: string, hash: string) => password === 'old password' && hash === 'current-hash',
+            hashPassword: async (password: string) => `hashed:${password}`
+        });
+
+        await users.changePassword('u1', { currentPassword: 'old password', newPassword: '12345678' });
+
+        expect(db.prepare('SELECT password FROM users WHERE id = ?').get('u1').password).toBe('hashed:12345678');
+        expect(db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?').get('u1').count).toBe(0);
+        closeDatabase(db);
+    });
+
+    it('rejects an incorrect current password without changing credentials', async () => {
+        const { db } = createTestDatabase();
+        insertUser(db, 'u1', 'user', 'current-hash');
+        const users = createUserService({
+            db,
+            comparePassword: async () => false,
+            hashPassword: async () => 'new-hash'
+        });
+        await expect(users.changePassword('u1', {
+            currentPassword: 'wrong password',
+            newPassword: '12345678'
+        })).rejects.toMatchObject({ code: 'CURRENT_PASSWORD_INCORRECT' });
+        expect(db.prepare('SELECT password FROM users WHERE id = ?').get('u1').password).toBe('current-hash');
         closeDatabase(db);
     });
 });
@@ -695,21 +752,18 @@ describe('automatic program transaction ownership', () => {
             now
         });
         sessions.create('u1', 'test');
-        const sessionId = db.prepare('SELECT id FROM sessions WHERE user_id = ?').get('u1').id;
         expect(() => restartedPrograms.completeNotifications(
             'u1',
-            [...notifications.data.map((run: { id: string }) => run.id), 'missing-run'],
-            sessionId
+            [...notifications.data.map((run: { id: string }) => run.id), 'missing-run']
         )).toThrowError(ApiError);
         expect(restartedPrograms.notifications('u1', notifications.cursor).data).toHaveLength(4);
         expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(1);
         restartedPrograms.completeNotifications(
             'u1',
-            notifications.data.map((run: { id: string }) => run.id),
-            sessionId
+            notifications.data.map((run: { id: string }) => run.id)
         );
         expect(restartedPrograms.notifications('u1', notifications.cursor).data).toHaveLength(0);
-        expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(0);
+        expect(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count).toBe(1);
         closeDatabase(db);
     });
 
@@ -752,14 +806,14 @@ describe('automatic program transaction ownership', () => {
 });
 
 describe('credentials and opaque sessions', () => {
-    it('enforces twelve Unicode characters and case-insensitive username uniqueness for new accounts', async () => {
+    it('enforces eight Unicode characters and case-insensitive username uniqueness for new accounts', async () => {
         const { db } = createTestDatabase();
         const users = createUserService({ db });
-        await expect(users.create({ username: 'short', password: '12345678901' }))
+        await expect(users.create({ username: 'short', password: '1234567' }))
             .rejects.toMatchObject({ code: 'PASSWORD_TOO_SHORT' });
         await expect(users.create({ username: 'too-long', password: 'x'.repeat(73) }))
             .rejects.toMatchObject({ code: 'PASSWORD_TOO_LONG' });
-        const user = await users.create({ username: 'CaseOwner', password: '🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐🔐' });
+        const user = await users.create({ username: 'CaseOwner', password: '🔐🔐🔐🔐🔐🔐🔐🔐' });
         expect(user.username).toBe('CaseOwner');
         expect(db.prepare('SELECT password FROM users WHERE id = ?').get(user.id).password).toMatch(/^\$2b\$12\$/);
         await expect(users.create({ username: 'caseowner', password: 'another valid password' }))

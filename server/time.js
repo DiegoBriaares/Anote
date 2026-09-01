@@ -1,5 +1,6 @@
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const FIXED_OFFSET_PATTERN = /^(?:GMT|UTC)\s*([+-])?\s*(\d{1,2})?(?::?([0-5]\d))?$/i;
 
 const formatterCache = new Map();
 
@@ -19,15 +20,41 @@ const getFormatter = (timeZone) => {
     return formatterCache.get(timeZone);
 };
 
-const isTimeZone = (value) => {
-    if (typeof value !== 'string' || value.length > 128) return false;
+const parseFixedOffset = (value) => {
+    if (typeof value !== 'string') return null;
+    const match = value.trim().match(FIXED_OFFSET_PATTERN);
+    if (!match) return null;
+    if (!match[1]) return match[2] || match[3] ? null : 0;
+    if (!match[2]) return null;
+    const hours = Number(match[2]);
+    const minutes = Number(match[3] || 0);
+    const maximumHours = match[1] === '-' ? 12 : 14;
+    if (hours > maximumHours || (hours === maximumHours && minutes !== 0)) return null;
+    const total = (hours * 60) + minutes;
+    return match[1] === '-' ? -total : total;
+};
+
+const normalizeTimeZone = (value) => {
+    if (typeof value !== 'string' || value.trim().length > 128) return null;
+    const trimmed = value.trim();
+    const fixedOffset = parseFixedOffset(trimmed);
+    if (fixedOffset !== null) {
+        if (fixedOffset === 0) return 'GMT';
+        const sign = fixedOffset < 0 ? '-' : '+';
+        const absolute = Math.abs(fixedOffset);
+        const hours = Math.floor(absolute / 60);
+        const minutes = absolute % 60;
+        return `GMT${sign}${hours}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}`;
+    }
     try {
-        getFormatter(value).format(new Date(0));
-        return true;
+        getFormatter(trimmed).format(new Date(0));
+        return trimmed;
     } catch {
-        return false;
+        return null;
     }
 };
+
+const isTimeZone = (value) => normalizeTimeZone(value) !== null;
 
 const isDateKey = (value) => {
     if (typeof value !== 'string' || !DATE_KEY_PATTERN.test(value)) return false;
@@ -41,6 +68,18 @@ const isDateKey = (value) => {
 const isTime = (value) => typeof value === 'string' && TIME_PATTERN.test(value);
 
 const zonedParts = (instant, timeZone) => {
+    const fixedOffset = parseFixedOffset(timeZone);
+    if (fixedOffset !== null) {
+        const shifted = new Date(instant.getTime() + fixedOffset * 60 * 1000);
+        return {
+            year: shifted.getUTCFullYear(),
+            month: shifted.getUTCMonth() + 1,
+            day: shifted.getUTCDate(),
+            hour: shifted.getUTCHours(),
+            minute: shifted.getUTCMinutes(),
+            second: shifted.getUTCSeconds()
+        };
+    }
     const parts = Object.fromEntries(
         getFormatter(timeZone).formatToParts(instant)
             .filter((part) => part.type !== 'literal')
@@ -77,6 +116,8 @@ const wallTimeToInstant = (dateKey, time, timeZone) => {
     const [year, month, day] = dateKey.split('-').map(Number);
     const [hour, minute] = time.split(':').map(Number);
     const desiredUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+    const fixedOffset = parseFixedOffset(timeZone);
+    if (fixedOffset !== null) return new Date(desiredUtc - fixedOffset * 60 * 1000);
     let candidate = new Date(desiredUtc);
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -121,6 +162,7 @@ module.exports = {
     isDateKey,
     isTime,
     isTimeZone,
+    normalizeTimeZone,
     nextOccurrence,
     toDateKey,
     wallTimeToInstant,

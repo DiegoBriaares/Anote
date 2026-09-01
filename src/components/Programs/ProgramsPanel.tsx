@@ -7,6 +7,7 @@ import type { ProgramInput } from '../../api/programs';
 import { interpolateText } from '../../i18n/appText';
 import { useTranslation } from '../../i18n/languageContext';
 import { useCalendarStore } from '../../store/calendarStore';
+import { COMMON_TIME_ZONES, normalizeTimeZone } from '../../utils/timeZone';
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -44,6 +45,7 @@ export const ProgramsPanel = () => {
     const selectedProgram = drafts.find((program) => program.id === runProgramId) || drafts[0] || null;
     const selectedProgramId = selectedProgram?.id || '';
     const hasInvalidTime = drafts.some((program) => !TIME_PATTERN.test(program.activationTime));
+    const hasInvalidTimeZone = drafts.some((program) => normalizeTimeZone(program.timeZone) === null);
 
     const updateDraft = (id: string, patch: Partial<ProgramInput>) => {
         setEdits((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
@@ -66,8 +68,15 @@ export const ProgramsPanel = () => {
             setMessage(text.programs.invalidTime);
             return;
         }
+        if (hasInvalidTimeZone) {
+            setMessage(text.programs.invalidTimeZone);
+            return;
+        }
         setIsSaving(true);
-        const succeeded = await savePrograms(drafts);
+        const succeeded = await savePrograms(drafts.map((program) => ({
+            ...program,
+            timeZone: normalizeTimeZone(program.timeZone) || program.timeZone
+        })));
         if (succeeded) {
             setEdits({});
             setMessage(text.programs.saved);
@@ -155,13 +164,17 @@ export const ProgramsPanel = () => {
                                     <td className="p-3"><input aria-label={text.programs.name} value={program.name} onChange={(event) => updateDraft(program.id, { name: event.target.value })} className="w-full rounded border border-orange-100 px-2 py-1" /></td>
                                     <td className="p-3"><input aria-label={text.programs.activationTime} value={program.activationTime} onChange={(event) => updateDraft(program.id, { activationTime: event.target.value })} className="w-24 rounded border border-orange-100 px-2 py-1" /></td>
                                     <td className="p-3"><input aria-label={text.programs.targetOffset} type="number" min={0} max={365} value={program.targetDayOffset} onChange={(event) => updateDraft(program.id, { targetDayOffset: Number(event.target.value) })} className="w-20 rounded border border-orange-100 px-2 py-1" /></td>
-                                    <td className="p-3"><input aria-label={text.programs.timeZone} value={program.timeZone} onChange={(event) => updateDraft(program.id, { timeZone: event.target.value })} className="w-44 rounded border border-orange-100 px-2 py-1" /></td>
+                                    <td className="p-3"><input aria-label={text.programs.timeZone} aria-invalid={normalizeTimeZone(program.timeZone) === null} list="program-time-zones" placeholder={text.programs.timeZonePlaceholder} value={program.timeZone} onChange={(event) => updateDraft(program.id, { timeZone: event.target.value })} className="w-44 rounded border border-orange-100 px-2 py-1 aria-[invalid=true]:border-red-400" /></td>
                                     <td className="p-3"><input aria-label={text.common.enabled} type="checkbox" checked={program.enabled} onChange={(event) => updateDraft(program.id, { enabled: event.target.checked })} /></td>
                                     <td className="p-3 text-right"><button type="button" aria-label={`${text.common.delete}: ${program.name}`} onClick={() => { setDeleteCandidate(program); queueMicrotask(() => cancelDeleteRef.current?.focus()); }} className="rounded p-2 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
                                 </tr>
                             ))}</tbody>
                         </table>
                     )}
+                    <datalist id="program-time-zones">
+                        {COMMON_TIME_ZONES.map((timeZone) => <option key={timeZone} value={timeZone} />)}
+                    </datalist>
+                    <p className="mt-2 text-xs text-stone-500">{text.programs.timeZoneHelp}</p>
                 </div>
 
                 {(message || actionError) && <p className="mt-4 text-sm text-stone-600" role="status">{message || actionError}</p>}

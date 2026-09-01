@@ -75,7 +75,7 @@ export const Login: React.FC = () => {
                                 className="w-full bg-white border-2 border-orange-200 rounded-xl py-3 pl-10 pr-4 text-stone-800 font-mono focus:outline-none focus:border-orange-400 hover:border-orange-300 transition-all shadow-sm"
                                 placeholder="••••••••"
                                 autoComplete={isRegistration ? 'new-password' : 'current-password'}
-                                minLength={isRegistration ? 12 : undefined}
+                                minLength={isRegistration ? 8 : undefined}
                                 required
                             />
                         </div>

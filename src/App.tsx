@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Clock3, Eye, Loader2, LogOut, Settings, Shield, User, Users } from 'lucide-react';
+import { ChevronDown, Clock3, Eye, Loader2, LogOut, Settings, Shield, User, Users, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Login } from './components/Auth/Login';
@@ -85,7 +85,10 @@ function App() {
         socialError,
         bootstrap,
         fetchAppConfig,
-        pollProgramRunNotifications
+        pollProgramRunNotifications,
+        programExecutionNotice,
+        programPageReloadRequested,
+        clearProgramExecutionNotice
     } = useCalendarStore(useShallow((state) => ({
         user: state.user,
         sessionStatus: state.sessionStatus,
@@ -107,7 +110,10 @@ function App() {
         socialError: state.socialError,
         bootstrap: state.bootstrap,
         fetchAppConfig: state.fetchAppConfig,
-        pollProgramRunNotifications: state.pollProgramRunNotifications
+        pollProgramRunNotifications: state.pollProgramRunNotifications,
+        programExecutionNotice: state.programExecutionNotice,
+        programPageReloadRequested: state.programPageReloadRequested,
+        clearProgramExecutionNotice: state.clearProgramExecutionNotice
     })));
     const { language, setLanguage, text } = useTranslation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -141,6 +147,16 @@ function App() {
             if (interval !== null) window.clearInterval(interval);
         };
     }, [bootstrap, pollProgramRunNotifications, user]);
+
+    useEffect(() => {
+        if (programPageReloadRequested) window.location.reload();
+    }, [programPageReloadRequested]);
+
+    useEffect(() => {
+        if (!programExecutionNotice || programPageReloadRequested) return;
+        const timeout = window.setTimeout(clearProgramExecutionNotice, 6_000);
+        return () => window.clearTimeout(timeout);
+    }, [clearProgramExecutionNotice, programExecutionNotice, programPageReloadRequested]);
 
     useEffect(() => {
         const handlePointerDown = (event: MouseEvent) => {
@@ -224,6 +240,17 @@ function App() {
             className={`min-h-screen ${theme === 'dark' ? 'text-slate-100' : 'text-stone-800'} selection:bg-orange-500/30 relative transition-colors duration-200`}
             style={{ ...backgroundStyle, ['--accent' as string]: accentColor }}
         >
+            {programExecutionNotice && !programPageReloadRequested && (
+                <div className="fixed bottom-5 right-5 z-[90] flex max-w-sm items-start gap-3 rounded-2xl border border-emerald-200 bg-white/95 p-4 text-stone-700 shadow-2xl backdrop-blur" role="status" aria-live="polite">
+                    <p className="text-sm">{interpolateText(text.programs.runCompleted, {
+                        name: programExecutionNotice.name,
+                        count: programExecutionNotice.movedEventCount
+                    })}</p>
+                    <button type="button" onClick={clearProgramExecutionNotice} className="rounded p-1 text-stone-500 hover:bg-stone-100" aria-label={text.programs.dismissNotice}>
+                        <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                </div>
+            )}
             {backgroundUrl && (
                 <div className={`absolute inset-0 ${theme === 'dark' ? 'bg-slate-950/70' : 'bg-white/80'} pointer-events-none`} />
             )}

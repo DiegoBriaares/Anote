@@ -11,6 +11,10 @@ export const peopleApi = {
     users: async () => parseList(await apiData<unknown>('/users'), parseUser),
     profile: async () => parseUser(await apiData<unknown>('/me')),
     updateProfile: (value: WireRecord) => apiRequest<{ message: string }>('/me', { method: 'PUT', body: jsonBody(value) }),
+    changePassword: (currentPassword: string, newPassword: string) => apiRequest<{ message: string }>('/me/password', {
+        method: 'PUT',
+        body: jsonBody({ currentPassword, newPassword })
+    }),
     friends: async () => parseList(await apiData<unknown>('/friends'), parseUser),
     addFriend: (id: string) => apiRequest<{ message: string }>(`/friends/${encodeURIComponent(id)}`, { method: 'POST' }),
     removeFriend: (id: string) => apiRequest<{ message: string }>(`/friends/${encodeURIComponent(id)}`, { method: 'DELETE' })
