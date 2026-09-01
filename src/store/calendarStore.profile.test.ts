@@ -72,4 +72,33 @@ describe('calendarStore profile updates', () => {
         expect(saved).toBe(false);
         expect(useCalendarStore.getState().actionError).toBeTruthy();
     });
+
+    it('changes the password through the authenticated profile API and resets the revoked session', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'success' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        }));
+        vi.stubGlobal('fetch', fetchMock);
+        useCalendarStore.setState({
+            user: { id: 'user-1', username: 'example-user', isAdmin: false },
+            sessionStatus: 'authenticated',
+            actionError: null
+        });
+
+        const changed = await useCalendarStore.getState().changePassword('old password', '12345678');
+
+        expect(changed).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith(`${API_URL}/me/password`, expect.objectContaining({
+            method: 'PUT',
+            credentials: 'same-origin'
+        }));
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+            currentPassword: 'old password',
+            newPassword: '12345678'
+        });
+        expect(useCalendarStore.getState()).toMatchObject({
+            user: null,
+            sessionStatus: 'anonymous'
+        });
+    });
 });

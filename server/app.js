@@ -102,8 +102,7 @@ const createRuntime = ({ config, database, now = () => new Date(), scheduler = t
     app.use('/postponed-events', createEventsRouter({ service: eventService, authenticate: auth.authenticate, postponed: true }));
     app.use('/programs', createProgramsRouter({
         service: programService,
-        authenticate: auth.authenticate,
-        expireSessionCookie: auth.expireSessionCookie
+        authenticate: auth.authenticate
     }));
     app.use('/attachments', createAttachmentsRouter({ service: attachmentService, authenticate: auth.authenticate }));
     app.use(createNotesRouter({ service: noteService, authenticate: auth.authenticate }));

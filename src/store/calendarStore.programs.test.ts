@@ -25,7 +25,9 @@ const authenticatedState = {
     sessionStatus: 'authenticated' as const,
     programs: [] as Program[],
     events: {},
-    postponedEvents: []
+    postponedEvents: [],
+    programExecutionNotice: null,
+    programPageReloadRequested: false
 };
 
 describe('server-owned programs', () => {
@@ -81,6 +83,10 @@ describe('server-owned programs', () => {
         const runRequest = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/run'));
         expect(JSON.parse(String(runRequest?.[1]?.body))).toEqual({ revision: program.revision });
         expect(useCalendarStore.getState().lastProgramRun).toEqual(run);
+        expect(useCalendarStore.getState()).toMatchObject({
+            programExecutionNotice: { name: program.name, movedEventCount: 2 },
+            programPageReloadRequested: true
+        });
     });
 
     it('saves all edited definitions through one atomic backend command', async () => {
@@ -141,7 +147,7 @@ describe('server-owned programs', () => {
         });
     });
 
-    it('observes an automatic run and closes the cookie session without owning the clock', async () => {
+    it('acknowledges an automatic run and requests a reload without closing the session', async () => {
         const automaticRun = {
             id: 'run-2', programId: program.id, sourceDate: '2026-06-20', targetDate: '2026-06-21',
             movedEventCount: 1, executedAt: '2026-06-20T12:30:00.000Z', automatic: true
@@ -157,15 +163,21 @@ describe('server-owned programs', () => {
 
         await useCalendarStore.getState().pollProgramRunNotifications();
 
-        expect(useCalendarStore.getState().user).toBeNull();
-        expect(useCalendarStore.getState().sessionStatus).toBe('anonymous');
-        expect(useCalendarStore.getState().error).toContain('1 unfinished events');
+        expect(useCalendarStore.getState()).toMatchObject({
+            user: authenticatedState.user,
+            sessionStatus: 'authenticated',
+            programExecutionNotice: { name: program.name, movedEventCount: 1 },
+            programPageReloadRequested: true
+        });
         expect(globalThis.fetch).toHaveBeenCalledWith(
             '/api/programs/run-notifications/complete',
             expect.objectContaining({ method: 'POST', credentials: 'same-origin' })
         );
         const completion = vi.mocked(globalThis.fetch).mock.calls.find(([url]) => String(url).endsWith('/complete'));
         expect(JSON.parse(String(completion?.[1]?.body))).toEqual({ runIds: ['run-2'] });
-        expect(localStorage.getItem('anote-program-notification-cursor')).toBeNull();
+        expect(JSON.parse(localStorage.getItem('program-execution-notice') || 'null')).toEqual({
+            name: program.name,
+            movedEventCount: 1
+        });
     });
 });

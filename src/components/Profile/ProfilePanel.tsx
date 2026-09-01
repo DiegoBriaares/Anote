@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowLeft, Image as ImageIcon, Palette, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, LockKeyhole, Palette, RefreshCcw } from 'lucide-react';
 import { useTranslation } from '../../i18n/languageContext';
 import { useCalendarStore, type UserPreferences } from '../../store/calendarStore';
 
@@ -20,6 +20,76 @@ const applyAppearance = (prefs: Partial<UserPreferences>) => {
         document.body.style.setProperty('--accent', prefs.accentColor);
         document.body.style.setProperty('--accent-orange', prefs.accentColor);
     }
+};
+
+const PasswordEditor = () => {
+    const { actionError, changePassword, clearActionError } = useCalendarStore(useShallow((state) => ({
+        actionError: state.actionError,
+        changePassword: state.changePassword,
+        clearActionError: state.clearActionError
+    })));
+    const { text } = useTranslation();
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmation, setConfirmation] = useState('');
+    const [localError, setLocalError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const update = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
+        setter(value);
+        setLocalError(null);
+        clearActionError();
+    };
+
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if ([...newPassword].length < 8) {
+            setLocalError(text.profile.passwordHelp);
+            return;
+        }
+        if (newPassword !== confirmation) {
+            setLocalError(text.profile.passwordsDoNotMatch);
+            return;
+        }
+        setIsSaving(true);
+        const changed = await changePassword(currentPassword, newPassword);
+        if (!changed) setIsSaving(false);
+    };
+
+    return (
+        <form onSubmit={(event) => { void handleSubmit(event); }} className="mt-6 border border-orange-200 bg-white/80 p-6 rounded-2xl shadow-xl shadow-orange-100/50" aria-labelledby="password-title">
+            <div className="flex items-start gap-4">
+                <div className="p-3 border-2 border-orange-400 rounded-full bg-orange-50">
+                    <LockKeyhole className="w-6 h-6 text-orange-500" aria-hidden="true" />
+                </div>
+                <div>
+                    <h3 id="password-title" className="text-lg font-medium text-stone-800">{text.profile.passwordTitle}</h3>
+                    <p className="mt-1 text-sm text-stone-500">{text.profile.passwordDescription}</p>
+                </div>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wider text-orange-600">
+                    {text.profile.currentPassword}
+                    <input type="password" autoComplete="current-password" required value={currentPassword} onChange={(event) => update(setCurrentPassword, event.target.value)} className="rounded-xl border-2 border-orange-200 bg-white px-4 py-3 text-sm font-normal normal-case tracking-normal text-stone-800 focus:border-orange-400 focus:outline-none" />
+                </label>
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wider text-orange-600">
+                    {text.profile.newPassword}
+                    <input type="password" autoComplete="new-password" required minLength={8} value={newPassword} onChange={(event) => update(setNewPassword, event.target.value)} className="rounded-xl border-2 border-orange-200 bg-white px-4 py-3 text-sm font-normal normal-case tracking-normal text-stone-800 focus:border-orange-400 focus:outline-none" />
+                </label>
+                <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wider text-orange-600">
+                    {text.profile.confirmPassword}
+                    <input type="password" autoComplete="new-password" required minLength={8} value={confirmation} onChange={(event) => update(setConfirmation, event.target.value)} className="rounded-xl border-2 border-orange-200 bg-white px-4 py-3 text-sm font-normal normal-case tracking-normal text-stone-800 focus:border-orange-400 focus:outline-none" />
+                </label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-stone-500">{text.profile.passwordHelp}</p>
+                <button type="submit" disabled={isSaving} className="rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+                    {isSaving ? text.common.saving : text.profile.changePassword}
+                </button>
+            </div>
+            {(localError || actionError) && <p role="alert" className="mt-3 text-sm text-red-600">{localError || actionError}</p>}
+        </form>
+    );
 };
 
 const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
@@ -139,6 +209,8 @@ const ProfileEditor = ({ initial }: { initial: ProfileDraft }) => {
                     </div>
                 </div>
             </div>
+
+            <PasswordEditor />
 
             <div className="mt-6 flex justify-end gap-3">
                 <button type="button" onClick={() => setDraft(initial)} disabled={!isDirty || isSaving} className="px-5 py-2.5 text-sm font-medium text-stone-600 hover:text-stone-800 border border-stone-300 hover:border-stone-400 transition-all flex items-center gap-2 rounded-xl disabled:opacity-50">

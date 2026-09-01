@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 
 const { ApiError } = require('./http');
-const { addDays, isTime, isTimeZone, nextOccurrence, toDateKey, wallTimeToInstant } = require('./time');
+const { addDays, isTime, nextOccurrence, normalizeTimeZone, toDateKey, wallTimeToInstant } = require('./time');
 
 const programDto = (row) => ({
     id: row.id,
@@ -31,11 +31,11 @@ const normalizeProgramInput = (raw, existing = {}) => {
     const name = raw.name === undefined ? existing.name : (typeof raw.name === 'string' ? raw.name.trim() : '');
     const activationTime = raw.activationTime ?? existing.activation_time;
     const targetDayOffset = raw.targetDayOffset ?? raw.targetOffsetDays ?? existing.target_day_offset;
-    const timeZone = raw.timeZone ?? existing.time_zone;
+    const timeZone = normalizeTimeZone(raw.timeZone ?? existing.time_zone);
     const enabled = raw.enabled ?? raw.isEnabled ?? (existing.enabled === 1);
     if (!name || name.length > 120) throw new ApiError(400, 'invalid_program_name');
     if (!isTime(activationTime)) throw new ApiError(400, 'invalid_program_time');
-    if (!isTimeZone(timeZone)) throw new ApiError(400, 'invalid_program_time_zone');
+    if (!timeZone) throw new ApiError(400, 'invalid_program_time_zone');
     if (typeof targetDayOffset !== 'number'
         || !Number.isInteger(targetDayOffset)
         || targetDayOffset < 0
@@ -297,11 +297,10 @@ const createProgramService = ({ db, now = () => new Date() }) => {
         };
     };
 
-    const completeNotifications = (ownerId, rawRunIds, sessionId) => {
+    const completeNotifications = (ownerId, rawRunIds) => {
         if (!Array.isArray(rawRunIds) || rawRunIds.length === 0 || rawRunIds.length > 100
             || rawRunIds.some((id) => typeof id !== 'string' || !id)
-            || new Set(rawRunIds).size !== rawRunIds.length
-            || typeof sessionId !== 'string' || !sessionId) {
+            || new Set(rawRunIds).size !== rawRunIds.length) {
             throw new ApiError(400, 'invalid_program_notifications');
         }
         const complete = db.transaction(() => {
@@ -314,9 +313,6 @@ const createProgramService = ({ db, now = () => new Date() }) => {
                 if (acknowledge.run(timestamp, runId, ownerId).changes !== 1) {
                     throw new ApiError(409, 'program_notification_conflict');
                 }
-            }
-            if (db.prepare('DELETE FROM sessions WHERE id = ? AND user_id = ?').run(sessionId, ownerId).changes !== 1) {
-                throw new ApiError(401, 'authentication_required');
             }
         });
         complete.immediate();
@@ -335,7 +331,7 @@ const createProgramService = ({ db, now = () => new Date() }) => {
     };
 };
 
-const createProgramsRouter = ({ service, authenticate, expireSessionCookie }) => {
+const createProgramsRouter = ({ service, authenticate }) => {
     const router = express.Router();
     router.use(authenticate);
     router.get('/', (req, res) => res.json({ message: 'success', data: service.list(req.user.id) }));
@@ -359,8 +355,7 @@ const createProgramsRouter = ({ service, authenticate, expireSessionCookie }) =>
     });
     router.post('/run-notifications/complete', (req, res, next) => {
         try {
-            service.completeNotifications(req.user.id, req.body?.runIds, req.sessionId);
-            expireSessionCookie(req, res);
+            service.completeNotifications(req.user.id, req.body?.runIds);
             res.json({ message: 'success' });
         } catch (error) {
             next(error);

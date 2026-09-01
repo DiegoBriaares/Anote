@@ -175,7 +175,8 @@ mutation. Offline bootstrap and Control Center do not bypass this middleware by
 calling browser routes.
 
 Passwords for registration, administrator creation and password changes have a
-minimum of 12 Unicode characters and are bcrypt-hashed at cost 12. Existing
+minimum of 8 Unicode characters and a maximum of 72 UTF-8 bytes, and are
+bcrypt-hashed at cost 12. Existing
 valid hashes remain usable until changed. Logs, command arguments and response
 details never contain passwords.
 

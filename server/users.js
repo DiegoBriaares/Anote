@@ -4,7 +4,7 @@ const express = require('express');
 
 const { ApiError } = require('./http');
 
-const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_BYTES = 72;
 
 const validateUsername = (value) => {
@@ -43,7 +43,8 @@ const profileDto = (row) => ({
 const createUserService = ({
     db,
     retireAttachments = (_collectCandidates, mutate) => db.transaction(mutate).immediate(),
-    hashPassword = (password) => bcrypt.hash(password, 12)
+    hashPassword = (password) => bcrypt.hash(password, 12),
+    comparePassword = (password, hash) => bcrypt.compare(password, hash)
 }) => {
     const usernameIsUnavailable = (username, exceptId = null) => db.prepare(`
         SELECT 1 FROM users
@@ -162,6 +163,26 @@ const createUserService = ({
         db.transaction(() => applyPreparedUpdate(id, prepared)).immediate();
     };
 
+    const changePassword = async (id, changes = {}) => {
+        const currentPassword = typeof changes.currentPassword === 'string' ? changes.currentPassword : '';
+        const newPassword = validatePassword(changes.newPassword);
+        if (!currentPassword) throw new ApiError(400, 'current_password_required');
+        const current = db.prepare('SELECT password FROM users WHERE id = ?').get(id);
+        if (!current) throw new ApiError(401, 'authentication_required');
+        if (!await comparePassword(currentPassword, current.password)) {
+            throw new ApiError(403, 'current_password_incorrect');
+        }
+        const passwordHash = await hashPassword(newPassword);
+        const applyChange = db.transaction(() => {
+            const latest = db.prepare('SELECT password FROM users WHERE id = ?').get(id);
+            if (!latest) throw new ApiError(401, 'authentication_required');
+            if (latest.password !== current.password) throw new ApiError(409, 'password_changed');
+            db.prepare('UPDATE users SET password = ? WHERE id = ?').run(passwordHash, id);
+            db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+        });
+        applyChange.immediate();
+    };
+
     const updateProfile = (id, changes = {}) => {
         const current = db.prepare('SELECT username, avatar_url, preferences FROM users WHERE id = ?').get(id);
         if (!current) throw new ApiError(401, 'authentication_required');
@@ -222,6 +243,7 @@ const createUserService = ({
 
     return {
         bootstrapAdministrator,
+        changePassword,
         applyPreparedUpdate,
         create,
         directory,
@@ -246,6 +268,14 @@ const createUsersRouter = ({ service, authenticate }) => {
     router.put('/me', authenticate, (req, res, next) => {
         try {
             service.updateProfile(req.user.id, req.body);
+            res.json({ message: 'success' });
+        } catch (error) {
+            next(error);
+        }
+    });
+    router.put('/me/password', authenticate, async (req, res, next) => {
+        try {
+            await service.changePassword(req.user.id, req.body);
             res.json({ message: 'success' });
         } catch (error) {
             next(error);
