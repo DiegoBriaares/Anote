@@ -17,8 +17,14 @@ const publishExecutionNotice = (
     movedEventCount: number
 ) => {
     const notice = { name, movedEventCount };
-    storage.setItem('program-execution-notice', JSON.stringify(notice));
-    set({ programExecutionNotice: notice, programPageReloadRequested: true });
+    let reloadRequested = false;
+    try {
+        storage.setItem('program-execution-notice', JSON.stringify(notice));
+        reloadRequested = true;
+    } catch {
+        // Keep the committed result visible in memory when persistence is unavailable.
+    }
+    set({ programExecutionNotice: notice, programPageReloadRequested: reloadRequested });
 };
 
 const actionError = (error: unknown) => error instanceof ApiError
@@ -132,7 +138,11 @@ export const createProgramsOwner = ({ set, get, logoutAndReset }: OwnerContext):
     },
 
     clearProgramExecutionNotice: () => {
-        storage.removeItem('program-execution-notice');
+        try {
+            storage.removeItem('program-execution-notice');
+        } catch {
+            // The in-memory notice is still cleared.
+        }
         set({ programExecutionNotice: null, programPageReloadRequested: false });
     }
 });

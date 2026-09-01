@@ -28,7 +28,8 @@ const parseFixedOffset = (value) => {
     if (!match[2]) return null;
     const hours = Number(match[2]);
     const minutes = Number(match[3] || 0);
-    if (hours > 14 || (hours === 14 && minutes !== 0)) return null;
+    const maximumHours = match[1] === '-' ? 12 : 14;
+    if (hours > maximumHours || (hours === maximumHours && minutes !== 0)) return null;
     const total = (hours * 60) + minutes;
     return match[1] === '-' ? -total : total;
 };

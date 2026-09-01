@@ -9,7 +9,8 @@ export const normalizeTimeZone = (value: string): string | null => {
         if (!match[2]) return null;
         const hours = Number(match[2]);
         const minutes = Number(match[3] || 0);
-        if (hours > 14 || (hours === 14 && minutes !== 0)) return null;
+        const maximumHours = match[1] === '-' ? 12 : 14;
+        if (hours > maximumHours || (hours === maximumHours && minutes !== 0)) return null;
         const sign = match[1];
         return `GMT${sign}${hours}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}`;
     }

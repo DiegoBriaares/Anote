@@ -109,6 +109,10 @@ describe('editable time zones', () => {
     it('normalizes GMT offsets and resolves wall-clock instants without the host timezone', () => {
         expect(normalizeTimeZone(' UTC - 06:00 ')).toBe('GMT-6');
         expect(normalizeTimeZone('GMT+0530')).toBe('GMT+5:30');
+        expect(normalizeTimeZone('GMT-12')).toBe('GMT-12');
+        expect(normalizeTimeZone('GMT-12:01')).toBeNull();
+        expect(normalizeTimeZone('GMT-13')).toBeNull();
+        expect(normalizeTimeZone('GMT-14')).toBeNull();
         expect(normalizeTimeZone('GMT+14:30')).toBeNull();
         expect(wallTimeToInstant('2026-06-20', '08:15', 'GMT-6').toISOString())
             .toBe('2026-06-20T14:15:00.000Z');

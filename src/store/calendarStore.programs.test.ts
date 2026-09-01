@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Program } from '../api/contracts';
+import { storage } from '../utils/storage';
 import { useCalendarStore } from './calendarStore';
 
 const program: Program = {
@@ -86,6 +87,33 @@ describe('server-owned programs', () => {
         expect(useCalendarStore.getState()).toMatchObject({
             programExecutionNotice: { name: program.name, movedEventCount: 2 },
             programPageReloadRequested: true
+        });
+    });
+
+    it('keeps a committed manual run successful and visible when notice storage fails', async () => {
+        useCalendarStore.setState({ programs: [program], actionError: null });
+        const run = {
+            id: 'run-storage-failure', programId: program.id, sourceDate: '2026-06-20', targetDate: '2026-06-21',
+            movedEventCount: 3, executedAt: '2026-06-20T12:30:00.000Z', automatic: false
+        };
+        vi.spyOn(storage, 'setItem').mockImplementation(() => {
+            throw new DOMException('Quota exceeded', 'QuotaExceededError');
+        });
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+            const url = String(input);
+            if (url.endsWith('/run') && init?.method === 'POST') return jsonResponse({ message: 'success', data: run });
+            if (url === '/api/events') return jsonResponse({ message: 'success', data: [] });
+            if (url === '/api/programs') return jsonResponse({ message: 'success', data: [program] });
+            throw new Error(`Unexpected request: ${url}`);
+        });
+
+        const result = await useCalendarStore.getState().runProgram(program.id, program.revision);
+
+        expect(result).toEqual(run);
+        expect(useCalendarStore.getState()).toMatchObject({
+            actionError: null,
+            programExecutionNotice: { name: program.name, movedEventCount: 3 },
+            programPageReloadRequested: false
         });
     });
 
